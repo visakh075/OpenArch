@@ -1,49 +1,84 @@
 #include <iostream>
 #include <sstream>
+#include <string>
+
 #include "core/ArchitectureModel.h"
 #include "db/DbManagerSQLite.h"
 
-void printResult(const Result& r) {
+enum class Command {
+    ADD_NODE, UPDATE_NODE, DELETE_NODE, LIST_NODES,
+    ADD_LAYER, UPDATE_LAYER, DELETE_LAYER, LIST_LAYERS,
+    ADD_NODE_LAYER, REMOVE_NODE_LAYER, LIST_LAYER_NODES,
+    ADD_EDGE, UPDATE_EDGE, DELETE_EDGE, LIST_EDGES,
+    HELP, EXIT, UNKNOWN
+};
+
+static Command parseCommand(const std::string& c) {
+    if (c == "add_node") return Command::ADD_NODE;
+    if (c == "update_node") return Command::UPDATE_NODE;
+    if (c == "del_node") return Command::DELETE_NODE;
+    if (c == "list_nodes") return Command::LIST_NODES;
+
+    if (c == "add_layer") return Command::ADD_LAYER;
+    if (c == "update_layer") return Command::UPDATE_LAYER;
+    if (c == "del_layer") return Command::DELETE_LAYER;
+    if (c == "list_layers") return Command::LIST_LAYERS;
+
+    if (c == "add_node_layer") return Command::ADD_NODE_LAYER;
+    if (c == "del_node_layer") return Command::REMOVE_NODE_LAYER;
+    if (c == "list_layer_nodes") return Command::LIST_LAYER_NODES;
+
+    if (c == "add_edge") return Command::ADD_EDGE;
+    if (c == "update_edge") return Command::UPDATE_EDGE;
+    if (c == "del_edge") return Command::DELETE_EDGE;
+    if (c == "list_edges") return Command::LIST_EDGES;
+
+    if (c == "help") return Command::HELP;
+    if (c == "exit") return Command::EXIT;
+
+    return Command::UNKNOWN;
+}
+
+static void printResult(const Result& r) {
     std::cout << (r.ok ? "[OK] " : "[ERR] ") << r.message << "\n";
 }
 
-void help() {
+static void help() {
     std::cout << R"(
-Commands:
 
- Nodes:
-   add_node <name> <type>
-   update_node <id> <name> <type>
-   set_node_meta <id> <key> <value>
-   set_node_attr <id> <key> <value>
-   list_nodes
-   del_node <id>
+Nodes:
+  add_node <name> <type>
+  update_node <id> <name> <type>
+  del_node <id>
+  list_nodes
 
- Layers:
-   add_layer <name> <kind>
-   update_layer <id> <name> <kind>
-   set_layer_meta <id> <key> <value>
-   set_layer_attr <id> <key> <value>
-   list_layers
-   del_layer <id>
+Layers:
+  add_layer <name> <kind>
+  update_layer <id> <name> <kind>
+  del_layer <id>
+  list_layers
 
- Edges:
-   add_edge <srcNodeId> <dstNodeId> <edgeType>
-   update_edge <id> <edgeType>
-   set_edge_meta <id> <key> <value>
-   set_edge_attr <id> <key> <value>
-   list_edges
-   del_edge <id>
+Node–Layer:
+  add_node_layer <nodeId> <layerId>
+  del_node_layer <nodeId> <layerId>
+  list_layer_nodes <layerId>
 
- General:
-   help
-   exit | quit
+Edges (layer-aware):
+  add_edge <srcNode> <srcLayer> <dstNode> <dstLayer> <type>
+  update_edge <id> <type>
+  del_edge <id>
+  list_edges
+
+General:
+  help
+  exit
+
 )";
 }
 
 int main() {
     DbManagerSQLite db;
-    auto r = db.open("arch.db");
+    Result r = db.open("arch.db");
     printResult(r);
     if (!r.ok) return 1;
 
@@ -54,119 +89,137 @@ int main() {
     while (true) {
         std::cout << "> ";
         std::getline(std::cin, line);
-        if (!std::cin.good()) break;
-        if (line.empty()) continue;
+
+        if (!std::cin.good())
+            break;
+
+        if (line.empty())
+            continue;
 
         std::istringstream is(line);
-        std::string cmd;
-        is >> cmd;
+        std::string cmdStr;
+        is >> cmdStr;
 
-        if (cmd == "help") {
+        Command cmd = parseCommand(cmdStr);
+
+        switch (cmd) {
+        case Command::HELP:
             help();
-        }
+            break;
 
-        // ---------- Nodes ----------
-        else if (cmd == "add_node") {
+        case Command::EXIT:
+            return 0;
+
+        case Command::ADD_NODE: {
             NodeData n; NodeId id;
             is >> n.name >> n.type;
             printResult(model.addNode(n, id));
+            break;
         }
-        else if (cmd == "update_node") {
+
+        case Command::UPDATE_NODE: {
             NodeData n;
             is >> n.id >> n.name >> n.type;
             printResult(model.updateNode(n));
-        }
-        else if (cmd == "set_node_meta") {
-            NodeData n; std::string k,v;
-            is >> n.id >> k >> v;
-            n.metadata[k] = v;
-            printResult(model.updateNode(n));
-        }
-        else if (cmd == "set_node_attr") {
-            NodeData n; std::string k,v;
-            is >> n.id >> k >> v;
-            n.attributes[k] = v;
-            printResult(model.updateNode(n));
-        }
-        else if (cmd == "list_nodes") {
-            for (auto& n : model.nodes())
-                std::cout << n.id << " " << n.name << " " << n.type << "\n";
-        }
-        else if (cmd == "del_node") {
-            NodeId id; is >> id;
-            printResult(model.deleteNode(id));
+            break;
         }
 
-        // ---------- Layers ----------
-        else if (cmd == "add_layer") {
+        case Command::DELETE_NODE: {
+            NodeId id;
+            is >> id;
+            printResult(model.deleteNode(id));
+            break;
+        }
+
+        case Command::LIST_NODES:
+            for (auto& n : model.nodes())
+                std::cout << n.id << " " << n.name << " " << n.type << "\n";
+            break;
+
+        case Command::ADD_LAYER: {
             LayerData l; LayerId id;
             is >> l.name >> l.kind;
             printResult(model.addLayer(l, id));
+            break;
         }
-        else if (cmd == "update_layer") {
+
+        case Command::UPDATE_LAYER: {
             LayerData l;
             is >> l.id >> l.name >> l.kind;
             printResult(model.updateLayer(l));
-        }
-        else if (cmd == "set_layer_meta") {
-            LayerData l; std::string k,v;
-            is >> l.id >> k >> v;
-            l.metadata[k] = v;
-            printResult(model.updateLayer(l));
-        }
-        else if (cmd == "set_layer_attr") {
-            LayerData l; std::string k,v;
-            is >> l.id >> k >> v;
-            l.attributes[k] = v;
-            printResult(model.updateLayer(l));
-        }
-        else if (cmd == "list_layers") {
-            for (auto& l : model.layers())
-                std::cout << l.id << " " << l.name << " " << l.kind << "\n";
-        }
-        else if (cmd == "del_layer") {
-            LayerId id; is >> id;
-            printResult(model.deleteLayer(id));
+            break;
         }
 
-        // ---------- Edges ----------
-        else if (cmd == "add_edge") {
-            EdgeData e; EdgeId id;
-            is >> e.srcNode >> e.dstNode >> e.edgeType;
-            printResult(model.addEdge(e, id));
+        case Command::DELETE_LAYER: {
+            LayerId id;
+            is >> id;
+            printResult(model.deleteLayer(id));
+            break;
         }
-        else if (cmd == "update_edge") {
+
+        case Command::LIST_LAYERS:
+            for (auto& l : model.layers())
+                std::cout << l.id << " " << l.name << " " << l.kind << "\n";
+            break;
+
+        case Command::ADD_NODE_LAYER: {
+            NodeId n; LayerId l;
+            is >> n >> l;
+            printResult(model.addNodeToLayer(n, l));
+            break;
+        }
+
+        case Command::REMOVE_NODE_LAYER: {
+            NodeId n; LayerId l;
+            is >> n >> l;
+            printResult(model.removeNodeFromLayer(n, l));
+            break;
+        }
+
+        case Command::LIST_LAYER_NODES: {
+            LayerId l;
+            is >> l;
+            for (auto& nl : model.nodesInLayer(l))
+                std::cout << nl.nodeId << "\n";
+            break;
+        }
+
+        case Command::ADD_EDGE: {
+            EdgeData e; EdgeId id;
+            is >> e.srcNode >> e.srcLayer
+               >> e.dstNode >> e.dstLayer
+               >> e.edgeType;
+            printResult(model.addEdge(e, id));
+            break;
+        }
+
+        case Command::UPDATE_EDGE: {
             EdgeData e;
             is >> e.id >> e.edgeType;
             printResult(model.updateEdge(e));
-        }
-        else if (cmd == "set_edge_meta") {
-            EdgeData e; std::string k,v;
-            is >> e.id >> k >> v;
-            e.metadata[k] = v;
-            printResult(model.updateEdge(e));
-        }
-        else if (cmd == "set_edge_attr") {
-            EdgeData e; std::string k,v;
-            is >> e.id >> k >> v;
-            e.attributes[k] = v;
-            printResult(model.updateEdge(e));
-        }
-        else if (cmd == "list_edges") {
-            for (auto& e : model.edges())
-                std::cout << e.id << " " << e.srcNode << "->" << e.dstNode
-                          << " " << e.edgeType << "\n";
-        }
-        else if (cmd == "del_edge") {
-            EdgeId id; is >> id;
-            printResult(model.deleteEdge(id));
+            break;
         }
 
-        else if (cmd == "exit" || cmd == "quit") {
-            return 0;
+        case Command::DELETE_EDGE: {
+            EdgeId id;
+            is >> id;
+            printResult(model.deleteEdge(id));
+            break;
         }
-        else {
+
+        case Command::LIST_EDGES:
+            for (auto& e : model.edges()) {
+                std::cout << e.id << ": ("
+                          << e.srcNode << "," << e.srcLayer << ") -> ("
+                          << e.dstNode << "," << e.dstLayer << ") "
+                          << e.edgeType << "\n";
+            }
+            break;
+
+        case Command::UNKNOWN:
+        default:
             std::cout << "[ERR] Unknown command. Type 'help'.\n";
+            break;
         }
     }
 }
