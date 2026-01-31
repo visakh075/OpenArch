@@ -1,10 +1,17 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <cstring>
+
+#include <readline/readline.h>
+#include <readline/history.h>
 
 #include "core/ArchitectureModel.h"
 #include "db/DbManagerSQLite.h"
 
+/* ============================================================
+   Commands
+   ============================================================ */
 enum class Command {
     ADD_NODE, UPDATE_NODE, DELETE_NODE, LIST_NODES,
     ADD_LAYER, UPDATE_LAYER, DELETE_LAYER, LIST_LAYERS,
@@ -39,8 +46,50 @@ static Command parseCommand(const std::string& c) {
     return Command::UNKNOWN;
 }
 
+/* ============================================================
+   Readline completion
+   ============================================================ */
+static const char* COMMANDS[] = {
+    "add_node", "update_node", "del_node", "list_nodes",
+    "add_layer", "update_layer", "del_layer", "list_layers",
+    "add_node_layer", "del_node_layer", "list_layer_nodes",
+    "add_edge", "update_edge", "del_edge", "list_edges",
+    "help", "exit",
+    nullptr
+};
+
+static char* commandGenerator(const char* text, int state) {
+    static int index;
+    static size_t len;
+
+    if (!state) {
+        index = 0;
+        len = std::strlen(text);
+    }
+
+    const char* name;
+    while ((name = COMMANDS[index++])) {
+        if (std::strncmp(name, text, len) == 0)
+            return strdup(name);
+    }
+    return nullptr;
+}
+
+static char** commandCompletion(const char* text, int start, int) {
+    if (start == 0)
+        return rl_completion_matches(text, commandGenerator);
+    return nullptr;
+}
+
+/* ============================================================
+   Helpers
+   ============================================================ */
 static void printResult(const Result& r) {
     std::cout << (r.ok ? "[OK] " : "[ERR] ") << r.message << "\n";
+}
+
+static void usage(const char* msg) {
+    std::cout << "[ERR] Usage: " << msg << "\n";
 }
 
 static void help() {
@@ -76,25 +125,38 @@ General:
 )";
 }
 
-int main() {
+/* ============================================================
+   Main
+   ============================================================ */
+int main(int argc, char* argv[]) {
+    std::string dbFile = "arch.db";
+    if (argc > 1)
+        dbFile = argv[1];
+
     DbManagerSQLite db;
-    Result r = db.open("arch.db");
+    Result r = db.open(dbFile);
     printResult(r);
     if (!r.ok) return 1;
 
     ArchitectureModel model(db);
+
+    rl_attempted_completion_function = commandCompletion;
+    using_history();
+
     help();
 
-    std::string line;
     while (true) {
-        std::cout << "> ";
-        std::getline(std::cin, line);
-
-        if (!std::cin.good())
+        char* input = readline("> ");
+        if (!input)
             break;
+
+        std::string line(input);
+        free(input);
 
         if (line.empty())
             continue;
+
+        add_history(line.c_str());
 
         std::istringstream is(line);
         std::string cmdStr;
@@ -112,21 +174,30 @@ int main() {
 
         case Command::ADD_NODE: {
             NodeData n; NodeId id;
-            is >> n.name >> n.type;
+            if (!(is >> n.name >> n.type)) {
+                usage("add_node <name> <type>");
+                break;
+            }
             printResult(model.addNode(n, id));
             break;
         }
 
         case Command::UPDATE_NODE: {
             NodeData n;
-            is >> n.id >> n.name >> n.type;
+            if (!(is >> n.id >> n.name >> n.type)) {
+                usage("update_node <id> <name> <type>");
+                break;
+            }
             printResult(model.updateNode(n));
             break;
         }
 
         case Command::DELETE_NODE: {
             NodeId id;
-            is >> id;
+            if (!(is >> id)) {
+                usage("del_node <id>");
+                break;
+            }
             printResult(model.deleteNode(id));
             break;
         }
@@ -138,21 +209,30 @@ int main() {
 
         case Command::ADD_LAYER: {
             LayerData l; LayerId id;
-            is >> l.name >> l.kind;
+            if (!(is >> l.name >> l.kind)) {
+                usage("add_layer <name> <kind>");
+                break;
+            }
             printResult(model.addLayer(l, id));
             break;
         }
 
         case Command::UPDATE_LAYER: {
             LayerData l;
-            is >> l.id >> l.name >> l.kind;
+            if (!(is >> l.id >> l.name >> l.kind)) {
+                usage("update_layer <id> <name> <kind>");
+                break;
+            }
             printResult(model.updateLayer(l));
             break;
         }
 
         case Command::DELETE_LAYER: {
             LayerId id;
-            is >> id;
+            if (!(is >> id)) {
+                usage("del_layer <id>");
+                break;
+            }
             printResult(model.deleteLayer(id));
             break;
         }
@@ -164,21 +244,30 @@ int main() {
 
         case Command::ADD_NODE_LAYER: {
             NodeId n; LayerId l;
-            is >> n >> l;
+            if (!(is >> n >> l)) {
+                usage("add_node_layer <nodeId> <layerId>");
+                break;
+            }
             printResult(model.addNodeToLayer(n, l));
             break;
         }
 
         case Command::REMOVE_NODE_LAYER: {
             NodeId n; LayerId l;
-            is >> n >> l;
+            if (!(is >> n >> l)) {
+                usage("del_node_layer <nodeId> <layerId>");
+                break;
+            }
             printResult(model.removeNodeFromLayer(n, l));
             break;
         }
 
         case Command::LIST_LAYER_NODES: {
             LayerId l;
-            is >> l;
+            if (!(is >> l)) {
+                usage("list_layer_nodes <layerId>");
+                break;
+            }
             for (auto& nl : model.nodesInLayer(l))
                 std::cout << nl.nodeId << "\n";
             break;
@@ -186,23 +275,32 @@ int main() {
 
         case Command::ADD_EDGE: {
             EdgeData e; EdgeId id;
-            is >> e.srcNode >> e.srcLayer
-               >> e.dstNode >> e.dstLayer
-               >> e.edgeType;
+            if (!(is >> e.srcNode >> e.srcLayer
+                     >> e.dstNode >> e.dstLayer
+                     >> e.edgeType)) {
+                usage("add_edge <srcNode> <srcLayer> <dstNode> <dstLayer> <type>");
+                break;
+            }
             printResult(model.addEdge(e, id));
             break;
         }
 
         case Command::UPDATE_EDGE: {
             EdgeData e;
-            is >> e.id >> e.edgeType;
+            if (!(is >> e.id >> e.edgeType)) {
+                usage("update_edge <id> <type>");
+                break;
+            }
             printResult(model.updateEdge(e));
             break;
         }
 
         case Command::DELETE_EDGE: {
             EdgeId id;
-            is >> id;
+            if (!(is >> id)) {
+                usage("del_edge <id>");
+                break;
+            }
             printResult(model.deleteEdge(id));
             break;
         }

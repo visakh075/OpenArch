@@ -8,4 +8,8 @@ add_executable(openarch_cli
  src/db/DbManagerSQLite.cpp
 )
 target_include_directories(openarch_cli PRIVATE src)
-target_link_libraries(openarch_cli PRIVATE SQLite::SQLite3)
+target_link_libraries(openarch_cli
+    PRIVATE
+    SQLite::SQLite3
+    readline
+)
