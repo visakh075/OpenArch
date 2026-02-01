@@ -3,7 +3,7 @@
 #include <sqlite3.h>
 class DbManagerSQLite:public DbManager{
  sqlite3*db_{nullptr};
- Result exec(const char*);
+//  Result exec(const char*);
 public:
  Result open(const std::string&) override;
  void close() override;
