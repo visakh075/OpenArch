@@ -6,6 +6,9 @@
 #include "Types.h"
 #include "db/DbManager.h"
 
+#include <optional>
+#include "core/GraphView.h"
+
 /*
  * ArchitectureModel
  *
@@ -63,6 +66,10 @@ public:
     Result setEdgeMetadata(EdgeId id, const std::string& metadata);
     Result setEdgeAttributes(EdgeId id, const std::string& attributes);
     Result reviewEdge(EdgeId id, const std::string& reviewer);
+
+    GraphSnapshot extractGraph(
+    std::optional<LayerId> layerFilter = std::nullopt) const;
+
 
 private:
     DbManager& db_;

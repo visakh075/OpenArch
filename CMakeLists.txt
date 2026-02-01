@@ -19,7 +19,7 @@ pkg_check_modules(READLINE REQUIRED readline)
 set(SOURCES
     src/core/Checksum.cpp
     src/core/ArchitectureModel.cpp
-
+    src/core/GraphJson.cpp
     src/db/DbManagerSQLite.cpp
 
     src/cli/cli.cpp

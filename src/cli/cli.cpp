@@ -6,6 +6,7 @@
 #include <readline/history.h>
 
 #include "core/ArchitectureModel.h"
+#include "core/GraphJson.h"
 #include "db/DbManagerSQLite.h"
 
 static const char* COMMANDS[] = {
@@ -39,6 +40,9 @@ enum class Command {
 
     ADD_EDGE, UPDATE_EDGE, DELETE_EDGE, LIST_EDGES,
     SET_EDGE_META, SET_EDGE_ATTR, REVIEW_EDGE,
+    
+    DUMP_GRAPH,
+    DUMP_GRAPH_JSON,
 
     HELP, EXIT, UNKNOWN
 };
@@ -90,12 +94,15 @@ static Command parse(const std::string& c) {
     CMD(ADD_NODE_LAYER,"add_node_layer");
     CMD(REMOVE_NODE_LAYER,"del_node_layer");
     CMD(LIST_LAYER_NODES,"list_layer_nodes");
+    
 
     CMD(ADD_EDGE,"add_edge"); CMD(UPDATE_EDGE,"update_edge");
     CMD(DELETE_EDGE,"del_edge"); CMD(LIST_EDGES,"list_edges");
     CMD(SET_EDGE_META,"set_edge_meta"); CMD(SET_EDGE_ATTR,"set_edge_attr");
     CMD(REVIEW_EDGE,"review_edge");
 
+    CMD(DUMP_GRAPH,"dump_graph");
+    CMD(DUMP_GRAPH_JSON,"dump_graph_json");
     CMD(HELP,"help"); CMD(EXIT,"exit");
     return Command::UNKNOWN;
 }
@@ -141,6 +148,10 @@ Edges:
   review_edge <id> <reviewer>
   del_edge <id>
   list_edges
+
+Graph:
+  dump_graph [layerId]
+  dump_graph_json [layerId]
 
 General:
   help
@@ -348,6 +359,58 @@ int main(int argc, char** argv) {
                           << e.checksum << " reviewer="
                           << e.reviewer << "\n";
             break;
+
+        case Command::DUMP_GRAPH: {
+            std::optional<LayerId> layer;
+
+            if (!is.eof()) {
+                LayerId l;
+                if (is >> l)
+                    layer = l;
+            }
+
+            auto snap = model.extractGraph(layer);
+
+            std::cout << "Nodes:\n";
+            for (const auto& n : snap.nodes) {
+                std::cout << "  [" << n.id << "] "
+                        << n.label << " type=" << n.type
+                        << " status=" << to_string(n.status)
+                        << " layers=";
+
+                for (auto lid : n.layers)
+                    std::cout << lid << " ";
+
+                std::cout << "\n";
+            }
+
+            std::cout << "Edges:\n";
+            for (const auto& e : snap.edges) {
+                std::cout << "  [" << e.id << "] ("
+                        << e.srcNode << ":" << e.srcLayer
+                        << " -> "
+                        << e.dstNode << ":" << e.dstLayer
+                        << ") type=" << e.type
+                        << " status=" << to_string(e.status)
+                        << "\n";
+            }
+
+            break;
+        }
+
+        case Command::DUMP_GRAPH_JSON: {
+            std::optional<LayerId> layer;
+
+            if (!is.eof()) {
+                LayerId l;
+                if (is >> l)
+                    layer = l;
+            }
+
+            auto snap = model.extractGraph(layer);
+            std::cout << toJson(snap);
+            break;
+        }
 
         default:
             std::cout << "[ERR] Unknown command. Type 'help'.\n";
