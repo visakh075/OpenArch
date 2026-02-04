@@ -46,3 +46,23 @@ target_compile_options(openarch PRIVATE
     -Wextra
     -Wpedantic
 )
+
+find_package(Qt5 REQUIRED COMPONENTS Widgets)
+
+add_executable(openarch-gui
+    src/gui/main.cpp
+    src/gui/MainWindow.cpp
+
+    src/core/Checksum.cpp
+    src/core/ArchitectureModel.cpp
+    src/core/GraphJson.cpp
+
+    src/db/DbManagerSQLite.cpp
+)
+
+target_include_directories(openarch-gui PRIVATE src)
+
+target_link_libraries(openarch-gui PRIVATE
+    Qt5::Widgets
+    SQLite::SQLite3
+)
