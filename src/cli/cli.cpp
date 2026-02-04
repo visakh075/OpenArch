@@ -374,12 +374,12 @@ int main(int argc, char** argv) {
             std::cout << "Nodes:\n";
             for (const auto& n : snap.nodes) {
                 std::cout << "  [" << n.id << "] "
-                        << n.label << " type=" << n.type
+                        << n.name << " type=" << n.type
                         << " status=" << to_string(n.status)
                         << " layers=";
 
-                for (auto lid : n.layers)
-                    std::cout << lid << " ";
+                // for (auto lid : n.layers)
+                //     std::cout << lid << " ";
 
                 std::cout << "\n";
             }
@@ -390,7 +390,7 @@ int main(int argc, char** argv) {
                         << e.srcNode << ":" << e.srcLayer
                         << " -> "
                         << e.dstNode << ":" << e.dstLayer
-                        << ") type=" << e.type
+                        << ") type=" << e.edgeType
                         << " status=" << to_string(e.status)
                         << "\n";
             }

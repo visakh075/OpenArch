@@ -5,6 +5,7 @@
 #include <sstream>
 
 #include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 /* ============================================================
    Construction
@@ -278,118 +279,65 @@ Result ArchitectureModel::reviewEdge(EdgeId id, const std::string& reviewer) {
 }
 
 GraphSnapshot ArchitectureModel::extractGraph(
-    std::optional<LayerId> layerFilter
-) const {
+    std::optional<LayerId> layerId) const {
+
     GraphSnapshot snap;
+    snap.layerFilter = layerId;
 
     // --------------------------------------------------
-    // Fetch everything ONCE
+    // 1. Layers
     // --------------------------------------------------
-    auto allNodes  = db_.getAllNodes();
-    auto allLayers = db_.getAllLayers();
-    auto allEdges  = db_.getAllEdges();
-
-    // Node → layers map
-    std::unordered_map<NodeId, std::vector<LayerId>> nodeLayers;
-    for (const auto& layer : allLayers) {
-        auto members = db_.getNodesInLayer(layer.id);
-        for (const auto& nl : members)
-            nodeLayers[nl.nodeId].push_back(layer.id);
-    }
-
-    // --------------------------------------------------
-    // Layer visibility
-    // --------------------------------------------------
-    if (layerFilter) {
-        for (const auto& l : allLayers)
-            if (l.id == *layerFilter)
-                snap.visibleLayers.push_back(l);
+    auto allLayers = layers();
+    if (layerId) {
+        for (const auto& l : allLayers) {
+            if (l.id == *layerId) {
+                snap.layers.push_back(l);
+                break;
+            }
+        }
     } else {
-        snap.visibleLayers = allLayers;
+        snap.layers = allLayers;
     }
 
     // --------------------------------------------------
-    // Node selection
+    // 2. Determine visible nodes
     // --------------------------------------------------
-    std::unordered_map<NodeId, NodeData> selectedNodes;
+    std::unordered_set<NodeId> visibleNodes;
 
-    for (const auto& n : allNodes) {
-        if (!layerFilter) {
-            selectedNodes[n.id] = n;
-        } else {
-            auto it = nodeLayers.find(n.id);
-            if (it != nodeLayers.end()) {
-                for (auto lid : it->second) {
-                    if (lid == *layerFilter) {
-                        selectedNodes[n.id] = n;
-                        break;
-                    }
-                }
-            }
+    if (layerId) {
+        for (const auto& nl : nodesInLayer(*layerId)) {
+            visibleNodes.insert(nl.nodeId);
+        }
+    } else {
+        for (const auto& n : nodes()) {
+            visibleNodes.insert(n.id);
         }
     }
 
     // --------------------------------------------------
-    // Edge selection
+    // 3. Nodes
     // --------------------------------------------------
-    for (const auto& e : allEdges) {
-        bool include = false;
+    for (const auto& n : nodes()) {
+        if (!layerId || visibleNodes.count(n.id)) {
+            snap.nodes.push_back(n);
+        }
+    }
 
-        if (!layerFilter)
-            include = true;
-        else if (e.srcLayer == *layerFilter || e.dstLayer == *layerFilter)
-            include = true;
+    // --------------------------------------------------
+    // 4. Edges (layer-aware)
+    // --------------------------------------------------
+    for (const auto& e : edges()) {
+        if (visibleNodes.count(e.srcNode) &&
+            visibleNodes.count(e.dstNode)) {
 
-        if (!include)
-            continue;
+            if (!layerId ||
+                e.srcLayer == *layerId ||
+                e.dstLayer == *layerId) {
 
-        // Ensure endpoints exist
-        for (auto nid : {e.srcNode, e.dstNode}) {
-            if (!selectedNodes.count(nid)) {
-                for (const auto& n : allNodes)
-                    if (n.id == nid)
-                        selectedNodes[n.id] = n;
+                snap.edges.push_back(e);
             }
         }
-
-        GraphEdgeView ev;
-        ev.id       = e.id;
-        ev.srcNode  = e.srcNode;
-        ev.dstNode  = e.dstNode;
-        ev.srcLayer = e.srcLayer;
-        ev.dstLayer = e.dstLayer;
-        ev.type     = e.edgeType;
-        ev.status   = e.status;
-        ev.metadata = e.metadata;
-
-        snap.edges.push_back(std::move(ev));
     }
-
-    // --------------------------------------------------
-    // Build node views
-    // --------------------------------------------------
-    for (const auto& [id, n] : selectedNodes) {
-        GraphNodeView v;
-        v.id         = n.id;
-        v.label      = n.name;
-        v.type       = n.type;
-        v.status     = n.status;
-        v.reviewer   = n.reviewer;
-        v.metadata   = n.metadata;
-        v.attributes = n.attributes;
-        v.layers     = nodeLayers[n.id];
-
-        snap.nodes.push_back(std::move(v));
-    }
-
-    // --------------------------------------------------
-    // Stable ordering
-    // --------------------------------------------------
-    std::sort(snap.nodes.begin(), snap.nodes.end(),
-              [](auto& a, auto& b) { return a.id < b.id; });
-
-    std::sort(snap.edges.begin(), snap.edges.end(),
-              [](auto& a, auto& b) { return a.id < b.id; });
 
     return snap;
 }

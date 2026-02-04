@@ -4,11 +4,12 @@
 #include <string>
 
 #include "Types.h"
-#include "db/DbManager.h"
+
 
 #include <optional>
-#include "core/GraphView.h"
-
+#include "db/DbManager.h"
+#include "core/DomainObjects.h"
+#include "core/GraphSnapshot.h"
 /*
  * ArchitectureModel
  *
@@ -68,7 +69,8 @@ public:
     Result reviewEdge(EdgeId id, const std::string& reviewer);
 
     GraphSnapshot extractGraph(
-    std::optional<LayerId> layerFilter = std::nullopt) const;
+        std::optional<LayerId> layerId = std::nullopt
+    ) const;
 
 
 private:

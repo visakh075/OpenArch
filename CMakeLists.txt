@@ -6,6 +6,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # ------------------------------------------------------------
+# Qt (REQUIRED for GUI)
+# ------------------------------------------------------------
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+find_package(Qt5 REQUIRED COMPONENTS Widgets)
+
+# ------------------------------------------------------------
 # Dependencies
 # ------------------------------------------------------------
 find_package(SQLite3 REQUIRED)
@@ -14,29 +23,36 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(READLINE REQUIRED readline)
 
 # ------------------------------------------------------------
-# Source files
+# Core library (shared by CLI + GUI)
 # ------------------------------------------------------------
-set(SOURCES
+add_library(openarch_core
     src/core/Checksum.cpp
     src/core/ArchitectureModel.cpp
     src/core/GraphJson.cpp
     src/db/DbManagerSQLite.cpp
+)
 
-    src/cli/cli.cpp
+target_include_directories(openarch_core PUBLIC
+    src
+)
+
+target_link_libraries(openarch_core PUBLIC
+    SQLite::SQLite3
 )
 
 # ------------------------------------------------------------
-# Target
+# CLI target
 # ------------------------------------------------------------
-add_executable(openarch ${SOURCES})
+add_executable(openarch
+    src/cli/cli.cpp
+)
 
 target_include_directories(openarch PRIVATE
-    src
     ${READLINE_INCLUDE_DIRS}
 )
 
 target_link_libraries(openarch PRIVATE
-    SQLite::SQLite3
+    openarch_core
     ${READLINE_LIBRARIES}
 )
 
@@ -47,22 +63,15 @@ target_compile_options(openarch PRIVATE
     -Wpedantic
 )
 
-find_package(Qt5 REQUIRED COMPONENTS Widgets)
-
+# ------------------------------------------------------------
+# GUI target
+# ------------------------------------------------------------
 add_executable(openarch-gui
     src/gui/main.cpp
     src/gui/MainWindow.cpp
-
-    src/core/Checksum.cpp
-    src/core/ArchitectureModel.cpp
-    src/core/GraphJson.cpp
-
-    src/db/DbManagerSQLite.cpp
 )
 
-target_include_directories(openarch-gui PRIVATE src)
-
 target_link_libraries(openarch-gui PRIVATE
+    openarch_core
     Qt5::Widgets
-    SQLite::SQLite3
 )

@@ -1,43 +1,16 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <optional>
+#include "GraphSnapshot.h"
 
-#include "core/Types.h"
+/*
+ * GraphView is a CONSUMER of graph data.
+ * It does NOT own or define graph structures.
+ * Rendering / layout logic may live here later.
+ */
+class GraphView {
+public:
+    virtual ~GraphView() = default;
 
-struct GraphNodeView {
-    NodeId id{};
-    std::string label;
-    std::string type;
-
-    std::vector<LayerId> layers;
-
-    Status status{};
-    std::string reviewer;
-
-    std::string metadata;
-    std::string attributes;
-};
-
-struct GraphEdgeView {
-    EdgeId id{};
-
-    NodeId srcNode{};
-    NodeId dstNode{};
-
-    LayerId srcLayer{};
-    LayerId dstLayer{};
-
-    std::string type;
-    Status status{};
-
-    std::string metadata;
-};
-
-struct GraphSnapshot {
-    std::vector<GraphNodeView> nodes;
-    std::vector<GraphEdgeView> edges;
-
-    std::vector<LayerData> visibleLayers;
+    // Render a snapshot (GUI / visualization layer will implement this)
+    virtual void render(const GraphSnapshot& snapshot) = 0;
 };
