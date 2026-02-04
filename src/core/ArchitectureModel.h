@@ -71,7 +71,11 @@ public:
     GraphSnapshot extractGraph(
         std::optional<LayerId> layerId = std::nullopt
     ) const;
+    
+    std::optional<NodeData>  getNodeById(NodeId id) const;
+    std::optional<LayerData> getLayerById(LayerId id) const;
 
+    std::vector<NodeLayer> layersForNode(NodeId nodeId) const;
 
 private:
     DbManager& db_;

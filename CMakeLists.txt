@@ -69,6 +69,10 @@ target_compile_options(openarch PRIVATE
 add_executable(openarch-gui
     src/gui/main.cpp
     src/gui/MainWindow.cpp
+
+    src/gui/NodeEditorWidget.cpp
+    src/gui/LayerEditorWidget.cpp
+    src/gui/RelationEditorWidget.cpp
 )
 
 target_link_libraries(openarch-gui PRIVATE

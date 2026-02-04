@@ -8,15 +8,15 @@
 #include <QVBoxLayout>
 
 LayerEditorWidget::LayerEditorWidget(QWidget* parent)
-    : QWidget(parent) {
+    : QWidget(parent)
+{
+    nameEdit_ = new QLineEdit(this);
+    kindEdit_ = new QLineEdit(this);
+    metadataEdit_ = new QTextEdit(this);
+    attributesEdit_ = new QTextEdit(this);
+    saveBtn_ = new QPushButton("Save Layer", this);
 
-    nameEdit_ = new QLineEdit;
-    kindEdit_ = new QLineEdit;
-    metadataEdit_ = new QTextEdit;
-    attributesEdit_ = new QTextEdit;
-    saveBtn_ = new QPushButton("Save Layer");
-
-    nodeEditor_ = new RelationEditorWidget;
+    nodeEditor_ = new RelationEditorWidget(this);
 
     auto* form = new QFormLayout;
     form->addRow("Name", nameEdit_);
@@ -28,15 +28,19 @@ LayerEditorWidget::LayerEditorWidget(QWidget* parent)
     layout->addLayout(form);
     layout->addWidget(nodeEditor_);
     layout->addWidget(saveBtn_);
+    setLayout(layout);
 
+    /* -------- Save Layer -------- */
     connect(saveBtn_, &QPushButton::clicked, this, [this]() {
-        current_.name = nameEdit_->text().toStdString();
-        current_.kind = kindEdit_->text().toStdString();
-        current_.metadata = metadataEdit_->toPlainText().toStdString();
+        current_.name       = nameEdit_->text().toStdString();
+        current_.kind       = kindEdit_->text().toStdString();
+        current_.metadata   = metadataEdit_->toPlainText().toStdString();
         current_.attributes = attributesEdit_->toPlainText().toStdString();
+
         emit saveLayerRequested(current_);
     });
 
+    /* -------- Node ↔ Layer relations -------- */
     connect(nodeEditor_, &RelationEditorWidget::addRequested,
             this, &LayerEditorWidget::addNodeRequested);
 
@@ -44,9 +48,13 @@ LayerEditorWidget::LayerEditorWidget(QWidget* parent)
             this, &LayerEditorWidget::removeNodeRequested);
 }
 
+/* ============================================================
+   Single entry point to load a layer (Option A)
+   ============================================================ */
 void LayerEditorWidget::setLayer(const LayerData& layer,
                                  const QStringList& allNodes,
-                                 const QStringList& currentNodes) {
+                                 const QStringList& currentNodes)
+{
     current_ = layer;
 
     nameEdit_->setText(QString::fromStdString(layer.name));
@@ -56,4 +64,6 @@ void LayerEditorWidget::setLayer(const LayerData& layer,
 
     nodeEditor_->setAllItems(allNodes);
     nodeEditor_->setCurrentItems(currentNodes);
+
+    show();
 }

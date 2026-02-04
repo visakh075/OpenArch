@@ -36,12 +36,6 @@ NodeEditorWidget::NodeEditorWidget(QWidget* parent)
         current_.attributes = attributesEdit_->toPlainText().toStdString();
         emit saveNodeRequested(current_);
     });
-
-    connect(layerEditor_, &RelationEditorWidget::addRequested,
-            this, &NodeEditorWidget::addNodeToLayerRequested);
-
-    connect(layerEditor_, &RelationEditorWidget::removeRequested,
-            this, &NodeEditorWidget::removeNodeFromLayerRequested);
 }
 
 void NodeEditorWidget::setNode(const NodeData& node,

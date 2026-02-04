@@ -12,6 +12,7 @@ class LayerEditorWidget : public QWidget {
 public:
     explicit LayerEditorWidget(QWidget* parent = nullptr);
 
+    // void loadLayer(const LayerData& layer);
     void setLayer(const LayerData& layer,
                   const QStringList& allNodes,
                   const QStringList& currentNodes);

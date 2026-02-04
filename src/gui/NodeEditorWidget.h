@@ -18,8 +18,8 @@ public:
 
 signals:
     void saveNodeRequested(const NodeData& node);
-    void addNodeToLayerRequested(const QString& layerName);
-    void removeNodeFromLayerRequested(const QString& layerName);
+    void addLayerRequested(const QString& layerName);
+    void removeLayerRequested(const QString& layerName);
 
 private:
     NodeData current_;

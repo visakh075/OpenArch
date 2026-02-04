@@ -341,3 +341,32 @@ GraphSnapshot ArchitectureModel::extractGraph(
 
     return snap;
 }
+std::optional<NodeData> ArchitectureModel::getNodeById(NodeId id) const
+{
+    for (const auto& n : nodes()) {
+        if (n.id == id)
+            return n;
+    }
+    return std::nullopt;
+}
+std::optional<LayerData> ArchitectureModel::getLayerById(LayerId id) const
+{
+    for (const auto& l : layers()) {
+        if (l.id == id)
+            return l;
+    }
+    return std::nullopt;
+}
+std::vector<NodeLayer> ArchitectureModel::layersForNode(NodeId nodeId) const
+{
+    std::vector<NodeLayer> result;
+
+    for (const auto& layer : layers()) {
+        for (const auto& nl : nodesInLayer(layer.id)) {
+            if (nl.nodeId == nodeId) {
+                result.push_back(nl);
+            }
+        }
+    }
+    return result;
+}
