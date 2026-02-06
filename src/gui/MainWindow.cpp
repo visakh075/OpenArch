@@ -25,6 +25,18 @@
    Constructor / Destructor
    ============================================================ */
 
+enum class ItemType : int {
+    Category = 0,
+    Layer    = 1,
+    Node     = 2
+};
+
+namespace NavRole {
+    constexpr int Id   = Qt::UserRole + 1;
+    constexpr int Type = Qt::UserRole + 2;
+}
+
+
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent) {
 
@@ -141,6 +153,13 @@ void MainWindow::setupConnections() {
     connect(nodeEditor_, &NodeEditorWidget::removeLayerRequested,
             this, &MainWindow::onRemoveLayerFromNode);
 
+    /* -------- Relation editor -------- */
+    connect(relationEditor_, &RelationEditorWidget::addRequested,
+            this, &MainWindow::onAddRelation);
+
+    connect(relationEditor_, &RelationEditorWidget::removeRequested,
+            this, &MainWindow::onRemoveRelation);
+
 }
 
 /* ============================================================
@@ -168,10 +187,6 @@ void MainWindow::openDatabase() {
     populateNavigator();
 }
 
-/* ============================================================
-   Navigator population
-   ============================================================ */
-
 void MainWindow::populateNavigator()
 {
     navModel_->clear();
@@ -180,35 +195,42 @@ void MainWindow::populateNavigator()
     auto* root = navModel_->invisibleRootItem();
 
     /* ======================================================
-       All Nodes
+       All Nodes (CATEGORY)
        ====================================================== */
     auto* allNodesItem = new QStandardItem("All Nodes");
-    allNodesItem->setData(QVariant("all_nodes"), Qt::UserRole);
+    allNodesItem->setEditable(false);
+    allNodesItem->setData(static_cast<int>(ItemType::Category), NavRole::Type);
 
     for (const auto& node : model_->nodes()) {
         auto* nodeItem = new QStandardItem(
-            QString("%1").arg(QString::fromStdString(node.name)));
-        nodeItem->setData(QVariant::fromValue<qulonglong>(node.id),
-                          Qt::UserRole);
+            QString::fromStdString(node.name));
+        nodeItem->setEditable(false);
+
+        nodeItem->setData(static_cast<qulonglong>(node.id), NavRole::Id);
+        nodeItem->setData(static_cast<int>(ItemType::Node), NavRole::Type);
+
         allNodesItem->appendRow(nodeItem);
     }
 
     root->appendRow(allNodesItem);
 
     /* ======================================================
-       All Layers
+       All Layers (CATEGORY)
        ====================================================== */
     auto* allLayersItem = new QStandardItem("All Layers");
-    allLayersItem->setData(QVariant("all_layers"), Qt::UserRole);
+    allLayersItem->setEditable(false);
+    allLayersItem->setData(static_cast<int>(ItemType::Category), NavRole::Type);
     root->appendRow(allLayersItem);
 
     for (const auto& layer : model_->layers()) {
         auto* layerItem = new QStandardItem(
-            QString("%1").arg(QString::fromStdString(layer.name)));
-        layerItem->setData(QVariant::fromValue<qulonglong>(layer.id),
-                           Qt::UserRole);
+            QString::fromStdString(layer.name));
+        layerItem->setEditable(false);
 
-        // Nodes in this layer
+        layerItem->setData(static_cast<qulonglong>(layer.id), NavRole::Id);
+        layerItem->setData(static_cast<int>(ItemType::Layer), NavRole::Type);
+
+        // ---- Nodes inside this layer ----
         for (const auto& nl : model_->nodesInLayer(layer.id)) {
             auto nodeOpt = model_->getNodeById(nl.nodeId);
             if (!nodeOpt)
@@ -216,8 +238,10 @@ void MainWindow::populateNavigator()
 
             auto* nodeItem = new QStandardItem(
                 QString::fromStdString(nodeOpt->name));
-            nodeItem->setData(QVariant::fromValue<qulonglong>(nodeOpt->id),
-                              Qt::UserRole);
+            nodeItem->setEditable(false);
+
+            nodeItem->setData(static_cast<qulonglong>(nodeOpt->id), NavRole::Id);
+            nodeItem->setData(static_cast<int>(ItemType::Node), NavRole::Type);
 
             layerItem->appendRow(nodeItem);
         }
@@ -227,6 +251,7 @@ void MainWindow::populateNavigator()
 
     navigator_->expandAll();
 }
+
 
 /* ============================================================
    Tree selection
@@ -286,80 +311,6 @@ void MainWindow::showNodeEditor(const NodeData& node)
     nodeEditor_->show();
 }
 
-/*
-void MainWindow::onTreeSelectionChanged(const QModelIndex& index)
-{
-    qDebug() << "---- Tree selection changed ----";
-
-    if (!index.isValid()) {
-        qDebug() << "Invalid index";
-    } else {
-        qDebug() << "Row:" << index.row()
-                 << "Col:" << index.column()
-                 << "Text:" << index.data().toString();
-    }
-
-    // hideAllEditors();
-
-    if (!index.isValid() || !model_) {
-        qDebug() << "invalid index";
-        renderGraph(model_->extractGraph(std::nullopt));
-        return;
-    }
-
-    auto* item = navModel_->itemFromIndex(index);
-    if (!item) {
-        qDebug() << "invalid item";
-        renderGraph(model_->extractGraph(std::nullopt));
-        return;
-    }
-
-    QVariant data = item->data(Qt::UserRole);
-
-    std::optional<LayerId> layerId;
-
-    // ---- Root / category items ----
-    if (!data.isValid()) {
-        // All layers
-        qDebug() << "Root";
-        layerId.reset();
-    }
-    // ---- String markers ("all_nodes", etc.) ----
-    else if (data.canConvert<QString>()) {
-        qDebug() << "Convert";
-        layerId.reset();
-    }
-    // ---- ID-based selection ----
-    else {
-        qulonglong id = data.toULongLong();
-
-        if (auto nodeOpt = model_->getNodeById(id)) {
-            showNodeEditor(*nodeOpt);
-            // Node → show all layers it belongs to
-            layerId.reset();
-        }
-        else if (auto layerOpt = model_->getLayerById(id)) {
-            showLayerEditor(*layerOpt);
-            layerId = layerOpt->id;
-        }
-        else {
-            layerId.reset();
-        }
-    }
-
-    // ✅ ALWAYS render graph
-    auto snap = model_->extractGraph(layerId);
-
-    statusBar()->showMessage(
-        QString("Nodes: %1  Edges: %2")
-            .arg(snap.nodes.size())
-            .arg(snap.edges.size()));
-
-    renderGraph(snap);
-}
-
-*/
-
 void MainWindow::onTreeSelectionChanged(const QModelIndex& index)
 {
     hideAllEditors();
@@ -375,34 +326,54 @@ void MainWindow::onTreeSelectionChanged(const QModelIndex& index)
         return;
     }
 
-    QVariant data = item->data(Qt::UserRole);
-
-    // ---------- CASE 1: No ID → category / root ----------
-    if (!data.isValid()) {
+    // ---- Read TYPE first ----
+    QVariant typeVar = item->data(NavRole::Type);
+    if (!typeVar.isValid()) {
         renderGraph(model_->extractGraph(std::nullopt));
         return;
     }
 
-    // ---------- CASE 2: ID-based selection ----------
-    LayerId layerId = 0;
-    bool layerSelected = false;
+    ItemType type = static_cast<ItemType>(typeVar.toInt());
 
-    qulonglong id = data.toULongLong();
-
-    if (auto layerOpt = model_->getLayerById(id)) {
-        showLayerEditor(*layerOpt);
-        layerId = layerOpt->id;
-        layerSelected = true;
-    }
-    else if (auto nodeOpt = model_->getNodeById(id)) {
-        showNodeEditor(*nodeOpt);
-    }
-
-    // ---------- Graph rendering ----------
-    if (layerSelected) {
-        renderGraph(model_->extractGraph(layerId));
-    } else {
+    // ---- CATEGORY (All Nodes / All Layers) ----
+    if (type == ItemType::Category) {
         renderGraph(model_->extractGraph(std::nullopt));
+        return;
+    }
+
+    // ---- ID is required for Node / Layer ----
+    QVariant idVar = item->data(NavRole::Id);
+    if (!idVar.isValid()) {
+        renderGraph(model_->extractGraph(std::nullopt));
+        return;
+    }
+
+    qulonglong id = idVar.toULongLong();
+
+    // ---- TYPE-SAFE DISPATCH ----
+    switch (type) {
+
+    case ItemType::Layer: {
+        if (auto layerOpt = model_->getLayerById(id)) {
+            showLayerEditor(*layerOpt);
+            renderGraph(model_->extractGraph(layerOpt->id));
+        } else {
+            renderGraph(model_->extractGraph(std::nullopt));
+        }
+        break;
+    }
+
+    case ItemType::Node: {
+        if (auto nodeOpt = model_->getNodeById(id)) {
+            showNodeEditor(*nodeOpt);
+        }
+        renderGraph(model_->extractGraph(std::nullopt));
+        break;
+    }
+
+    default:
+        renderGraph(model_->extractGraph(std::nullopt));
+        break;
     }
 }
 
