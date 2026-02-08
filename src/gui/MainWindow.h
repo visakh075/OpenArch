@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <QMainWindow>
@@ -6,20 +5,20 @@
 #include <QGraphicsView>
 #include <QGraphicsScene>
 #include <QStandardItemModel>
-#include <optional>
 
 #include "core/ArchitectureModel.h"
-#include "core/GraphSnapshot.h"
 #include "db/DbManagerSQLite.h"
 
-#include "gui/LayerEditorWidget.h"
-#include "gui/NodeEditorWidget.h"
-#include "gui/RelationEditorWidget.h"
-enum class TreeItemKind {
-    Root = 0,
-    Layer,
-    Node
+enum class ItemType : int {
+    Category = 0,
+    Layer    = 1,
+    Node     = 2
 };
+
+namespace NavRole {
+    constexpr int Id   = Qt::UserRole + 1;
+    constexpr int Type = Qt::UserRole + 2;
+}
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -29,46 +28,25 @@ public:
 
 private slots:
     void openDatabase();
-    void onTreeSelectionChanged(const QModelIndex& current);
+    void onTreeItemDoubleClicked(const QModelIndex& index);
+    void onTreeItemClicked(const QModelIndex& index);
 
-    // Layers
-    void onSaveLayer(const LayerData& layer);
-    void onAddNodeToLayer(const QString& nodeName);
-    void onRemoveNodeFromLayer(const QString& nodeName);
+    void createNewNode();
+    void createNewLayer();
 
-    // Nodes
-    void onSaveNode(const NodeData& node);
-    void onAddLayerToNode(const QString& layerName);
-    void onRemoveLayerFromNode(const QString& layerName);
+
 
 private:
     void setupUi();
     void setupMenu();
     void setupConnections();
     void populateNavigator();
-
     void renderGraph(const GraphSnapshot& snap);
-
-    void hideAllEditors();
-    void showLayerEditor(const LayerData& layer);
-    void showNodeEditor(const NodeData& node);
-
-    void createNewLayer();
-    void createNewNode();
-
-    std::optional<LayerData> currentLayer_;
-    std::optional<LayerData> currentLayer() const;
-
-    std::optional<NodeData> currentNode_;
 
     QTreeView* navigator_{nullptr};
     QStandardItemModel* navModel_{nullptr};
     QGraphicsView* graphView_{nullptr};
     QGraphicsScene* scene_{nullptr};
-
-    NodeEditorWidget*     nodeEditor_{nullptr};
-    LayerEditorWidget*   layerEditor_{nullptr};
-    RelationEditorWidget* relationEditor_{nullptr};
 
     DbManagerSQLite db_;
     ArchitectureModel* model_{nullptr};

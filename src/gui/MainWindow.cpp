@@ -1,108 +1,48 @@
 #include "MainWindow.h"
 
 #include <QSplitter>
+#include <QVBoxLayout>
 #include <QMenuBar>
 #include <QFileDialog>
-#include <QStatusBar>
 #include <QMessageBox>
-
-#include <QGraphicsScene>
-#include <QGraphicsView>
-#include <QGraphicsEllipseItem>
-#include <QGraphicsLineItem>
 #include <QGraphicsTextItem>
-#include <QVBoxLayout>
 
-#include <QDebug>
-
-#include <unordered_map>
-
-#include "gui/LayerEditorWidget.h"
-#include "gui/NodeEditorWidget.h"
-#include "gui/RelationEditorWidget.h"
-
-/* ============================================================
-   Constructor / Destructor
-   ============================================================ */
-
-enum class ItemType : int {
-    Category = 0,
-    Layer    = 1,
-    Node     = 2
-};
-
-namespace NavRole {
-    constexpr int Id   = Qt::UserRole + 1;
-    constexpr int Type = Qt::UserRole + 2;
-}
-
+#include "NodeEditorDialog.h"
+#include "LayerEditorDialog.h"
 
 MainWindow::MainWindow(QWidget* parent)
-    : QMainWindow(parent) {
-
+    : QMainWindow(parent)
+{
     setupUi();
     setupMenu();
     setupConnections();
-
-    statusBar()->showMessage("Ready");
 }
 
-MainWindow::~MainWindow() {
+MainWindow::~MainWindow()
+{
     delete model_;
 }
 
-/* ============================================================
-   UI setup
-   ============================================================ */
-
-void MainWindow::setupUi() {
+void MainWindow::setupUi()
+{
     auto* splitter = new QSplitter(this);
 
-    /* -------- Navigator (left) -------- */
     navigator_ = new QTreeView(splitter);
     navModel_ = new QStandardItemModel(this);
     navModel_->setHorizontalHeaderLabels({"Architecture"});
     navigator_->setModel(navModel_);
 
-    /* -------- Right pane (graph + editors) -------- */
-    auto* rightPane = new QWidget(splitter);
-    auto* rightLayout = new QVBoxLayout(rightPane);
-    rightLayout->setContentsMargins(0, 0, 0, 0);
-
-    /* Graph */
     scene_ = new QGraphicsScene(this);
-    graphView_ = new QGraphicsView(scene_, rightPane);
-    graphView_->setRenderHint(QPainter::Antialiasing);
-    rightLayout->addWidget(graphView_, 1);
+    graphView_ = new QGraphicsView(scene_, splitter);
 
-    /* Editors (already implemented by you) */
-    nodeEditor_ = new NodeEditorWidget(rightPane);
-    layerEditor_ = new LayerEditorWidget(rightPane);
-    relationEditor_ = new RelationEditorWidget(rightPane);
-
-    /* Hide initially */
-    // nodeEditor_->hide();
-    // layerEditor_->hide();
-    // relationEditor_->hide();
-
-    rightLayout->addWidget(nodeEditor_);
-    rightLayout->addWidget(layerEditor_);
-    rightLayout->addWidget(relationEditor_);
-
-    /* Splitter layout */
     splitter->addWidget(navigator_);
-    splitter->addWidget(rightPane);
-    splitter->setStretchFactor(1, 1);
+    splitter->addWidget(graphView_);
 
     setCentralWidget(splitter);
-    resize(1000, 600);
 }
 
-/* ============================================================
-   Menu
-   ============================================================ */
-
-void MainWindow::setupMenu() {
+void MainWindow::setupMenu()
+{
     auto* fileMenu = menuBar()->addMenu("&File");
 
     auto* openAct = fileMenu->addAction("Open DB");
@@ -117,58 +57,27 @@ void MainWindow::setupMenu() {
     auto* addNodeAct  = editMenu->addAction("Add Node");
     auto* addLayerAct = editMenu->addAction("Add Layer");
 
-    connect(addNodeAct,  &QAction::triggered, this, &MainWindow::createNewNode);
-    connect(addLayerAct, &QAction::triggered, this, &MainWindow::createNewLayer);
+    connect(addNodeAct,  &QAction::triggered,
+            this, &MainWindow::createNewNode);
+
+    connect(addLayerAct, &QAction::triggered,
+            this, &MainWindow::createNewLayer);
+}
+
+
+void MainWindow::setupConnections()
+{
+    connect(navigator_, &QTreeView::doubleClicked,
+            this, &MainWindow::onTreeItemDoubleClicked);
+    connect(navigator_, &QTreeView::clicked,
+        this, &MainWindow::onTreeItemClicked);
 
 }
 
-/* ============================================================
-   Connections (IMPORTANT)
-   ============================================================ */
-
-void MainWindow::setupConnections() {
-    /* Tree selection → graph refresh */
-    connect(navigator_->selectionModel(),
-            &QItemSelectionModel::currentChanged,
-            this,
-            &MainWindow::onTreeSelectionChanged);
-
-    /* -------- Layer editor -------- */
-    connect(layerEditor_, &LayerEditorWidget::saveLayerRequested,
-            this, &MainWindow::onSaveLayer);
-
-    connect(layerEditor_, &LayerEditorWidget::addNodeRequested,
-            this, &MainWindow::onAddNodeToLayer);
-
-    connect(layerEditor_, &LayerEditorWidget::removeNodeRequested,
-            this, &MainWindow::onRemoveNodeFromLayer);
-
-    /* -------- Node editor -------- */
-    connect(nodeEditor_, &NodeEditorWidget::saveNodeRequested,
-            this, &MainWindow::onSaveNode);
-
-    connect(nodeEditor_, &NodeEditorWidget::addLayerRequested,
-            this, &MainWindow::onAddLayerToNode);
-
-    connect(nodeEditor_, &NodeEditorWidget::removeLayerRequested,
-            this, &MainWindow::onRemoveLayerFromNode);
-
-    /* -------- Relation editor -------- */
-    connect(relationEditor_, &RelationEditorWidget::addRequested,
-            this, &MainWindow::onAddRelation);
-
-    connect(relationEditor_, &RelationEditorWidget::removeRequested,
-            this, &MainWindow::onRemoveRelation);
-
-}
-
-/* ============================================================
-   Database handling
-   ============================================================ */
-
-void MainWindow::openDatabase() {
+void MainWindow::openDatabase()
+{
     QString file = QFileDialog::getOpenFileName(
-        this, "Open DB", "", "SQLite DB (*.db);;All Files (*)");
+        this, "Open DB", "", "SQLite DB (*.db)");
 
     if (file.isEmpty())
         return;
@@ -185,189 +94,75 @@ void MainWindow::openDatabase() {
     model_ = new ArchitectureModel(db_);
 
     populateNavigator();
+    renderGraph(model_->extractGraph(std::nullopt));
+
 }
 
 void MainWindow::populateNavigator()
 {
     navModel_->clear();
-    navModel_->setHorizontalHeaderLabels({ "Architecture" });
+    navModel_->setHorizontalHeaderLabels({"Architecture"});
 
     auto* root = navModel_->invisibleRootItem();
 
-    /* ======================================================
-       All Nodes (CATEGORY)
-       ====================================================== */
-    auto* allNodesItem = new QStandardItem("All Nodes");
-    allNodesItem->setEditable(false);
-    allNodesItem->setData(static_cast<int>(ItemType::Category), NavRole::Type);
+    auto* nodesRoot = new QStandardItem("Nodes");
+    nodesRoot->setData(static_cast<int>(ItemType::Category), NavRole::Type);
 
-    for (const auto& node : model_->nodes()) {
-        auto* nodeItem = new QStandardItem(
-            QString::fromStdString(node.name));
-        nodeItem->setEditable(false);
-
-        nodeItem->setData(static_cast<qulonglong>(node.id), NavRole::Id);
-        nodeItem->setData(static_cast<int>(ItemType::Node), NavRole::Type);
-
-        allNodesItem->appendRow(nodeItem);
+    for (const auto& n : model_->nodes()) {
+        auto* item = new QStandardItem(QString::fromStdString(n.name));
+        item->setData(static_cast<qulonglong>(n.id), NavRole::Id);
+        item->setData(static_cast<int>(ItemType::Node), NavRole::Type);
+        nodesRoot->appendRow(item);
     }
 
-    root->appendRow(allNodesItem);
+    auto* layersRoot = new QStandardItem("Layers");
+    layersRoot->setData(static_cast<int>(ItemType::Category), NavRole::Type);
 
-    /* ======================================================
-       All Layers (CATEGORY)
-       ====================================================== */
-    auto* allLayersItem = new QStandardItem("All Layers");
-    allLayersItem->setEditable(false);
-    allLayersItem->setData(static_cast<int>(ItemType::Category), NavRole::Type);
-    root->appendRow(allLayersItem);
-
-    for (const auto& layer : model_->layers()) {
-        auto* layerItem = new QStandardItem(
-            QString::fromStdString(layer.name));
-        layerItem->setEditable(false);
-
-        layerItem->setData(static_cast<qulonglong>(layer.id), NavRole::Id);
-        layerItem->setData(static_cast<int>(ItemType::Layer), NavRole::Type);
-
-        // ---- Nodes inside this layer ----
-        for (const auto& nl : model_->nodesInLayer(layer.id)) {
-            auto nodeOpt = model_->getNodeById(nl.nodeId);
-            if (!nodeOpt)
-                continue;
-
-            auto* nodeItem = new QStandardItem(
-                QString::fromStdString(nodeOpt->name));
-            nodeItem->setEditable(false);
-
-            nodeItem->setData(static_cast<qulonglong>(nodeOpt->id), NavRole::Id);
-            nodeItem->setData(static_cast<int>(ItemType::Node), NavRole::Type);
-
-            layerItem->appendRow(nodeItem);
-        }
-
-        allLayersItem->appendRow(layerItem);
+    for (const auto& l : model_->layers()) {
+        auto* item = new QStandardItem(QString::fromStdString(l.name));
+        item->setData(static_cast<qulonglong>(l.id), NavRole::Id);
+        item->setData(static_cast<int>(ItemType::Layer), NavRole::Type);
+        layersRoot->appendRow(item);
     }
 
+    root->appendRow(nodesRoot);
+    root->appendRow(layersRoot);
     navigator_->expandAll();
 }
 
-
-/* ============================================================
-   Tree selection
-   ============================================================ */
-
-void MainWindow::hideAllEditors()
+void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
 {
-    nodeEditor_->hide();
-    layerEditor_->hide();
-    relationEditor_->hide();
-}
-
-void MainWindow::showLayerEditor(const LayerData& layer)
-{
-    hideAllEditors();
-
-    // ---- collect ALL node names ----
-    QStringList allNodes;
-    for (const auto& n : model_->nodes()) {
-        allNodes << QString::fromStdString(n.name);
-    }
-
-    // ---- collect nodes IN THIS layer ----
-    QStringList currentNodes;
-    for (const auto& nl : model_->nodesInLayer(layer.id)) {
-        auto nodeOpt = model_->getNodeById(nl.nodeId);
-        if (nodeOpt) {
-            currentNodes << QString::fromStdString(nodeOpt->name);
-        }
-    }
-
-    // ---- pass everything to editor ----
-    layerEditor_->setLayer(layer, allNodes, currentNodes);
-    layerEditor_->show();
-}
-
-void MainWindow::showNodeEditor(const NodeData& node)
-{
-    hideAllEditors();
-
-    // ---- collect ALL layers ----
-    QStringList allLayers;
-    for (const auto& l : model_->layers()) {
-        allLayers << QString::fromStdString(l.name);
-    }
-
-    // ---- collect layers THIS node belongs to ----
-    QStringList currentLayers;
-    for (const auto& nl : model_->layersForNode(node.id)) {
-        auto layerOpt = model_->getLayerById(nl.layerId);
-        if (layerOpt) {
-            currentLayers << QString::fromStdString(layerOpt->name);
-        }
-    }
-
-    nodeEditor_->setNode(node, allLayers, currentLayers);
-    nodeEditor_->show();
-}
-
-void MainWindow::onTreeSelectionChanged(const QModelIndex& index)
-{
-    hideAllEditors();
-
-    if (!index.isValid() || !model_) {
-        renderGraph(model_->extractGraph(std::nullopt));
+    if (!model_)
         return;
-    }
 
     auto* item = navModel_->itemFromIndex(index);
-    if (!item) {
-        renderGraph(model_->extractGraph(std::nullopt));
+    if (!item)
         return;
-    }
 
-    // ---- Read TYPE first ----
-    QVariant typeVar = item->data(NavRole::Type);
-    if (!typeVar.isValid()) {
-        renderGraph(model_->extractGraph(std::nullopt));
-        return;
-    }
+    ItemType type =
+        static_cast<ItemType>(item->data(NavRole::Type).toInt());
 
-    ItemType type = static_cast<ItemType>(typeVar.toInt());
+    qulonglong id =
+        item->data(NavRole::Id).toULongLong();
 
-    // ---- CATEGORY (All Nodes / All Layers) ----
-    if (type == ItemType::Category) {
-        renderGraph(model_->extractGraph(std::nullopt));
-        return;
-    }
-
-    // ---- ID is required for Node / Layer ----
-    QVariant idVar = item->data(NavRole::Id);
-    if (!idVar.isValid()) {
-        renderGraph(model_->extractGraph(std::nullopt));
-        return;
-    }
-
-    qulonglong id = idVar.toULongLong();
-
-    // ---- TYPE-SAFE DISPATCH ----
     switch (type) {
 
-    case ItemType::Layer: {
-        if (auto layerOpt = model_->getLayerById(id)) {
-            showLayerEditor(*layerOpt);
-            renderGraph(model_->extractGraph(layerOpt->id));
-        } else {
-            renderGraph(model_->extractGraph(std::nullopt));
-        }
+    case ItemType::Node: {
+        NodeEditorDialog dlg(model_, id, this);
+        dlg.exec();
+
+        populateNavigator();
+        renderGraph(model_->extractGraph(std::nullopt));
         break;
     }
 
-    case ItemType::Node: {
-        if (auto nodeOpt = model_->getNodeById(id)) {
-            showNodeEditor(*nodeOpt);
-        }
-        renderGraph(model_->extractGraph(std::nullopt));
+    case ItemType::Layer: {
+        LayerEditorDialog dlg(model_, id, this);
+        dlg.exec();
+
+        populateNavigator();
+        renderGraph(model_->extractGraph(
+            static_cast<LayerId>(id)));
         break;
     }
 
@@ -377,218 +172,8 @@ void MainWindow::onTreeSelectionChanged(const QModelIndex& index)
     }
 }
 
-void MainWindow::createNewLayer()
+void MainWindow::renderGraph(const GraphSnapshot& snap)
 {
-    hideAllEditors();
-
-    LayerData layer;          // id == 0 → NEW
-    layer.name = "";
-    layer.kind = "";
-    layer.metadata = "";
-    layer.attributes = "";
-
-    QStringList allNodes;
-    for (const auto& n : model_->nodes())
-        allNodes << QString::fromStdString(n.name);
-
-    layerEditor_->setLayer(layer, allNodes, {});
-    layerEditor_->show();
-}
-
-void MainWindow::createNewNode()
-{
-    hideAllEditors();
-
-    NodeData node;            // id == 0 → NEW
-    node.name = "";
-    node.type = "";
-    node.metadata = "";
-    node.attributes = "";
-
-    QStringList allLayers;
-    for (const auto& l : model_->layers())
-        allLayers << QString::fromStdString(l.name);
-
-    nodeEditor_->setNode(node, allLayers, {});
-    nodeEditor_->show();
-}
-
-std::optional<LayerData> MainWindow::currentLayer() const
-{
-    return currentLayer_;
-}
-
-// LayerConnections
-void MainWindow::onSaveLayer(const LayerData& layer)
-{
-    // Make a mutable copy for the model
-    LayerData mutableLayer = layer;
-
-    Result r;
-    if (mutableLayer.id == 0) {
-        LayerId newId = 0;
-        r = model_->addLayer(mutableLayer, newId);
-    } else {
-        r = model_->updateLayer(mutableLayer);
-    }
-
-    if (!r.ok) {
-        QMessageBox::critical(
-            this,
-            "Layer Error",
-            QString::fromStdString(r.message)
-        );
-        return;
-    }
-
-    populateNavigator();
-    statusBar()->showMessage("Layer saved", 3000);
-}
-
-void MainWindow::onAddNodeToLayer(const QString& nodeName)
-{
-    if (!layerEditor_->isVisible())
-        return;
-
-    auto layerOpt = currentLayer();   // we’ll define this below
-    if (!layerOpt)
-        return;
-
-    NodeId nodeId = 0;
-    for (const auto& n : model_->nodes()) {
-        if (n.name == nodeName.toStdString()) {
-            nodeId = n.id;
-            break;
-        }
-    }
-
-    if (nodeId == 0) {
-        QMessageBox::warning(this, "Error", "Node not found");
-        return;
-    }
-
-    Result r = model_->addNodeToLayer(nodeId, layerOpt->id);
-    if (!r.ok) {
-        QMessageBox::critical(this, "Error",
-                              QString::fromStdString(r.message));
-        return;
-    }
-
-    showLayerEditor(*layerOpt);  // refresh editor state
-}
-
-void MainWindow::onRemoveNodeFromLayer(const QString& nodeName)
-{
-    auto layerOpt = currentLayer();
-    if (!layerOpt)
-        return;
-
-    NodeId nodeId = 0;
-    for (const auto& n : model_->nodes()) {
-        if (n.name == nodeName.toStdString()) {
-            nodeId = n.id;
-            break;
-        }
-    }
-
-    if (nodeId == 0)
-        return;
-
-    Result r = model_->removeNodeFromLayer(nodeId, layerOpt->id);
-    if (!r.ok) {
-        QMessageBox::critical(this, "Error",
-                              QString::fromStdString(r.message));
-        return;
-    }
-
-    showLayerEditor(*layerOpt);  // refresh
-}
-// Node COnnections
-void MainWindow::onSaveNode(const NodeData& node)
-{
-    NodeData mutableNode = node;   // important (same pattern as Layer)
-
-    Result r;
-    if (mutableNode.id == 0) {
-        NodeId newId = 0;
-        r = model_->addNode(mutableNode, newId);
-    } else {
-        r = model_->updateNode(mutableNode);
-    }
-
-    if (!r.ok) {
-        QMessageBox::critical(
-            this,
-            "Node Error",
-            QString::fromStdString(r.message)
-        );
-        return;
-    }
-
-    populateNavigator();
-    statusBar()->showMessage("Node saved", 3000);
-}
-
-void MainWindow::onAddLayerToNode(const QString& layerName)
-{
-    if (!currentNode_)
-        return;
-
-    LayerId layerId = 0;
-    for (const auto& l : model_->layers()) {
-        if (l.name == layerName.toStdString()) {
-            layerId = l.id;
-            break;
-        }
-    }
-
-    if (layerId == 0) {
-        QMessageBox::warning(this, "Error", "Layer not found");
-        return;
-    }
-
-    Result r = model_->addNodeToLayer(currentNode_->id, layerId);
-    if (!r.ok) {
-        QMessageBox::critical(this, "Error",
-                              QString::fromStdString(r.message));
-        return;
-    }
-
-    showNodeEditor(*currentNode_);   // refresh editor
-}
-
-void MainWindow::onRemoveLayerFromNode(const QString& layerName)
-{
-    if (!currentNode_)
-        return;
-
-    LayerId layerId = 0;
-    for (const auto& l : model_->layers()) {
-        if (l.name == layerName.toStdString()) {
-            layerId = l.id;
-            break;
-        }
-    }
-
-    if (layerId == 0)
-        return;
-
-    Result r = model_->removeNodeFromLayer(currentNode_->id, layerId);
-    if (!r.ok) {
-        QMessageBox::critical(this, "Error",
-                              QString::fromStdString(r.message));
-        return;
-    }
-
-    showNodeEditor(*currentNode_);   // refresh
-}
-
-
-/* ============================================================
-   Graph rendering
-   ============================================================ */
-
-void MainWindow::renderGraph(const GraphSnapshot& snap) {
     scene_->clear();
 
     const int r = 20;
@@ -597,22 +182,27 @@ void MainWindow::renderGraph(const GraphSnapshot& snap) {
     std::unordered_map<NodeId, QPointF> pos;
     int i = 0;
 
-    /* Nodes */
+    // ---- Nodes ----
     for (const auto& n : snap.nodes) {
-        QPointF p((i % 6) * spacing, (i / 6) * spacing);
+        QPointF p((i % 6) * spacing,
+                  (i / 6) * spacing);
+
         pos[n.id] = p;
 
-        scene_->addEllipse(p.x(), p.y(), r*2, r*2,
-                           QPen(Qt::black),
-                           QBrush(Qt::lightGray));
+        scene_->addEllipse(
+            p.x(), p.y(),
+            r * 2, r * 2,
+            QPen(Qt::black),
+            QBrush(Qt::lightGray));
 
-        scene_->addText(QString::fromStdString(n.name))
-            ->setPos(p.x(), p.y() + r*2);
+        auto* text = scene_->addText(
+            QString::fromStdString(n.name));
+        text->setPos(p.x(), p.y() + r * 2);
 
         ++i;
     }
 
-    /* Edges */
+    // ---- Edges ----
     for (const auto& e : snap.edges) {
         if (!pos.count(e.srcNode) || !pos.count(e.dstNode))
             continue;
@@ -623,6 +213,54 @@ void MainWindow::renderGraph(const GraphSnapshot& snap) {
             QPen(Qt::black));
     }
 
-    graphView_->fitInView(scene_->itemsBoundingRect(),
-                          Qt::KeepAspectRatio);
+    graphView_->fitInView(
+        scene_->itemsBoundingRect(),
+        Qt::KeepAspectRatio);
+}
+void MainWindow::onTreeItemClicked(const QModelIndex& index)
+{
+    if (!model_ || !index.isValid())
+        return;
+
+    auto* item = navModel_->itemFromIndex(index);
+    if (!item)
+        return;
+
+    ItemType type =
+        static_cast<ItemType>(item->data(NavRole::Type).toInt());
+
+    if (type == ItemType::Layer) {
+        LayerId layerId =
+            static_cast<LayerId>(item->data(NavRole::Id).toULongLong());
+
+        renderGraph(model_->extractGraph(layerId));
+    }
+    else {
+        // Node or Category → full graph
+        renderGraph(model_->extractGraph(std::nullopt));
+    }
+}
+
+void MainWindow::createNewNode()
+{
+    if (!model_)
+        return;
+
+    NodeEditorDialog dlg(model_, /* nodeId */ 0, this);
+    dlg.exec();
+
+    populateNavigator();
+    renderGraph(model_->extractGraph(std::nullopt));
+}
+
+void MainWindow::createNewLayer()
+{
+    if (!model_)
+        return;
+
+    LayerEditorDialog dlg(model_, /* layerId */ 0, this);
+    dlg.exec();
+
+    populateNavigator();
+    renderGraph(model_->extractGraph(std::nullopt));
 }
