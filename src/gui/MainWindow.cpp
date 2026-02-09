@@ -172,51 +172,6 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
     }
 }
 
-void MainWindow::renderGraph(const GraphSnapshot& snap)
-{
-    scene_->clear();
-
-    const int r = 20;
-    const int spacing = 90;
-
-    std::unordered_map<NodeId, QPointF> pos;
-    int i = 0;
-
-    // ---- Nodes ----
-    for (const auto& n : snap.nodes) {
-        QPointF p((i % 6) * spacing,
-                  (i / 6) * spacing);
-
-        pos[n.id] = p;
-
-        scene_->addEllipse(
-            p.x(), p.y(),
-            r * 2, r * 2,
-            QPen(Qt::black),
-            QBrush(Qt::lightGray));
-
-        auto* text = scene_->addText(
-            QString::fromStdString(n.name));
-        text->setPos(p.x(), p.y() + r * 2);
-
-        ++i;
-    }
-
-    // ---- Edges ----
-    for (const auto& e : snap.edges) {
-        if (!pos.count(e.srcNode) || !pos.count(e.dstNode))
-            continue;
-
-        scene_->addLine(
-            QLineF(pos[e.srcNode] + QPointF(r, r),
-                   pos[e.dstNode] + QPointF(r, r)),
-            QPen(Qt::black));
-    }
-
-    graphView_->fitInView(
-        scene_->itemsBoundingRect(),
-        Qt::KeepAspectRatio);
-}
 void MainWindow::onTreeItemClicked(const QModelIndex& index)
 {
     if (!model_ || !index.isValid())
@@ -263,4 +218,51 @@ void MainWindow::createNewLayer()
 
     populateNavigator();
     renderGraph(model_->extractGraph(std::nullopt));
+}
+
+#include "GraphNodeItem.h"
+#include "GraphEdgeItem.h"
+
+void MainWindow::renderGraph(const GraphSnapshot& snap)
+{
+    scene_->clear();
+
+    std::unordered_map<NodeId, GraphNodeItem*> nodeItems;
+
+    int i = 0;
+    const int spacingX = 180;
+    const int spacingY = 100;
+
+    // ---- Nodes ----
+    for (const auto& n : snap.nodes) {
+        auto* item = new GraphNodeItem(model_, n.id);
+        item->setPos(
+            (i % 5) * spacingX,
+            (i / 5) * spacingY);
+
+        scene_->addItem(item);
+        nodeItems[n.id] = item;
+        ++i;
+    }
+
+    // ---- Edges ----
+    for (const auto& e : snap.edges) {
+        if (!nodeItems.count(e.srcNode) ||
+            !nodeItems.count(e.dstNode))
+            continue;
+
+        auto* edge = new GraphEdgeItem(model_, e);
+
+        QPointF src =
+            nodeItems[e.srcNode]->sceneBoundingRect().center();
+        QPointF dst =
+            nodeItems[e.dstNode]->sceneBoundingRect().center();
+
+        edge->setEndpoints(src, dst);
+        scene_->addItem(edge);
+    }
+
+    graphView_->fitInView(
+        scene_->itemsBoundingRect(),
+        Qt::KeepAspectRatio);
 }
