@@ -39,6 +39,9 @@ void MainWindow::setupUi()
     scene_ = new QGraphicsScene(this);
 
     graphView_ = new GraphView(splitter);
+    graphView_->setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+    // graphView_->setViewportUpdateMode(QGraphicsView::BoundingRectViewportUpdate);
+
     graphView_->setScene(scene_);
     graphView_->setRenderHint(QPainter::Antialiasing);
     graphView_->setInteractive(true);

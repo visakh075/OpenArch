@@ -25,14 +25,19 @@ void GraphNodeItem::paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget
     p->drawRoundedRect(boundingRect(), RADIUS, RADIUS);
     p->drawText(boundingRect().adjusted(6, 6, -6, -6), Qt::AlignCenter, displayText());
 }
-void GraphNodeItem::addEdge(GraphEdgeItem *e) { edges_.insert(e); }
-QVariant GraphNodeItem::itemChange(GraphicsItemChange c, const QVariant &v)
+
+QVariant GraphNodeItem::itemChange(
+    QGraphicsItem::GraphicsItemChange change,
+    const QVariant& value)
 {
-    if (c == ItemPositionHasChanged)
-        for (auto *e : edges_)
+    if (change == QGraphicsItem::ItemPositionHasChanged) {
+        for (auto* e : edges_)
             e->updateEndpoints();
-    return QGraphicsObject::itemChange(c, v);
+    }
+
+    return QGraphicsObject::itemChange(change, value);
 }
+
 void GraphNodeItem::hoverEnterEvent(QGraphicsSceneHoverEvent *)
 {
     hovered_ = true;
@@ -50,3 +55,13 @@ QPointF GraphNodeItem::currentPosition() const
 {
     return pos();
 }
+QPointF GraphNodeItem::center() const
+{
+    return mapToScene(boundingRect().center());
+}
+
+QRectF GraphNodeItem::rect() const
+{
+    return boundingRect();
+}
+

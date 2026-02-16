@@ -72,9 +72,11 @@ add_executable(openarch-gui
 
     src/gui/NodeEditorDialog.cpp
     src/gui/LayerEditorDialog.cpp
+    src/gui/EdgeEditorDialog.cpp
 
     src/gui/GraphNodeItem.cpp
     src/gui/GraphEdgeItem.cpp
+    
 
     src/gui/GraphView.cpp    
 )
