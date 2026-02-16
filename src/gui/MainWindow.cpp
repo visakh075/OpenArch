@@ -1,28 +1,24 @@
 #include "MainWindow.h"
 
 #include <QSplitter>
-#include <QVBoxLayout>
 #include <QMenuBar>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QGraphicsTextItem>
+#include <QStatusBar>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include "NodeEditorDialog.h"
 #include "LayerEditorDialog.h"
 #include "GraphNodeItem.h"
 #include "GraphEdgeItem.h"
-#include <QDebug>
-#include "GraphView.h"
-
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QStatusBar>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
     setupUi();
     setupMenu();
+    setupToolbar();
     setupConnections();
 }
 
@@ -35,72 +31,92 @@ void MainWindow::setupUi()
 {
     auto* splitter = new QSplitter(this);
 
-    // -------- Navigator --------
     navigator_ = new QTreeView(splitter);
     navModel_ = new QStandardItemModel(this);
     navModel_->setHorizontalHeaderLabels({"Architecture"});
     navigator_->setModel(navModel_);
 
-    // -------- Graph --------
     scene_ = new QGraphicsScene(this);
 
-    // graphView_ = new QGraphicsView(splitter);
     graphView_ = new GraphView(splitter);
-
     graphView_->setScene(scene_);
     graphView_->setRenderHint(QPainter::Antialiasing);
     graphView_->setInteractive(true);
 
-    graphView_->setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
-
-
-    // -------- Layout --------
     splitter->addWidget(navigator_);
     splitter->addWidget(graphView_);
 
     setCentralWidget(splitter);
 }
 
+void MainWindow::setupToolbar()
+{
+    graphToolBar_ = addToolBar("Graph Modes");
+
+    actionView_ = graphToolBar_->addAction("View (V)");
+    actionAdd_  = graphToolBar_->addAction("Add (A)");
+    actionArch_ = graphToolBar_->addAction("Arch (R)");
+    actionConn_ = graphToolBar_->addAction("Connect (C)");
+
+    actionView_->setCheckable(true);
+    actionAdd_->setCheckable(true);
+    actionArch_->setCheckable(true);
+    actionConn_->setCheckable(true);
+
+    QActionGroup* group = new QActionGroup(this);
+    group->addAction(actionView_);
+    group->addAction(actionAdd_);
+    group->addAction(actionArch_);
+    group->addAction(actionConn_);
+
+    actionView_->setChecked(true);
+
+    connect(actionView_, &QAction::triggered,
+            this, [this]() { setGraphMode(GraphView::Mode::View); });
+
+    connect(actionAdd_, &QAction::triggered,
+            this, [this]() { setGraphMode(GraphView::Mode::Add); });
+
+    connect(actionArch_, &QAction::triggered,
+            this, [this]() { setGraphMode(GraphView::Mode::Arch); });
+
+    connect(actionConn_, &QAction::triggered,
+            this, [this]() { setGraphMode(GraphView::Mode::Connect); });
+
+    actionView_->setShortcut(Qt::Key_V);
+    actionAdd_->setShortcut(Qt::Key_A);
+    actionArch_->setShortcut(Qt::Key_R);
+    actionConn_->setShortcut(Qt::Key_C);
+}
 
 void MainWindow::setupMenu()
 {
     auto* fileMenu = menuBar()->addMenu("&File");
 
-    auto* openAct = fileMenu->addAction("Open DB");
-    connect(openAct, &QAction::triggered,
-            this, &MainWindow::openDatabase);
-
+    fileMenu->addAction("Open DB", this, &MainWindow::openDatabase);
     fileMenu->addSeparator();
     fileMenu->addAction("Exit", this, &QWidget::close);
 
     auto* editMenu = menuBar()->addMenu("&Edit");
-
-    auto* addNodeAct  = editMenu->addAction("Add Node");
-    auto* addLayerAct = editMenu->addAction("Add Layer");
-
-    connect(addNodeAct,  &QAction::triggered,
-            this, &MainWindow::createNewNode);
-
-    connect(addLayerAct, &QAction::triggered,
-            this, &MainWindow::createNewLayer);
-
-    auto* saveLayoutAct = editMenu->addAction("Save Layout");
-    
-    connect(saveLayoutAct, &QAction::triggered,
-        this, &MainWindow::saveLayout);
-
+    editMenu->addAction("Add Node", this, &MainWindow::createNewNode);
+    editMenu->addAction("Add Layer", this, &MainWindow::createNewLayer);
+    editMenu->addAction("Save Layout", this, &MainWindow::saveLayout);
 }
-
 
 void MainWindow::setupConnections()
 {
     connect(navigator_, &QTreeView::doubleClicked,
             this, &MainWindow::onTreeItemDoubleClicked);
+
     connect(navigator_, &QTreeView::clicked,
-        this, &MainWindow::onTreeItemClicked);
+            this, &MainWindow::onTreeItemClicked);
 
+    connect(graphView_, &GraphView::requestAddNode,
+            this, &MainWindow::handleAddNodeAtPosition);
+
+    connect(graphView_, &GraphView::requestConnectNodes,
+            this, &MainWindow::handleConnectNodes);
 }
-
 void MainWindow::openDatabase()
 {
     QString file = QFileDialog::getOpenFileName(
@@ -340,4 +356,124 @@ void MainWindow::saveLayout()
     }
 
     statusBar()->showMessage("Layout saved", 2000);
+}
+
+void MainWindow::handleAddNodeAtPosition(QPointF pos)
+{
+    if (!model_)
+        return;
+
+    NodeEditorDialog dlg(model_, 0, this);
+
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    auto nodes = model_->nodes();
+    if (nodes.empty())
+        return;
+
+    NodeData& newNode = nodes.back();
+    NodeId newId = newNode.id;
+
+    // Save position
+    QJsonObject obj;
+    obj["x"] = pos.x();
+    obj["y"] = pos.y();
+
+    QJsonDocument doc(obj);
+    model_->setNodeMetadata(
+        newId,
+        doc.toJson(QJsonDocument::Compact).toStdString()
+    );
+
+    // If a layer selected → auto membership
+    QModelIndex index = navigator_->currentIndex();
+    if (index.isValid()) {
+        ItemType type =
+            static_cast<ItemType>(index.data(NavRole::Type).toInt());
+
+        if (type == ItemType::Layer) {
+            LayerId layerId =
+                static_cast<LayerId>(
+                    index.data(NavRole::Id).toULongLong());
+
+            model_->addNodeToLayer(newId, layerId);
+
+            populateNavigator();                    // 🔥 FIX
+            renderGraph(model_->extractGraph(layerId));
+            return;
+        }
+    }
+
+    populateNavigator();                            // 🔥 FIX
+    renderGraph(model_->extractGraph(std::nullopt));
+}
+
+void MainWindow::handleConnectNodes(qulonglong srcId,
+                                    qulonglong dstId)
+{
+    if (!model_)
+        return;
+
+    if (srcId == dstId)
+        return;
+
+    // Must have a layer selected
+    QModelIndex index = navigator_->currentIndex();
+    if (!index.isValid())
+        return;
+
+    ItemType type =
+        static_cast<ItemType>(index.data(NavRole::Type).toInt());
+
+    if (type != ItemType::Layer) {
+        statusBar()->showMessage("Select a layer first", 2000);
+        return;
+    }
+
+    LayerId layerId =
+        static_cast<LayerId>(
+            index.data(NavRole::Id).toULongLong());
+
+    EdgeData e;
+    e.srcNode = srcId;
+    e.dstNode = dstId;
+    e.srcLayer = layerId;
+    e.dstLayer = layerId;
+    e.edgeType = "default";
+
+    EdgeId newId;
+    auto r = model_->addEdge(e, newId);
+
+    if (!r.ok)
+        return;
+
+    renderGraph(model_->extractGraph(layerId));
+}
+
+void MainWindow::setGraphMode(GraphView::Mode mode)
+{
+    if (!graphView_)
+        return;
+
+    graphView_->setMode(mode);
+
+    QString text;
+
+    switch (mode) {
+    case GraphView::Mode::View:
+        text = "Mode: View";
+        break;
+    case GraphView::Mode::Add:
+        text = "Mode: Add";
+        break;
+    case GraphView::Mode::Arch:
+        text = "Mode: Arch";
+        break;
+    case GraphView::Mode::Connect:
+        text = "Mode: Connect";
+        break;
+    }
+
+    statusBar()->showMessage(text);
 }
