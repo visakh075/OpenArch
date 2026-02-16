@@ -12,6 +12,12 @@
 #include "GraphNodeItem.h"
 #include "GraphEdgeItem.h"
 #include <QDebug>
+#include "GraphView.h"
+
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QStatusBar>
+
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
@@ -38,7 +44,9 @@ void MainWindow::setupUi()
     // -------- Graph --------
     scene_ = new QGraphicsScene(this);
 
-    graphView_ = new QGraphicsView(splitter);
+    // graphView_ = new QGraphicsView(splitter);
+    graphView_ = new GraphView(splitter);
+
     graphView_->setScene(scene_);
     graphView_->setRenderHint(QPainter::Antialiasing);
     graphView_->setInteractive(true);
@@ -75,6 +83,12 @@ void MainWindow::setupMenu()
 
     connect(addLayerAct, &QAction::triggered,
             this, &MainWindow::createNewLayer);
+
+    auto* saveLayoutAct = editMenu->addAction("Save Layout");
+    
+    connect(saveLayoutAct, &QAction::triggered,
+        this, &MainWindow::saveLayout);
+
 }
 
 
@@ -247,7 +261,30 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
     int i = 0;
     for (const auto& n : snap.nodes) {
         auto* nodeItem = new GraphNodeItem(model_, n.id);
-        nodeItem->setPos((i % 5) * 180, (i / 5) * 120);
+        //nodeItem->setPos((i % 5) * 180, (i / 5) * 120);
+        
+        auto nodeOpt = model_->getNodeById(n.id);
+        bool restored = false;
+
+        if (nodeOpt && !nodeOpt->metadata.empty()) {
+            QJsonDocument doc =
+                QJsonDocument::fromJson(
+                    QString::fromStdString(nodeOpt->metadata).toUtf8());
+
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("x") && obj.contains("y")) {
+                    nodeItem->setPos(obj["x"].toDouble(),
+                                    obj["y"].toDouble());
+                    restored = true;
+                }
+            }
+        }
+
+        if (!restored)
+            nodeItem->setPos((i % 5) * 180,
+                            (i / 5) * 120);
+
         scene_->addItem(nodeItem);
 
         nodeItems[n.id] = nodeItem;
@@ -278,3 +315,29 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
     );
 }
 
+void MainWindow::saveLayout()
+{
+    if (!model_) return;
+
+    for (auto* item : scene_->items()) {
+
+        auto* nodeItem = dynamic_cast<GraphNodeItem*>(item);
+        if (!nodeItem)
+            continue;
+
+        NodeId id = nodeItem->nodeId();   // expose getter
+        QPointF p = nodeItem->pos();
+
+        QJsonObject obj;
+        obj["x"] = p.x();
+        obj["y"] = p.y();
+
+        QJsonDocument doc(obj);
+        model_->setNodeMetadata(
+            id,
+            doc.toJson(QJsonDocument::Compact).toStdString()
+        );
+    }
+
+    statusBar()->showMessage("Layout saved", 2000);
+}

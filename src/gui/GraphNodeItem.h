@@ -10,6 +10,8 @@ public:
     QRectF boundingRect() const override;
     void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override;
     void addEdge(GraphEdgeItem* edge);
+    NodeId nodeId() const { return nodeId_; }
+    QPointF currentPosition() const;
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
     void hoverEnterEvent(QGraphicsSceneHoverEvent*) override;

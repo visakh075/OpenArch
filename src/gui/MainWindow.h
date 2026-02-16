@@ -33,6 +33,7 @@ private slots:
 
     void createNewNode();
     void createNewLayer();
+    void saveLayout();
 
 
 

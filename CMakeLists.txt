@@ -75,6 +75,8 @@ add_executable(openarch-gui
 
     src/gui/GraphNodeItem.cpp
     src/gui/GraphEdgeItem.cpp
+
+    src/gui/GraphView.cpp    
 )
 
 
