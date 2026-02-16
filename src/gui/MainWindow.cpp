@@ -9,7 +9,9 @@
 
 #include "NodeEditorDialog.h"
 #include "LayerEditorDialog.h"
-
+#include "GraphNodeItem.h"
+#include "GraphEdgeItem.h"
+#include <QDebug>
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
@@ -27,19 +29,30 @@ void MainWindow::setupUi()
 {
     auto* splitter = new QSplitter(this);
 
+    // -------- Navigator --------
     navigator_ = new QTreeView(splitter);
     navModel_ = new QStandardItemModel(this);
     navModel_->setHorizontalHeaderLabels({"Architecture"});
     navigator_->setModel(navModel_);
 
+    // -------- Graph --------
     scene_ = new QGraphicsScene(this);
-    graphView_ = new QGraphicsView(scene_, splitter);
 
+    graphView_ = new QGraphicsView(splitter);
+    graphView_->setScene(scene_);
+    graphView_->setRenderHint(QPainter::Antialiasing);
+    graphView_->setInteractive(true);
+
+    graphView_->setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
+
+
+    // -------- Layout --------
     splitter->addWidget(navigator_);
     splitter->addWidget(graphView_);
 
     setCentralWidget(splitter);
 }
+
 
 void MainWindow::setupMenu()
 {
@@ -220,49 +233,48 @@ void MainWindow::createNewLayer()
     renderGraph(model_->extractGraph(std::nullopt));
 }
 
-#include "GraphNodeItem.h"
-#include "GraphEdgeItem.h"
-
 void MainWindow::renderGraph(const GraphSnapshot& snap)
 {
+        if (!model_) {
+        qWarning() << "renderGraph called with null model";
+        return;
+    }
     scene_->clear();
 
     std::unordered_map<NodeId, GraphNodeItem*> nodeItems;
 
+    // 1️⃣ Create nodes
     int i = 0;
-    const int spacingX = 180;
-    const int spacingY = 100;
-
-    // ---- Nodes ----
     for (const auto& n : snap.nodes) {
-        auto* item = new GraphNodeItem(model_, n.id);
-        item->setPos(
-            (i % 5) * spacingX,
-            (i / 5) * spacingY);
+        auto* nodeItem = new GraphNodeItem(model_, n.id);
+        nodeItem->setPos((i % 5) * 180, (i / 5) * 120);
+        scene_->addItem(nodeItem);
 
-        scene_->addItem(item);
-        nodeItems[n.id] = item;
+        nodeItems[n.id] = nodeItem;
         ++i;
     }
 
-    // ---- Edges ----
+    // 2️⃣ Create edges (CONNECTED to nodes)
     for (const auto& e : snap.edges) {
-        if (!nodeItems.count(e.srcNode) ||
-            !nodeItems.count(e.dstNode))
+        auto srcIt = nodeItems.find(e.srcNode);
+        auto dstIt = nodeItems.find(e.dstNode);
+
+        if (srcIt == nodeItems.end() || dstIt == nodeItems.end())
             continue;
 
-        auto* edge = new GraphEdgeItem(model_, e);
+        auto* edgeItem = new GraphEdgeItem(
+            model_,
+            e,
+            srcIt->second,
+            dstIt->second
+        );
 
-        QPointF src =
-            nodeItems[e.srcNode]->sceneBoundingRect().center();
-        QPointF dst =
-            nodeItems[e.dstNode]->sceneBoundingRect().center();
-
-        edge->setEndpoints(src, dst);
-        scene_->addItem(edge);
+        scene_->addItem(edgeItem);
     }
 
     graphView_->fitInView(
         scene_->itemsBoundingRect(),
-        Qt::KeepAspectRatio);
+        Qt::KeepAspectRatio
+    );
 }
+

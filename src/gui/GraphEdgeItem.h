@@ -1,35 +1,24 @@
 #pragma once
-
 #include <QGraphicsObject>
 #include "core/ArchitectureModel.h"
-
+class GraphNodeItem;
 class GraphEdgeItem : public QGraphicsObject {
     Q_OBJECT
 public:
-    GraphEdgeItem(ArchitectureModel* model,
-                  const EdgeData& edge,
-                  QGraphicsItem* parent = nullptr);
-
+    GraphEdgeItem(ArchitectureModel* model,const EdgeData& edge,
+                  GraphNodeItem* src,GraphNodeItem* dst,QGraphicsItem* parent=nullptr);
     QRectF boundingRect() const override;
-    void paint(QPainter* painter,
-               const QStyleOptionGraphicsItem* option,
-               QWidget* widget = nullptr) override;
-
-    void setEndpoints(const QPointF& src,
-                      const QPointF& dst);
-
+    void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override;
+    void updateEndpoints();
 protected:
-    void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override;
-    void hoverLeaveEvent(QGraphicsSceneHoverEvent* event) override;
-
+    void hoverEnterEvent(QGraphicsSceneHoverEvent*) override;
+    void hoverLeaveEvent(QGraphicsSceneHoverEvent*) override;
 private:
     ArchitectureModel* model_;
     EdgeId edgeId_;
-    NodeId srcId_;
-    NodeId dstId_;
     QString label_;
-
-    QPointF src_;
-    QPointF dst_;
+    GraphNodeItem* src_;
+    GraphNodeItem* dst_;
+    QPointF srcPos_, dstPos_;
     bool hovered_{false};
 };
