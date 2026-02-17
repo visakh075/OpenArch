@@ -5,6 +5,7 @@
 #include <QPainter>
 #include <QGraphicsSceneHoverEvent>
 #include <QGraphicsSceneMouseEvent>
+#include <QPainterPathStroker>
 #include <QtMath>
 
 GraphEdgeItem::GraphEdgeItem(
@@ -17,33 +18,73 @@ GraphEdgeItem::GraphEdgeItem(
       model_(model),
       edge_(edge),
       src_(src),
-      dst_(dst)
+      dst_(dst),
+      srcPort_(Port::Right),
+      dstPort_(Port::Left)
 {
     setAcceptHoverEvents(true);
     setFlag(QGraphicsItem::ItemIsSelectable, true);
-
     setZValue(0);
 
     normalPen_ = QPen(Qt::darkGray, 2);
     highlightPen_ = QPen(Qt::blue, 3);
 }
 
-QPointF GraphEdgeItem::sourceCenter() const
+QPointF GraphEdgeItem::portScenePosition(GraphNodeItem* node,
+                                         Port port) const
 {
-    if (!src_)
-        return QPointF();
+    QRectF rect = node->mapToScene(node->boundingRect()).boundingRect();
+    QPointF c = rect.center();
 
-    return mapFromItem(src_,
-                       src_->boundingRect().center());
+    switch (port)
+    {
+        case Port::Top:    return QPointF(c.x(), rect.top());
+        case Port::Bottom: return QPointF(c.x(), rect.bottom());
+        case Port::Left:   return QPointF(rect.left(), c.y());
+        case Port::Right:  return QPointF(rect.right(), c.y());
+    }
+
+    return QPointF();
 }
 
-QPointF GraphEdgeItem::destCenter() const
+void GraphEdgeItem::autoSelectPorts(Port& srcPort,
+                                    Port& dstPort) const
 {
-    if (!dst_)
-        return QPointF();
+    QRectF srcRect = src_->mapToScene(src_->boundingRect()).boundingRect();
+    QRectF dstRect = dst_->mapToScene(dst_->boundingRect()).boundingRect();
 
-    return mapFromItem(dst_,
-                       dst_->boundingRect().center());
+    QPointF srcCenter = srcRect.center();
+    QPointF dstCenter = dstRect.center();
+
+    double dx = dstCenter.x() - srcCenter.x();
+    double dy = dstCenter.y() - srcCenter.y();
+
+    if (std::abs(dx) > std::abs(dy))
+    {
+        if (dx > 0)
+        {
+            srcPort = Port::Right;
+            dstPort = Port::Left;
+        }
+        else
+        {
+            srcPort = Port::Left;
+            dstPort = Port::Right;
+        }
+    }
+    else
+    {
+        if (dy > 0)
+        {
+            srcPort = Port::Bottom;
+            dstPort = Port::Top;
+        }
+        else
+        {
+            srcPort = Port::Top;
+            dstPort = Port::Bottom;
+        }
+    }
 }
 
 QPainterPath GraphEdgeItem::buildPath() const
@@ -53,22 +94,135 @@ QPainterPath GraphEdgeItem::buildPath() const
     if (!src_ || !dst_)
         return path;
 
-    QPointF p1 = sourceCenter();
-    QPointF p2 = destCenter();
+    // --- Scene rectangles ---
+    QRectF srcRect = src_->mapToScene(src_->boundingRect()).boundingRect();
+    QRectF dstRect = dst_->mapToScene(dst_->boundingRect()).boundingRect();
 
-    QPointF mid;
+    QPointF srcCenter = srcRect.center();
+    QPointF dstCenter = dstRect.center();
 
-    // Auto choose routing direction
-    if (qAbs(p1.x() - p2.x()) > qAbs(p1.y() - p2.y())) {
-        // Horizontal first
-        mid = QPointF(p2.x(), p1.y());
-    } else {
-        // Vertical first
-        mid = QPointF(p1.x(), p2.y());
+    // --- Compute gaps ---
+    double gapRight  = dstRect.left()  - srcRect.right();
+    double gapLeft   = srcRect.left()  - dstRect.right();
+    double gapBottom = dstRect.top()   - srcRect.bottom();
+    double gapTop    = srcRect.top()   - dstRect.bottom();
+
+    // --- Choose anchor points (side midpoints) ---
+    QPointF p1, p2;
+
+    // Horizontal separation
+    if (gapRight > 0)
+    {
+        p1 = QPointF(srcRect.right(), srcCenter.y());
+        p2 = QPointF(dstRect.left(),  dstCenter.y());
+    }
+    else if (gapLeft > 0)
+    {
+        p1 = QPointF(srcRect.left(),  srcCenter.y());
+        p2 = QPointF(dstRect.right(), dstCenter.y());
+    }
+    // Vertical separation
+    else if (gapBottom > 0)
+    {
+        p1 = QPointF(srcCenter.x(), srcRect.bottom());
+        p2 = QPointF(dstCenter.x(), dstRect.top());
+    }
+    else if (gapTop > 0)
+    {
+        p1 = QPointF(srcCenter.x(), srcRect.top());
+        p2 = QPointF(dstCenter.x(), dstRect.bottom());
+    }
+    // Overlapping case
+    else
+    {
+        double dx = dstCenter.x() - srcCenter.x();
+        double dy = dstCenter.y() - srcCenter.y();
+
+        if (std::abs(dx) > std::abs(dy))
+        {
+            if (dx > 0)
+            {
+                p1 = QPointF(srcRect.right(), srcCenter.y());
+                p2 = QPointF(dstRect.left(),  dstCenter.y());
+            }
+            else
+            {
+                p1 = QPointF(srcRect.left(),  srcCenter.y());
+                p2 = QPointF(dstRect.right(), dstCenter.y());
+            }
+        }
+        else
+        {
+            if (dy > 0)
+            {
+                p1 = QPointF(srcCenter.x(), srcRect.bottom());
+                p2 = QPointF(dstCenter.x(), dstRect.top());
+            }
+            else
+            {
+                p1 = QPointF(srcCenter.x(), srcRect.top());
+                p2 = QPointF(dstCenter.x(), dstRect.bottom());
+            }
+        }
     }
 
+    // Convert scene → local
+    p1 = mapFromScene(p1);
+    p2 = mapFromScene(p2);
+
     path.moveTo(p1);
-    path.lineTo(mid);
+
+    // --- Midpoints for routing ---
+    double midX = (p1.x() + p2.x()) / 2.0;
+    double midY = (p1.y() + p2.y()) / 2.0;
+
+    bool overlapX = (gapRight <= 0 && gapLeft <= 0);
+    bool overlapY = (gapBottom <= 0 && gapTop <= 0);
+
+    // Case 1: Horizontal overlap → vertical main axis
+    if (overlapX && !overlapY)
+    {
+        path.lineTo(p1.x(), midY);
+        path.lineTo(p2.x(), midY);
+    }
+    // Case 2: Vertical overlap → horizontal main axis
+    else if (overlapY && !overlapX)
+    {
+        path.lineTo(midX, p1.y());
+        path.lineTo(midX, p2.y());
+    }
+    // Case 3: Overlap both axes
+    else if (overlapX && overlapY)
+    {
+        double dx = std::abs(p2.x() - p1.x());
+        double dy = std::abs(p2.y() - p1.y());
+
+        if (dx > dy)
+        {
+            path.lineTo(midX, p1.y());
+            path.lineTo(midX, p2.y());
+        }
+        else
+        {
+            path.lineTo(p1.x(), midY);
+            path.lineTo(p2.x(), midY);
+        }
+    }
+    // Case 4: Fully separated
+    else
+    {
+        if (gapRight > 0 || gapLeft > 0)
+        {
+            path.lineTo(midX, p1.y());
+            path.lineTo(midX, p2.y());
+        }
+        else
+        {
+            path.lineTo(p1.x(), midY);
+            path.lineTo(p2.x(), midY);
+        }
+    }
+
     path.lineTo(p2);
 
     return path;
@@ -76,18 +230,9 @@ QPainterPath GraphEdgeItem::buildPath() const
 
 QRectF GraphEdgeItem::boundingRect() const
 {
-    if (!src_ || !dst_)
-        return QRectF();
-
-    QPointF p1 = sourceCenter();
-    QPointF p2 = destCenter();
-
-    QRectF rect(p1, p2);
-    rect = rect.normalized();
-
-    const qreal extra = 20;
-    rect.adjust(-extra, -extra, extra, extra);
-
+    QPainterPath path = buildPath();
+    QRectF rect = path.boundingRect();
+    rect.adjust(-20, -20, 20, 20);
     return rect;
 }
 
@@ -100,73 +245,27 @@ void GraphEdgeItem::paint(QPainter* painter,
 
     painter->setRenderHint(QPainter::Antialiasing);
 
-    // --- Scene positions ---
-    QPointF srcCenter = src_->scenePos();
-    QPointF dstCenter = dst_->scenePos();
-
-    QRectF srcRect = src_->mapToScene(src_->boundingRect()).boundingRect();
-    QRectF dstRect = dst_->mapToScene(dst_->boundingRect()).boundingRect();
-
-    QPointF p1 = srcCenter;
-    QPointF p2 = dstCenter;
-
-    double dx = dstCenter.x() - srcCenter.x();
-    double dy = dstCenter.y() - srcCenter.y();
-
-    bool horizontal = std::abs(dx) > std::abs(dy);
-
-    // ---- Anchor source ----
-    if (horizontal) {
-        if (dx > 0)
-            p1 = QPointF(srcRect.right(), srcCenter.y());
-        else
-            p1 = QPointF(srcRect.left(), srcCenter.y());
-    } else {
-        if (dy > 0)
-            p1 = QPointF(srcCenter.x(), srcRect.bottom());
-        else
-            p1 = QPointF(srcCenter.x(), srcRect.top());
-    }
-
-    // ---- Anchor destination ----
-    if (horizontal) {
-        if (dx > 0)
-            p2 = QPointF(dstRect.left(), dstCenter.y());
-        else
-            p2 = QPointF(dstRect.right(), dstCenter.y());
-    } else {
-        if (dy > 0)
-            p2 = QPointF(dstCenter.x(), dstRect.top());
-        else
-            p2 = QPointF(dstCenter.x(), dstRect.bottom());
-    }
-
-    // ---- Manhattan path ----
-    QPainterPath path;
-    path.moveTo(p1);
-
-    QPointF mid;
-    if (horizontal)
-        mid = QPointF(p2.x(), p1.y());
-    else
-        mid = QPointF(p1.x(), p2.y());
-
-    path.lineTo(mid);
-    path.lineTo(p2);
+    QPainterPath path = buildPath();
 
     painter->setPen(hovered_ ? highlightPen_ : normalPen_);
+    painter->setBrush(Qt::NoBrush);
     painter->drawPath(path);
 
-    // =====================
-    //       ARROW
-    // =====================
+    // Arrow
+    if (path.elementCount() < 2)
+        return;
 
-    QLineF arrowLine(mid, p2);
-    arrowLine.setLength(arrowLine.length() - 6);
+    QPainterPath::Element e1 = path.elementAt(path.elementCount() - 1);
+    QPainterPath::Element e2 = path.elementAt(path.elementCount() - 2);
 
-    QPointF arrowTip = arrowLine.p2();
-    double angle = std::atan2(-arrowLine.dy(), arrowLine.dx());
+    QPointF last(e1.x, e1.y);
+    QPointF prev(e2.x, e2.y);
 
+    QLineF line(prev, last);
+    line.setLength(line.length() - 6);
+
+    QPointF arrowTip = line.p2();
+    double angle = std::atan2(-line.dy(), line.dx());
     const double arrowSize = 10.0;
 
     QPointF arrowP1 = arrowTip - QPointF(
@@ -186,12 +285,9 @@ void GraphEdgeItem::paint(QPainter* painter,
 
 QPainterPath GraphEdgeItem::shape() const
 {
-    QPainterPath path = buildPath();
-
     QPainterPathStroker stroker;
-    stroker.setWidth(12);  // clickable thickness
-
-    return stroker.createStroke(path);
+    stroker.setWidth(12);
+    return stroker.createStroke(buildPath());
 }
 
 void GraphEdgeItem::updateEndpoints()
@@ -204,9 +300,8 @@ void GraphEdgeItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
 {
     hovered_ = true;
     setZValue(10);
-    setCursor(QCursor(Qt::PointingHandCursor));
+    setCursor(Qt::PointingHandCursor);
     update();
-
     QGraphicsObject::hoverEnterEvent(event);
 }
 
@@ -216,7 +311,6 @@ void GraphEdgeItem::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
     setZValue(0);
     unsetCursor();
     update();
-
     QGraphicsObject::hoverLeaveEvent(event);
 }
 

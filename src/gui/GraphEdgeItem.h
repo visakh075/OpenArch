@@ -4,7 +4,6 @@
 #include <QGraphicsObject>
 #include <QPen>
 #include <QPainterPath>
-#include <QPainterPathStroker>
 
 #include "core/ArchitectureModel.h"
 
@@ -15,6 +14,14 @@ class GraphEdgeItem : public QGraphicsObject
     Q_OBJECT
 
 public:
+    enum class Port
+    {
+        Top,
+        Bottom,
+        Left,
+        Right
+    };
+
     GraphEdgeItem(ArchitectureModel* model,
                   const EdgeData& edge,
                   GraphNodeItem* src,
@@ -23,17 +30,21 @@ public:
 
     QRectF boundingRect() const override;
     void paint(QPainter* painter,
-               const QStyleOptionGraphicsItem* option,
-               QWidget* widget) override;
+               const QStyleOptionGraphicsItem*,
+               QWidget*) override;
 
     QPainterPath shape() const override;
 
-    void updateEndpoints();   // called when node moves
+    void updateEndpoints();
 
 private:
-    QPointF sourceCenter() const;
-    QPointF destCenter() const;
     QPainterPath buildPath() const;
+
+    QPointF portScenePosition(GraphNodeItem* node,
+                              Port port) const;
+
+    void autoSelectPorts(Port& srcPort,
+                         Port& dstPort) const;
 
 protected:
     void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override;
@@ -46,6 +57,9 @@ private:
 
     GraphNodeItem* src_;
     GraphNodeItem* dst_;
+
+    mutable Port srcPort_;
+    mutable Port dstPort_;
 
     QPen normalPen_;
     QPen highlightPen_;
