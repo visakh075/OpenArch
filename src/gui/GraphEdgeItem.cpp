@@ -3,6 +3,7 @@
 #include "EdgeEditorDialog.h"
 
 #include <QPainter>
+#include <QString>
 #include <QGraphicsSceneHoverEvent>
 #include <QGraphicsSceneMouseEvent>
 #include <QPainterPathStroker>
@@ -108,29 +109,29 @@ QPainterPath GraphEdgeItem::buildPath() const
     double gapTop    = srcRect.top()   - dstRect.bottom();
 
     // --- Choose anchor points (side midpoints) ---
-    QPointF p1, p2;
-
+    QPointF SrcPoint, EndPoint;
+    // QPointF p1,p2;
     // Horizontal separation
     if (gapRight > 0)
     {
-        p1 = QPointF(srcRect.right(), srcCenter.y());
-        p2 = QPointF(dstRect.left(),  dstCenter.y());
+        SrcPoint = QPointF(srcRect.right(), srcCenter.y());
+        EndPoint = QPointF(dstRect.left(),  dstCenter.y());
     }
     else if (gapLeft > 0)
     {
-        p1 = QPointF(srcRect.left(),  srcCenter.y());
-        p2 = QPointF(dstRect.right(), dstCenter.y());
+        SrcPoint = QPointF(srcRect.left(),  srcCenter.y());
+        EndPoint = QPointF(dstRect.right(), dstCenter.y());
     }
     // Vertical separation
     else if (gapBottom > 0)
     {
-        p1 = QPointF(srcCenter.x(), srcRect.bottom());
-        p2 = QPointF(dstCenter.x(), dstRect.top());
+        SrcPoint = QPointF(srcCenter.x(), srcRect.bottom());
+        EndPoint = QPointF(dstCenter.x(), dstRect.top());
     }
     else if (gapTop > 0)
     {
-        p1 = QPointF(srcCenter.x(), srcRect.top());
-        p2 = QPointF(dstCenter.x(), dstRect.bottom());
+        SrcPoint = QPointF(srcCenter.x(), srcRect.top());
+        EndPoint = QPointF(dstCenter.x(), dstRect.bottom());
     }
     // Overlapping case
     else
@@ -142,39 +143,42 @@ QPainterPath GraphEdgeItem::buildPath() const
         {
             if (dx > 0)
             {
-                p1 = QPointF(srcRect.right(), srcCenter.y());
-                p2 = QPointF(dstRect.left(),  dstCenter.y());
+                SrcPoint = QPointF(srcRect.right(), srcCenter.y());
+                EndPoint = QPointF(dstRect.left(),  dstCenter.y());
             }
             else
             {
-                p1 = QPointF(srcRect.left(),  srcCenter.y());
-                p2 = QPointF(dstRect.right(), dstCenter.y());
+                SrcPoint = QPointF(srcRect.left(),  srcCenter.y());
+                EndPoint = QPointF(dstRect.right(), dstCenter.y());
             }
         }
         else
         {
             if (dy > 0)
             {
-                p1 = QPointF(srcCenter.x(), srcRect.bottom());
-                p2 = QPointF(dstCenter.x(), dstRect.top());
+                SrcPoint = QPointF(srcCenter.x(), srcRect.bottom());
+                EndPoint = QPointF(dstCenter.x(), dstRect.top());
             }
             else
             {
-                p1 = QPointF(srcCenter.x(), srcRect.top());
-                p2 = QPointF(dstCenter.x(), dstRect.bottom());
+                SrcPoint = QPointF(srcCenter.x(), srcRect.top());
+                EndPoint = QPointF(dstCenter.x(), dstRect.bottom());
             }
         }
     }
 
     // Convert scene → local
-    p1 = mapFromScene(p1);
-    p2 = mapFromScene(p2);
+    SrcPoint = mapFromScene(SrcPoint);
+    EndPoint = mapFromScene(EndPoint);
 
-    path.moveTo(p1);
+    // SrcPoint = p1;
+    // EndPoint = p2;
+
+    path.moveTo(SrcPoint);
 
     // --- Midpoints for routing ---
-    double midX = (p1.x() + p2.x()) / 2.0;
-    double midY = (p1.y() + p2.y()) / 2.0;
+    double midX = (SrcPoint.x() + EndPoint.x()) / 2.0;
+    double midY = (SrcPoint.y() + EndPoint.y()) / 2.0;
 
     bool overlapX = (gapRight <= 0 && gapLeft <= 0);
     bool overlapY = (gapBottom <= 0 && gapTop <= 0);
@@ -182,30 +186,30 @@ QPainterPath GraphEdgeItem::buildPath() const
     // Case 1: Horizontal overlap → vertical main axis
     if (overlapX && !overlapY)
     {
-        path.lineTo(p1.x(), midY);
-        path.lineTo(p2.x(), midY);
+        path.lineTo(SrcPoint.x(), midY);
+        path.lineTo(EndPoint.x(), midY);
     }
     // Case 2: Vertical overlap → horizontal main axis
     else if (overlapY && !overlapX)
     {
-        path.lineTo(midX, p1.y());
-        path.lineTo(midX, p2.y());
+        path.lineTo(midX, SrcPoint.y());
+        path.lineTo(midX, EndPoint.y());
     }
     // Case 3: Overlap both axes
     else if (overlapX && overlapY)
     {
-        double dx = std::abs(p2.x() - p1.x());
-        double dy = std::abs(p2.y() - p1.y());
+        double dx = std::abs(EndPoint.x() - SrcPoint.x());
+        double dy = std::abs(EndPoint.y() - SrcPoint.y());
 
         if (dx > dy)
         {
-            path.lineTo(midX, p1.y());
-            path.lineTo(midX, p2.y());
+            path.lineTo(midX, SrcPoint.y());
+            path.lineTo(midX, EndPoint.y());
         }
         else
         {
-            path.lineTo(p1.x(), midY);
-            path.lineTo(p2.x(), midY);
+            path.lineTo(SrcPoint.x(), midY);
+            path.lineTo(EndPoint.x(), midY);
         }
     }
     // Case 4: Fully separated
@@ -213,17 +217,17 @@ QPainterPath GraphEdgeItem::buildPath() const
     {
         if (gapRight > 0 || gapLeft > 0)
         {
-            path.lineTo(midX, p1.y());
-            path.lineTo(midX, p2.y());
+            path.lineTo(midX, SrcPoint.y());
+            path.lineTo(midX, EndPoint.y());
         }
         else
         {
-            path.lineTo(p1.x(), midY);
-            path.lineTo(p2.x(), midY);
+            path.lineTo(SrcPoint.x(), midY);
+            path.lineTo(EndPoint.x(), midY);
         }
     }
 
-    path.lineTo(p2);
+    path.lineTo(EndPoint);
 
     return path;
 }
@@ -281,6 +285,61 @@ void GraphEdgeItem::paint(QPainter* painter,
 
     painter->setBrush(hovered_ ? Qt::blue : Qt::darkGray);
     painter->drawPolygon(arrowHead);
+
+    // Add title to the node
+    if (hovered_)
+    {
+        QString title = QString::fromStdString(edge_.edgeType);
+
+        QFont font("Arial", 10);
+        painter->setFont(font);
+
+        QFontMetrics fm(font);
+        QRect textRect = fm.boundingRect(title);
+
+        // --- Midpoint of path ---
+        qreal t = 0.5;
+        QPointF p1 = path.pointAtPercent(t);
+        QPointF p2 = path.pointAtPercent(t + 0.01); // small step ahead
+
+        // --- Angle of edge ---
+        double angle = std::atan2(p2.y() - p1.y(),
+                                p2.x() - p1.x());
+
+        // Convert to degrees
+        double degrees = angle * 180.0 / M_PI;
+
+        // Keep text upright (avoid upside-down text)
+        if (degrees > 90 || degrees < -90)
+            degrees += 180;
+
+        painter->save();
+
+        // Move to midpoint
+        painter->translate(p1);
+
+        // Rotate along edge
+        painter->rotate(degrees);
+
+        // Offset text slightly above line
+        QPointF textPos(-textRect.width() / 2,
+                        -5);
+
+        // Optional: background for readability
+        QRect bgRect = textRect.adjusted(-4, -2, 4, 2);
+        bgRect.moveCenter(QPoint(0, -5));
+
+        // painter->setBrush(Qt::white);
+        // painter->setPen(Qt::NoPen);
+        // painter->drawRect(bgRect);
+
+        // Draw text
+        painter->setPen(Qt::white);
+        painter->drawText(textPos, title);
+
+        painter->restore();
+    }
+
 }
 
 QPainterPath GraphEdgeItem::shape() const
@@ -308,7 +367,7 @@ void GraphEdgeItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
 void GraphEdgeItem::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
 {
     hovered_ = false;
-    setZValue(0);
+    setZValue(-1);
     unsetCursor();
     update();
     QGraphicsObject::hoverLeaveEvent(event);

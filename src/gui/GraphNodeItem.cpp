@@ -7,7 +7,7 @@ GraphNodeItem::GraphNodeItem(ArchitectureModel *m, NodeId id, QGraphicsItem *p)
     : QGraphicsObject(p), model_(m), nodeId_(id)
 {
     setAcceptHoverEvents(true);
-    setFlags(ItemIsMovable | ItemSendsGeometryChanges);
+    setFlags(ItemIsMovable | ItemIsSelectable | ItemSendsGeometryChanges);
 }
 QRectF GraphNodeItem::boundingRect() const { return {0, 0, NODE_WIDTH, NODE_HEIGHT}; }
 QString GraphNodeItem::displayText() const
@@ -20,8 +20,43 @@ QString GraphNodeItem::displayText() const
 void GraphNodeItem::paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *)
 {
     p->setRenderHint(QPainter::Antialiasing);
-    p->setPen(QPen(Qt::black, hovered_ ? 2 : 1));
-    p->setBrush(Qt::white);
+
+    // --- Border ---
+    QPen pen;
+    if (isSelected())
+    {
+        pen = QPen(Qt::blue, 2);          // selected → strong highlight
+    }
+    else if (hovered_)
+    {
+        pen = QPen(Qt::darkGray, 2);      // hover → medium highlight
+    }
+    else
+    {
+        pen = QPen(Qt::black, 1);         // normal
+    }
+
+    p->setPen(pen);
+
+    // --- Background ---
+    if (isSelected())
+    {
+        p->setBrush(QColor(220, 235, 255));  // light blue
+    }
+    else
+    {
+        p->setBrush(Qt::white);
+    }
+
+    // --- Draw node ---
+    p->drawRoundedRect(boundingRect(), RADIUS, RADIUS);
+
+    // --- Text ---
+    p->setPen(Qt::black);
+    p->drawText(boundingRect().adjusted(6, 6, -6, -6),
+                Qt::AlignCenter,
+                displayText());
+
     p->drawRoundedRect(boundingRect(), RADIUS, RADIUS);
     p->drawText(boundingRect().adjusted(6, 6, -6, -6), Qt::AlignCenter, displayText());
 }

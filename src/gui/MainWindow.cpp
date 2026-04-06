@@ -40,6 +40,7 @@ void MainWindow::setupUi()
 
     graphView_ = new GraphView(splitter);
     graphView_->setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+    graphView_->setDragMode(QGraphicsView::RubberBandDrag);
     // graphView_->setViewportUpdateMode(QGraphicsView::BoundingRectViewportUpdate);
 
     graphView_->setScene(scene_);
