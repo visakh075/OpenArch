@@ -14,6 +14,9 @@ public:
     QPointF currentPosition() const;
     QPointF center() const;
     QRectF rect() const;
+    void setPrimary(bool p);
+    bool isPrimary() const;
+    QString displayText() const;
 
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
@@ -22,7 +25,9 @@ protected:
 private:
     ArchitectureModel* model_;
     NodeId nodeId_;
-    bool hovered_{false};
+    bool hovered_ = false;
+    bool isPrimary_ = false;
+    // QList<GraphEdgeItem*> edges_;
     std::unordered_set<GraphEdgeItem*> edges_;
-    QString displayText() const;
+
 };

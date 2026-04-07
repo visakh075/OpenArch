@@ -53,6 +53,8 @@ protected:
 
 private:
     ArchitectureModel* model_;
+
+    
     EdgeData edge_;
 
     GraphNodeItem* src_;

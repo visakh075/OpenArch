@@ -41,7 +41,6 @@ void MainWindow::setupUi()
     graphView_ = new GraphView(splitter);
     graphView_->setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
     graphView_->setDragMode(QGraphicsView::RubberBandDrag);
-    // graphView_->setViewportUpdateMode(QGraphicsView::BoundingRectViewportUpdate);
 
     graphView_->setScene(scene_);
     graphView_->setRenderHint(QPainter::Antialiasing);
@@ -49,6 +48,13 @@ void MainWindow::setupUi()
 
     splitter->addWidget(navigator_);
     splitter->addWidget(graphView_);
+
+    // Set 20:80 ratio
+    splitter->setStretchFactor(0, 1);  // navigator
+    splitter->setStretchFactor(1, 4);  // graph
+
+    // Optional: initial size hint
+    splitter->setSizes({200, 800});
 
     setCentralWidget(splitter);
 }
@@ -86,7 +92,7 @@ void MainWindow::setupToolbar()
 
     connect(actionConn_, &QAction::triggered,
             this, [this]() { setGraphMode(GraphView::Mode::Connect); });
-
+    
     actionView_->setShortcut(Qt::Key_V);
     actionAdd_->setShortcut(Qt::Key_A);
     actionArch_->setShortcut(Qt::Key_R);
@@ -105,6 +111,14 @@ void MainWindow::setupMenu()
     editMenu->addAction("Add Node", this, &MainWindow::createNewNode);
     editMenu->addAction("Add Layer", this, &MainWindow::createNewLayer);
     editMenu->addAction("Save Layout", this, &MainWindow::saveLayout);
+
+    editMenu->addSeparator();
+
+    auto* alignH = editMenu->addAction("Align Horizontal", this, &MainWindow::alignHorizontal);
+    alignH->setShortcut(Qt::CTRL | Qt::Key_H);
+
+    auto* alignV = editMenu->addAction("Align Vertical", this, &MainWindow::alignVertical);
+    alignV->setShortcut(Qt::CTRL | Qt::Key_V);
 }
 
 void MainWindow::setupConnections()
@@ -120,7 +134,10 @@ void MainWindow::setupConnections()
 
     connect(graphView_, &GraphView::requestConnectNodes,
             this, &MainWindow::handleConnectNodes);
-}
+    connect(scene_, &QGraphicsScene::selectionChanged,
+            this, &MainWindow::onSelectionChanged);
+    }
+
 void MainWindow::openDatabase()
 {
     QString file = QFileDialog::getOpenFileName(
@@ -273,8 +290,24 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         qWarning() << "renderGraph called with null model";
         return;
     }
+    isRendering_ = true;
     scene_->clear();
 
+    primaryNode_ = nullptr;   // 🔥 CRITICAL FIX
+
+    // Recreate layer label (it was deleted by clear)
+    // layerLabel_ = new QGraphicsTextItem();
+    // layerLabel_->setDefaultTextColor(Qt::darkGray);
+    // layerLabel_->setZValue(100);
+
+    // QFont font("Arial", 10);
+    // font.setBold(true);
+    // layerLabel_->setFont(font);
+
+    // layerLabel_->setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
+
+    // scene_->addItem(layerLabel_);
+    
     std::unordered_map<NodeId, GraphNodeItem*> nodeItems;
 
     // 1️⃣ Create nodes
@@ -333,6 +366,33 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         scene_->itemsBoundingRect(),
         Qt::KeepAspectRatio
     );
+
+    // Determine current layer text
+    // QString layerText = "Layer: ALL";
+
+    // QModelIndex index = navigator_->currentIndex();
+    // if (index.isValid())
+    // {
+    //     ItemType type =
+    //         static_cast<ItemType>(index.data(NavRole::Type).toInt());
+
+    //     if (type == ItemType::Layer)
+    //     {
+    //         layerText = "Layer: " + index.data().toString();
+    //     }
+    // }
+
+    // Update label
+    // layerLabel_->setPlainText(layerText);
+
+    // QRectF viewRect = graphView_->mapToScene(graphView_->viewport()->rect()).boundingRect();
+
+    // // small margin
+    // QPointF pos(viewRect.left() + 10,
+    //             viewRect.bottom() - 20);
+
+    // layerLabel_->setPos(pos);
+    isRendering_ = false;
 }
 
 void MainWindow::saveLayout()
@@ -480,4 +540,99 @@ void MainWindow::setGraphMode(GraphView::Mode mode)
     }
 
     statusBar()->showMessage(text);
+}
+void MainWindow::onSelectionChanged()
+{
+
+    if (!scene_ || scene_->items().isEmpty())
+    return;
+
+    auto selected = scene_->selectedItems();
+
+    // --- No selection ---
+    if (selected.isEmpty())
+    {
+        primaryNode_ = nullptr;
+        statusBar()->showMessage("No selection");
+    }
+    else if (!primaryNode_ || !scene_->items().contains(primaryNode_) || !selected.contains(primaryNode_))
+    {
+        // pick FIRST selected node
+        primaryNode_ = nullptr;
+
+        for (auto* item : selected)
+        {
+            if (auto* node = qgraphicsitem_cast<GraphNodeItem*>(item))
+            {
+                primaryNode_ = node;
+                break;
+            }
+        }
+    }
+
+    // --- Update ALL nodes ---
+    for (auto* item : scene_->items())
+    {
+        if (auto* node = qgraphicsitem_cast<GraphNodeItem*>(item))
+        {
+            node->setPrimary(node == primaryNode_);
+        }
+    }
+
+    // --- Status bar ---
+    if (primaryNode_)
+    {
+        QString text = primaryNode_->displayText();
+        text.replace("\n", " | ");
+
+        QString msg = QString("Primary: %1 | Selected: %2")
+                          .arg(text)
+                          .arg(selected.size());
+
+        statusBar()->showMessage(msg);
+    }
+}
+void MainWindow::alignHorizontal()
+{
+    if (!primaryNode_)
+        return;
+
+    auto selected = scene_->selectedItems();
+    if (selected.size() < 2)
+        return;
+
+    qreal y = primaryNode_->pos().y();
+
+    for (auto* item : selected)
+    {
+        auto* node = qgraphicsitem_cast<GraphNodeItem*>(item);
+        if (!node || node == primaryNode_)
+            continue;
+
+        node->setPos(node->pos().x(), y);
+    }
+
+    statusBar()->showMessage("Aligned horizontally", 2000);
+}
+void MainWindow::alignVertical()
+{
+    if (!primaryNode_)
+        return;
+
+    auto selected = scene_->selectedItems();
+    if (selected.size() < 2)
+        return;
+
+    qreal x = primaryNode_->pos().x();
+
+    for (auto* item : selected)
+    {
+        auto* node = qgraphicsitem_cast<GraphNodeItem*>(item);
+        if (!node || node == primaryNode_)
+            continue;
+
+        node->setPos(x, node->pos().y());
+    }
+
+    statusBar()->showMessage("Aligned vertically", 2000);
 }

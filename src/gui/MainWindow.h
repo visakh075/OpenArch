@@ -10,6 +10,8 @@
 #include "core/ArchitectureModel.h"
 #include "db/DbManagerSQLite.h"
 #include "GraphView.h"
+
+class GraphNodeItem;
 enum class ItemType : int {
     Category = 0,
     Layer    = 1,
@@ -47,12 +49,20 @@ private:
     void createNewLayer();
     void onTreeItemDoubleClicked(const QModelIndex& index);
     void onTreeItemClicked(const QModelIndex& index);
+    
+    // Display
+    void onSelectionChanged();
+    void alignHorizontal();
+    void alignVertical();
 
 private:
     QTreeView* navigator_{nullptr};
     QStandardItemModel* navModel_{nullptr};
     QGraphicsScene* scene_{nullptr};
     GraphView* graphView_{nullptr};
+    // QGraphicsTextItem* layerLabel_{nullptr};
+    GraphNodeItem* primaryNode_;
+    bool isRendering_{false};
 
     QToolBar* graphToolBar_{nullptr};
     QAction* actionView_{nullptr};
