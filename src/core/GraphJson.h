@@ -1,6 +1,6 @@
 #pragma once
 
 #include <string>
-#include "core/GraphView.h"
+#include "IGraphView.h"
 
 std::string toJson(const GraphSnapshot& snap);

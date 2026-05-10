@@ -34,6 +34,11 @@ add_library(openarch_core
 
 target_include_directories(openarch_core PUBLIC
     src
+    src/core
+    src/db
+    src/gui
+    src/gui/EditorDialogs
+    src/gui/GraphModules
 )
 
 target_link_libraries(openarch_core PUBLIC
@@ -70,12 +75,12 @@ add_executable(openarch-gui
     src/gui/main.cpp
     src/gui/MainWindow.cpp
 
-    src/gui/NodeEditorDialog.cpp
-    src/gui/LayerEditorDialog.cpp
-    src/gui/EdgeEditorDialog.cpp
+    src/gui/EditorDialogs/NodeEditorDialog.cpp
+    src/gui/EditorDialogs/LayerEditorDialog.cpp
+    src/gui/EditorDialogs/EdgeEditorDialog.cpp
 
-    src/gui/GraphNodeItem.cpp
-    src/gui/GraphEdgeItem.cpp
+    src/gui/GraphModules/GraphNodeItem.cpp
+    src/gui/GraphModules/GraphEdgeItem.cpp
     
 
     src/gui/GraphView.cpp    

@@ -1,7 +1,12 @@
 #pragma once
 #include <QGraphicsObject>
 #include <unordered_set>
-#include "core/ArchitectureModel.h"
+#include <QGraphicsSceneMouseEvent>
+#include <QGraphicsSceneHoverEvent>
+
+class GraphView; // forward declaration
+
+#include "ArchitectureModel.h"
 class GraphEdgeItem;
 class GraphNodeItem : public QGraphicsObject {
     Q_OBJECT
@@ -17,11 +22,15 @@ public:
     void setPrimary(bool p);
     bool isPrimary() const;
     QString displayText() const;
+    void setEditable(bool enabled);
 
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
     void hoverEnterEvent(QGraphicsSceneHoverEvent*) override;
     void hoverLeaveEvent(QGraphicsSceneHoverEvent*) override;
+    void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
+    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+
 private:
     ArchitectureModel* model_;
     NodeId nodeId_;

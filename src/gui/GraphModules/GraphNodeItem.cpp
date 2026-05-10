@@ -1,8 +1,14 @@
+#include "GraphView.h"
 #include "GraphNodeItem.h"
 #include "GraphEdgeItem.h"
 
 #include <QPainter>
 #include <QCursor>
+
+
+#include <QGraphicsScene>
+#include <QGraphicsView>
+#include <QGraphicsSceneMouseEvent>
 
 static constexpr qreal NODE_WIDTH  = 140;
 static constexpr qreal NODE_HEIGHT = 60;
@@ -18,7 +24,7 @@ GraphNodeItem::GraphNodeItem(ArchitectureModel *m, NodeId id, QGraphicsItem *p)
              ItemIsSelectable |
              ItemSendsGeometryChanges);
 
-    setZValue(1); // ensure nodes are above edges
+    setZValue(1);
 }
 
 QRectF GraphNodeItem::boundingRect() const
@@ -138,4 +144,35 @@ void GraphNodeItem::setPrimary(bool p)
 bool GraphNodeItem::isPrimary() const
 {
     return isPrimary_;
+}
+void GraphNodeItem::setEditable(bool enabled)
+{
+    setFlag(QGraphicsItem::ItemIsMovable, enabled);
+    setFlag(QGraphicsItem::ItemIsSelectable, enabled);
+}
+
+void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
+{
+    auto* view = dynamic_cast<GraphView*>(scene()->views().first());
+    
+    if (view && view->mode() == GraphView::Mode::View)
+    {
+        event->ignore();  // 🔥 allow pan, block selection
+        return;
+    }
+
+    QGraphicsItem::mousePressEvent(event);
+}
+
+void GraphNodeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
+{
+    auto* view = dynamic_cast<GraphView*>(scene()->views().first());
+
+    if (view && view->mode() == GraphView::Mode::View)
+    {
+        event->ignore();
+        return;
+    }
+
+    QGraphicsItem::mouseDoubleClickEvent(event);
 }

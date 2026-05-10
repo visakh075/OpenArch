@@ -7,9 +7,9 @@
  * It does NOT own or define graph structures.
  * Rendering / layout logic may live here later.
  */
-class GraphView {
+class IGraphView {
 public:
-    virtual ~GraphView() = default;
+    virtual ~IGraphView() = default;
 
     // Render a snapshot (GUI / visualization layer will implement this)
     virtual void render(const GraphSnapshot& snapshot) = 0;

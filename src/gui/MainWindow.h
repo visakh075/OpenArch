@@ -7,8 +7,8 @@
 #include <QToolBar>
 #include <QActionGroup>
 
-#include "core/ArchitectureModel.h"
-#include "db/DbManagerSQLite.h"
+#include "ArchitectureModel.h"
+#include "DbManagerSQLite.h"
 #include "GraphView.h"
 
 class GraphNodeItem;
@@ -69,6 +69,7 @@ private:
     QAction* actionAdd_{nullptr};
     QAction* actionArch_{nullptr};
     QAction* actionConn_{nullptr};
+    QAction* actionLayout_{nullptr};
 
     DbManagerSQLite db_;
     ArchitectureModel* model_{nullptr};

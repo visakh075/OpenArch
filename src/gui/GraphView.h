@@ -12,6 +12,7 @@ class GraphView : public QGraphicsView
 public:
     enum class Mode {
         View,
+        Layout,
         Add,
         Arch,
         Connect
@@ -29,9 +30,18 @@ signals:
 protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
+    void keyReleaseEvent(QKeyEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+
+
 
 private:
+    bool isPanning_ = false;
+    bool spacePressed_ = false;
+    QPoint lastPanPoint_;
+
     Mode mode_ = Mode::View;
     GraphNodeItem* connectStartNode_ = nullptr;
 };

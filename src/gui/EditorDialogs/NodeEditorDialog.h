@@ -5,7 +5,7 @@
 #include <QPlainTextEdit>
 #include <QListWidget>
 
-#include "core/ArchitectureModel.h"
+#include "ArchitectureModel.h"
 
 class NodeEditorDialog : public QDialog {
     Q_OBJECT

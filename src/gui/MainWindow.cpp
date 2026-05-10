@@ -40,7 +40,7 @@ void MainWindow::setupUi()
 
     graphView_ = new GraphView(splitter);
     graphView_->setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
-    graphView_->setDragMode(QGraphicsView::RubberBandDrag);
+    // graphView_->setDragMode(QGraphicsView::RubberBandDrag);
 
     graphView_->setScene(scene_);
     graphView_->setRenderHint(QPainter::Antialiasing);
@@ -64,6 +64,7 @@ void MainWindow::setupToolbar()
     graphToolBar_ = addToolBar("Graph Modes");
 
     actionView_ = graphToolBar_->addAction("View (V)");
+    actionLayout_ = graphToolBar_->addAction("Layout (L)");    
     actionAdd_  = graphToolBar_->addAction("Add (A)");
     actionArch_ = graphToolBar_->addAction("Arch (R)");
     actionConn_ = graphToolBar_->addAction("Connect (C)");
@@ -72,12 +73,15 @@ void MainWindow::setupToolbar()
     actionAdd_->setCheckable(true);
     actionArch_->setCheckable(true);
     actionConn_->setCheckable(true);
+    actionLayout_->setCheckable(true); 
+
 
     QActionGroup* group = new QActionGroup(this);
     group->addAction(actionView_);
     group->addAction(actionAdd_);
     group->addAction(actionArch_);
     group->addAction(actionConn_);
+    group->addAction(actionLayout_);
 
     actionView_->setChecked(true);
 
@@ -93,6 +97,10 @@ void MainWindow::setupToolbar()
     connect(actionConn_, &QAction::triggered,
             this, [this]() { setGraphMode(GraphView::Mode::Connect); });
     
+    connect(actionLayout_, &QAction::triggered,
+        this, [this]() { setGraphMode(GraphView::Mode::Layout); });
+
+    actionLayout_->setShortcut(Qt::Key_L);
     actionView_->setShortcut(Qt::Key_V);
     actionAdd_->setShortcut(Qt::Key_A);
     actionArch_->setShortcut(Qt::Key_R);
@@ -286,7 +294,7 @@ void MainWindow::createNewLayer()
 
 void MainWindow::renderGraph(const GraphSnapshot& snap)
 {
-        if (!model_) {
+    if (!model_) {
         qWarning() << "renderGraph called with null model";
         return;
     }
@@ -295,26 +303,23 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
 
     primaryNode_ = nullptr;   // 🔥 CRITICAL FIX
 
-    // Recreate layer label (it was deleted by clear)
-    // layerLabel_ = new QGraphicsTextItem();
-    // layerLabel_->setDefaultTextColor(Qt::darkGray);
-    // layerLabel_->setZValue(100);
-
-    // QFont font("Arial", 10);
-    // font.setBold(true);
-    // layerLabel_->setFont(font);
-
-    // layerLabel_->setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
-
-    // scene_->addItem(layerLabel_);
-    
     std::unordered_map<NodeId, GraphNodeItem*> nodeItems;
 
     // 1️⃣ Create nodes
     int i = 0;
     for (const auto& n : snap.nodes) {
         auto* nodeItem = new GraphNodeItem(model_, n.id);
-        //nodeItem->setPos((i % 5) * 180, (i / 5) * 120);
+
+
+        auto mode = graphView_->mode();
+
+        bool selectable = (mode == GraphView::Mode::Layout || mode == GraphView::Mode::Arch);
+        bool movable    = (mode == GraphView::Mode::Layout);
+
+        nodeItem->setFlag(QGraphicsItem::ItemIsSelectable, selectable);
+        nodeItem->setFlag(QGraphicsItem::ItemIsMovable, movable);
+
+        nodeItem->setAcceptHoverEvents(true); // 🔥 enable hover ALWAYS
         
         auto nodeOpt = model_->getNodeById(n.id);
         bool restored = false;
@@ -366,32 +371,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         scene_->itemsBoundingRect(),
         Qt::KeepAspectRatio
     );
-
-    // Determine current layer text
-    // QString layerText = "Layer: ALL";
-
-    // QModelIndex index = navigator_->currentIndex();
-    // if (index.isValid())
-    // {
-    //     ItemType type =
-    //         static_cast<ItemType>(index.data(NavRole::Type).toInt());
-
-    //     if (type == ItemType::Layer)
-    //     {
-    //         layerText = "Layer: " + index.data().toString();
-    //     }
-    // }
-
-    // Update label
-    // layerLabel_->setPlainText(layerText);
-
-    // QRectF viewRect = graphView_->mapToScene(graphView_->viewport()->rect()).boundingRect();
-
-    // // small margin
-    // QPointF pos(viewRect.left() + 10,
-    //             viewRect.bottom() - 20);
-
-    // layerLabel_->setPos(pos);
     isRendering_ = false;
 }
 
@@ -539,6 +518,17 @@ void MainWindow::setGraphMode(GraphView::Mode mode)
         break;
     }
 
+    for (auto* item : scene_->items())
+    {
+        if (auto* node = qgraphicsitem_cast<GraphNodeItem*>(item))
+        {
+            bool selectable = (mode == GraphView::Mode::Layout || mode == GraphView::Mode::Arch);
+            bool movable    = (mode == GraphView::Mode::Layout);
+
+            node->setFlag(QGraphicsItem::ItemIsSelectable, selectable);
+            node->setFlag(QGraphicsItem::ItemIsMovable, movable);
+        }
+    }
     statusBar()->showMessage(text);
 }
 void MainWindow::onSelectionChanged()

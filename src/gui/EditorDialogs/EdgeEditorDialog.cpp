@@ -1,5 +1,5 @@
 #include "EdgeEditorDialog.h"
-#include "core/ArchitectureModel.h"
+#include "ArchitectureModel.h"
 
 #include <QVBoxLayout>
 #include <QLineEdit>

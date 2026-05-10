@@ -5,7 +5,7 @@
 #include <QPlainTextEdit>
 #include <QListWidget>
 
-#include "core/ArchitectureModel.h"
+#include "ArchitectureModel.h"
 
 class LayerEditorDialog : public QDialog {
     Q_OBJECT

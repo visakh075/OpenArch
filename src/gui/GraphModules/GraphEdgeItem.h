@@ -5,7 +5,7 @@
 #include <QPen>
 #include <QPainterPath>
 
-#include "core/ArchitectureModel.h"
+#include "ArchitectureModel.h"
 
 class GraphNodeItem;
 
