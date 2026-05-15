@@ -6,6 +6,7 @@
 #include <QKeyEvent>
 #include <QScrollBar>
 #include <QApplication>
+#include <QWidget>
 
 GraphView::GraphView(QWidget* parent)
     : QGraphicsView(parent)
