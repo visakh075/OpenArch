@@ -8,6 +8,8 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QPainterPathStroker>
 #include <QtMath>
+#include "GraphThemeManager.h"
+#include <QDebug>
 
 GraphEdgeItem::GraphEdgeItem(
     ArchitectureModel* model,
@@ -25,7 +27,7 @@ GraphEdgeItem::GraphEdgeItem(
 {
     setAcceptHoverEvents(true);
     setFlag(QGraphicsItem::ItemIsSelectable, true);
-    setZValue(0);
+    setZValue(-1);
 
     normalPen_ = QPen(Qt::darkGray, 2);
     highlightPen_ = QPen(Qt::blue, 3);
@@ -247,98 +249,318 @@ void GraphEdgeItem::paint(QPainter* painter,
     if (!src_ || !dst_)
         return;
 
-    painter->setRenderHint(QPainter::Antialiasing);
+    const auto& theme =
+        GraphThemeManager::theme();
 
-    QPainterPath path = buildPath();
+    /*
+     * EDGE STYLE
+     */
 
-    painter->setPen(hovered_ ? highlightPen_ : normalPen_);
-    painter->setBrush(Qt::NoBrush);
-    painter->drawPath(path);
+    const GraphEdgeStyle* style =
+        &theme.edge.normal;
 
-    // Arrow
-    if (path.elementCount() < 2)
+    if (isSelected())
+    {
+        style = &theme.edge.selected;
+    }
+    else if (hovered_)
+    {
+        style = &theme.edge.hover;
+    }
+
+    const auto& arrow =
+        style->arrow;
+
+    const auto& label =
+        style->label;
+
+    painter->setRenderHint(
+        QPainter::Antialiasing);
+
+    /*
+     * FULL PATH
+     */
+
+    QPainterPath fullPath =
+        buildPath();
+
+    if (fullPath.elementCount() < 2)
         return;
 
-    QPainterPath::Element e1 = path.elementAt(path.elementCount() - 1);
-    QPainterPath::Element e2 = path.elementAt(path.elementCount() - 2);
+    /*
+     * LAST SEGMENT
+     */
+
+    QPainterPath::Element e1 =
+        fullPath.elementAt(
+            fullPath.elementCount() - 1);
+
+    QPainterPath::Element e2 =
+        fullPath.elementAt(
+            fullPath.elementCount() - 2);
 
     QPointF last(e1.x, e1.y);
     QPointF prev(e2.x, e2.y);
 
+    /*
+     * LINE
+     */
+
     QLineF line(prev, last);
-    line.setLength(line.length() - 6);
 
-    QPointF arrowTip = line.p2();
-    double angle = std::atan2(-line.dy(), line.dx());
-    const double arrowSize = 10.0;
+    /*
+     * ARROW TIP
+     */
 
-    QPointF arrowP1 = arrowTip - QPointF(
-        std::cos(angle + M_PI / 6) * arrowSize,
-        -std::sin(angle + M_PI / 6) * arrowSize);
+    QPointF arrowTip =
+        line.p2();
 
-    QPointF arrowP2 = arrowTip - QPointF(
-        std::cos(angle - M_PI / 6) * arrowSize,
-        -std::sin(angle - M_PI / 6) * arrowSize);
+    double angle =
+        std::atan2(
+            -line.dy(),
+            line.dx());
+
+    double arrowWidth =
+        arrow.width;
+
+    double arrowHeight =
+        arrow.height;
+
+    /*
+     * ARROW GEOMETRY
+     */
+
+    QPointF arrowP1 =
+        arrowTip - QPointF(
+            std::cos(angle) * arrowWidth -
+            std::sin(angle) * arrowHeight / 2,
+
+            -std::sin(angle) * arrowWidth -
+            std::cos(angle) * arrowHeight / 2);
+
+    QPointF arrowP2 =
+        arrowTip - QPointF(
+            std::cos(angle) * arrowWidth +
+            std::sin(angle) * arrowHeight / 2,
+
+            -std::sin(angle) * arrowWidth +
+            std::cos(angle) * arrowHeight / 2);
+
+    /*
+     * LINE ENDS AT
+     * ARROW BASE CENTER
+     */
+
+    QPointF arrowBaseCenter =
+        (arrowP1 + arrowP2) / 2.0;
+
+    /*
+     * SHORTENED PATH
+     */
+
+    QPainterPath shortenedPath;
+
+    for (int i = 0;
+         i < fullPath.elementCount();
+         ++i)
+    {
+        auto e =
+            fullPath.elementAt(i);
+
+        QPointF p(e.x, e.y);
+
+        if (i == 0)
+        {
+            shortenedPath.moveTo(p);
+        }
+        else if (i ==
+                 fullPath.elementCount() - 1)
+        {
+            shortenedPath.lineTo(
+                arrowBaseCenter);
+        }
+        else
+        {
+            shortenedPath.lineTo(p);
+        }
+    }
+
+    /*
+     * EDGE LINE
+     */
+
+    QPen edgePen(
+        style->lineColor);
+
+    edgePen.setWidth(
+        style->lineWidth);
+
+    edgePen.setJoinStyle(
+        Qt::RoundJoin);
+
+    edgePen.setCapStyle(
+        Qt::RoundCap);
+
+    painter->setPen(edgePen);
+
+    painter->setBrush(
+        Qt::NoBrush);
+
+    painter->drawPath(
+        shortenedPath);
+
+    /*
+     * ARROW
+     */
 
     QPolygonF arrowHead;
-    arrowHead << arrowTip << arrowP1 << arrowP2;
 
-    painter->setBrush(hovered_ ? Qt::blue : Qt::darkGray);
-    painter->drawPolygon(arrowHead);
+    arrowHead << arrowTip
+              << arrowP1
+              << arrowP2;
 
-    // Add title to the node
-    if (hovered_)
+    QPen arrowPen(
+        arrow.lineColor);
+
+    arrowPen.setWidth(
+        arrow.lineWidth);
+
+    arrowPen.setJoinStyle(
+        Qt::RoundJoin);
+
+    painter->setPen(
+        arrowPen);
+
+    painter->setBrush(
+        arrow.fillColor);
+
+    painter->drawPolygon(
+        arrowHead);
+
+    /*
+     * LABEL
+     */
+
+
+    QString title =
+        QString::fromStdString(
+            edge_.edgeType);
+
+    /*
+        * FONT
+        */
+
+    QFont font;
+
+    font.setPointSize(
+        label.fontSize);
+
+    font.setBold(
+        label.bold);
+
+    painter->setFont(font);
+
+    QFontMetrics fm(font);
+
+    QRect textRect =
+        fm.boundingRect(title);
+
+    /*
+        * MIDPOINT
+        */
+
+    qreal t = 0.5;
+
+    QPointF p1 =
+        fullPath.pointAtPercent(t);
+
+    QPointF p2 =
+        fullPath.pointAtPercent(t + 0.01);
+
+    /*
+        * TEXT ANGLE
+        */
+
+    double textAngle =
+        std::atan2(
+            p2.y() - p1.y(),
+            p2.x() - p1.x());
+
+    double degrees =
+        textAngle * 180.0 / M_PI;
+
+    /*
+        * KEEP TEXT UPRIGHT
+        */
+
+    if (degrees > 90 ||
+        degrees < -90)
     {
-        QString title = QString::fromStdString(edge_.edgeType);
-
-        QFont font("Arial", 10);
-        painter->setFont(font);
-
-        QFontMetrics fm(font);
-        QRect textRect = fm.boundingRect(title);
-
-        // --- Midpoint of path ---
-        qreal t = 0.5;
-        QPointF p1 = path.pointAtPercent(t);
-        QPointF p2 = path.pointAtPercent(t + 0.01); // small step ahead
-
-        // --- Angle of edge ---
-        double angle = std::atan2(p2.y() - p1.y(),
-                                p2.x() - p1.x());
-
-        // Convert to degrees
-        double degrees = angle * 180.0 / M_PI;
-
-        // Keep text upright (avoid upside-down text)
-        if (degrees > 90 || degrees < -90)
-            degrees += 180;
-
-        painter->save();
-
-        // Move to midpoint
-        painter->translate(p1);
-
-        // Rotate along edge
-        painter->rotate(degrees);
-
-        // Offset text slightly above line
-        QPointF textPos(-textRect.width() / 2,
-                        -5);
-
-        // Optional: background for readability
-        QRect bgRect = textRect.adjusted(-4, -2, 4, 2);
-        bgRect.moveCenter(QPoint(0, -5));
-
-        // painter->setBrush(Qt::white);
-        // painter->setPen(Qt::NoPen);
-        // painter->drawRect(bgRect);
-
-        // Draw text
-        painter->setPen(Qt::white);
-        painter->drawText(textPos, title);
-
-        painter->restore();
+        degrees += 180;
     }
+
+    painter->save();
+
+    painter->translate(p1);
+
+    painter->rotate(degrees);
+
+    /*
+        * LABEL POSITION
+        */
+
+    QPointF textPos(
+        -textRect.width() / 2,
+        -label.offset);
+
+    /*
+        * BACKGROUND RECT
+        */
+
+    QRect bgRect =
+        textRect.adjusted(
+            -label.paddingX,
+            -label.paddingY,
+            label.paddingX,
+            label.paddingY);
+
+    bgRect.moveCenter(
+        QPoint(0,
+                -label.offset));
+
+    /*
+        * LABEL BACKGROUND
+        */
+
+    QPen bgPen(
+        label.borderColor);
+
+    bgPen.setWidth(
+        label.borderWidth);
+
+    painter->setPen(
+        bgPen);
+
+    painter->setBrush(
+        label.backgroundColor);
+
+    painter->drawRoundedRect(
+        bgRect,
+        label.radius,
+        label.radius);
+
+    /*
+        * LABEL TEXT
+        */
+
+    painter->setPen(
+        label.textColor);
+
+    painter->drawText(
+        textPos,
+        title);
+
+    painter->restore();
 
 }
 
@@ -355,21 +577,41 @@ void GraphEdgeItem::updateEndpoints()
     update();
 }
 
-void GraphEdgeItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
+void GraphEdgeItem::hoverEnterEvent(
+    QGraphicsSceneHoverEvent* event)
 {
     hovered_ = true;
-    setZValue(10);
-    setCursor(Qt::PointingHandCursor);
+
+    if (isSelected())
+    {
+        setZValue(20);
+    }
+    else
+    {
+        setZValue(10);
+    }
+
     update();
+
     QGraphicsObject::hoverEnterEvent(event);
 }
 
-void GraphEdgeItem::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
+void GraphEdgeItem::hoverLeaveEvent(
+    QGraphicsSceneHoverEvent* event)
 {
     hovered_ = false;
-    setZValue(-1);
-    unsetCursor();
+
+    if (isSelected())
+    {
+        setZValue(20);
+    }
+    else
+    {
+        setZValue(-1);
+    }
+
     update();
+
     QGraphicsObject::hoverLeaveEvent(event);
 }
 

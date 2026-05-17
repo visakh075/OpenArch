@@ -39,6 +39,7 @@ target_include_directories(openarch_core PUBLIC
     src/gui
     src/gui/EditorDialogs
     src/gui/GraphModules
+    src/gui/theme
 )
 
 target_link_libraries(openarch_core PUBLIC
@@ -84,6 +85,7 @@ add_executable(openarch-gui
     
 
     src/gui/GraphView.cpp    
+    src/gui/theme/GraphThemeManager.cpp
 )
 
 

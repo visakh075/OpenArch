@@ -1,0 +1,270 @@
+{
+    "name": "OpenArch Dark",
+
+    "view":
+    {
+        "background": "#202020",
+
+        "grid":
+        {
+            "enabled": true,
+
+            "minorColor": "#2a2a2a",
+
+            "majorColor": "#353535",
+
+            "spacing": 20,
+
+            "majorSpacing": 100
+        }
+    },
+
+    "node":
+    {
+        "normal":
+        {
+            "background": "#2d2d30aa",
+
+            "border": "#6a95ff",
+
+            "borderWidth": 2,
+
+            "radius": 8,
+
+            "title":
+            {
+                "color": "#ffffff",
+
+                "size": 14,
+
+                "bold": true
+            },
+
+            "body":
+            {
+                "color": "#d0d0d0",
+
+                "size": 11,
+
+                "bold": false
+            }
+        },
+
+        "hover":
+        {
+            "background": "#35353a",
+
+            "border": "#ffffff",
+
+            "borderWidth": 3,
+
+            "radius": 8,
+
+            "title":
+            {
+                "color": "#ffffff",
+
+                "size": 14,
+
+                "bold": true
+            },
+
+            "body":
+            {
+                "color": "#ffffff",
+
+                "size": 11,
+
+                "bold": false
+            }
+        },
+
+        "selected":
+        {
+            "background": "#3a3520",
+
+            "border": "#ffcc00",
+
+            "borderWidth": 4,
+
+            "radius": 8,
+
+            "title":
+            {
+                "color": "#ffcc00",
+
+                "size": 14,
+
+                "bold": true
+            },
+
+            "body":
+            {
+                "color": "#ffffff",
+
+                "size": 11,
+
+                "bold": false
+            }
+        }
+    },
+
+    "edge":
+    {
+        "normal":
+        {
+            "lineColor": "#7aa2f7",
+
+            "lineWidth": 2,
+
+            "arrow":
+            {
+                "lineColor": "#7aa2f7",
+
+                "fillColor": "#7aa2f7aa",
+
+                "width": 14,
+
+                "height": 10,
+
+                "lineWidth": 2
+            },
+
+            "label":
+            {
+                "textColor": "#d0d0d0",
+
+                "backgroundColor": "#20202000",
+
+                "borderColor": "#404040",
+
+                "borderWidth": 1,
+
+                "fontSize": 11,
+
+                "bold": false,
+
+                "paddingX": 0,
+
+                "paddingY": 0,
+
+                "radius": 4,
+
+                "offset": 8
+            }
+        },
+
+        "hover":
+        {
+            "lineColor": "#ffffff",
+
+            "lineWidth": 3,
+
+            "arrow":
+            {
+                "lineColor": "#ffffff",
+
+                "fillColor": "#ffffff",
+
+                "width": 16,
+
+                "height": 12,
+
+                "lineWidth": 2
+            },
+
+            "label":
+            {
+                "textColor": "#ffffff",
+
+                "backgroundColor": "#2c2c2c",
+
+                "borderColor": "#ffffff",
+
+                "borderWidth": 1,
+
+                "fontSize": 11,
+
+                "bold": true,
+
+                "paddingX": 6,
+
+                "paddingY": 3,
+
+                "radius": 4,
+
+                "offset": 8
+            }
+        },
+
+        "selected":
+        {
+            "lineColor": "#ffcc00",
+
+            "lineWidth": 4,
+
+            "arrow":
+            {
+                "lineColor": "#ffcc00",
+
+                "fillColor": "#ffcc00",
+
+                "width": 18,
+
+                "height": 14,
+
+                "lineWidth": 3
+            },
+
+            "label":
+            {
+                "textColor": "#ffcc00",
+
+                "backgroundColor": "#3a3520",
+
+                "borderColor": "#ffcc00",
+
+                "borderWidth": 2,
+
+                "fontSize": 11,
+
+                "bold": true,
+
+                "paddingX": 6,
+
+                "paddingY": 3,
+
+                "radius": 4,
+
+                "offset": 8
+            }
+        }
+    },
+
+    "port":
+    {
+        "inputColor": "#4ec9b0",
+
+        "outputColor": "#dcdcaa",
+
+        "hoverColor": "#ffffff",
+
+        "radius": 6
+    },
+
+    "selection":
+    {
+        "outline": "#ffcc00",
+
+        "fill": "#ffcc0022"
+    },
+
+    "interaction":
+    {
+        "hoverOutline": "#ffffff",
+
+        "invalidConnection": "#ff4444",
+
+        "dropTarget": "#00ff88"
+    }
+}
