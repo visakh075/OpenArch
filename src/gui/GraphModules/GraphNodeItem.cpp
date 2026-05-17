@@ -45,54 +45,6 @@ QString GraphNodeItem::displayText() const
            QString::fromStdString(n->type);
 }
 
-// void GraphNodeItem::paint(QPainter *p,
-//                           const QStyleOptionGraphicsItem *,
-//                           QWidget *)
-// {
-//     p->setRenderHint(QPainter::Antialiasing);
-
-//     // --- Border ---
-//     QPen pen;
-
-//     if (isPrimary_)  // 🔴 primary node (anchor)
-//     {
-//         pen = QPen(Qt::red, 3);
-//     }
-//     else if (isSelected())
-//     {
-//         pen = QPen(Qt::blue, 2);
-//     }
-//     else if (hovered_)
-//     {
-//         pen = QPen(Qt::darkGray, 2);
-//     }
-//     else
-//     {
-//         pen = QPen(Qt::black, 1);
-//     }
-
-//     p->setPen(pen);
-
-//     // --- Background ---
-//     if (isSelected())
-//     {
-//         p->setBrush(QColor(220, 235, 255));
-//     }
-//     else
-//     {
-//         p->setBrush(Qt::white);
-//     }
-
-//     // --- Draw node ---
-//     p->drawRoundedRect(boundingRect(), RADIUS, RADIUS);
-
-//     // --- Text ---
-//     p->setPen(Qt::black);
-//     p->drawText(boundingRect().adjusted(6, 6, -6, -6),
-//                 Qt::AlignCenter,
-//                 displayText());
-// }
-
 void GraphNodeItem::paint(QPainter *p,
                           const QStyleOptionGraphicsItem *,
                           QWidget *)
@@ -101,7 +53,8 @@ void GraphNodeItem::paint(QPainter *p,
         QPainter::Antialiasing);
 
     const auto& theme =
-        GraphThemeManager::theme();
+        // GraphThemeManager::theme;
+        GraphThemeManager::instance()->theme();
 
     /*
      * STYLE

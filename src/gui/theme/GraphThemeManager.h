@@ -4,17 +4,47 @@
 
 #include "GraphTheme.h"
 
+#include <QObject>
 #include <QString>
 
-class GraphThemeManager
+class GraphThemeManager : public QObject
 {
+    Q_OBJECT
+
 public:
 
-    static bool load(const QString& path);
+    explicit GraphThemeManager(
+        QObject* parent = nullptr);
 
-    static const GraphTheme& theme();
+    static GraphThemeManager* instance();
+
+    /*
+     * LOAD / SAVE
+     */
+
+    bool load(
+        const QString& path);
+
+    bool save(
+        const QString& path);
+
+    /*
+     * ACCESS
+     */
+
+    const GraphTheme& theme() const;
+
+    GraphTheme& mutableTheme();
+
+    void notifyThemeChanged();
+
+signals:
+
+    void themeChanged();
 
 private:
 
-    static GraphTheme m_theme;
+    static GraphThemeManager* s_instance;
+
+    GraphTheme m_theme;
 };

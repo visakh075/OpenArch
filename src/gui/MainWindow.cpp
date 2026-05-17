@@ -12,6 +12,8 @@
 #include "LayerEditorDialog.h"
 #include "GraphNodeItem.h"
 #include "GraphEdgeItem.h"
+#include "GraphThemeManager.h"
+#include "ThemeEditorDock.h"
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -20,6 +22,8 @@ MainWindow::MainWindow(QWidget* parent)
     setupMenu();
     setupToolbar();
     setupConnections();
+
+    
 }
 
 MainWindow::~MainWindow()
@@ -27,37 +31,203 @@ MainWindow::~MainWindow()
     delete model_;
 }
 
+// void MainWindow::setupUi()
+// {
+//     // auto* splitter = new QSplitter(this);
+
+//     // navigator_ = new QTreeView(splitter);
+//     // navModel_ = new QStandardItemModel(this);
+//     // navModel_->setHorizontalHeaderLabels({"Architecture"});
+//     // navigator_->setModel(navModel_);
+
+//     // scene_ = new QGraphicsScene(this);
+
+//     // graphView_ = new GraphView(splitter);
+
+//     navModel_ = new QStandardItemModel(this);
+
+//     navModel_->setHorizontalHeaderLabels(
+//         {"Architecture"});
+
+//     navigator_ =
+//         new QTreeView;
+
+//     navigator_->setModel(navModel_);
+
+//     /*
+//     * ARCHITECTURE DOCK
+//     */
+
+//     architectureDock_ =
+//         new QDockWidget(
+//             "Architecture",
+//             this);
+
+//     architectureDock_->setWidget(
+//         navigator_);
+
+//     addDockWidget(
+//         Qt::LeftDockWidgetArea,
+//         architectureDock_);
+
+//     /*
+//     * GRAPH
+//     */
+
+//     scene_ =
+//         new QGraphicsScene(this);
+
+//     graphView_ =
+//         new GraphView(this);
+
+//     graphView_->setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+//     // graphView_->setDragMode(QGraphicsView::RubberBandDrag);
+
+//     graphView_->setScene(scene_);
+//     graphView_->setRenderHint(QPainter::Antialiasing);
+//     graphView_->setInteractive(true);
+
+//     // splitter->addWidget(navigator_);
+//     // splitter->addWidget(graphView_);
+
+//     // // Set 20:80 ratio
+//     // splitter->setStretchFactor(0, 1);  // navigator
+//     // splitter->setStretchFactor(1, 4);  // graph
+
+//     setCentralWidget(graphView_);
+//     // Optional: initial size hint
+//     // splitter->setSizes({200, 800});
+//     // setCentralWidget(splitter);
+
+//     splitter->setSizes({200, 800});
+
+//     setCentralWidget(splitter);
+
+//     /*
+
+//     * THEME EDITOR
+//     */
+
+//     ThemeEditorDock* themeDock =
+//         new ThemeEditorDock(this);
+
+//     addDockWidget(
+//         Qt::RightDockWidgetArea,
+//         themeDock);
+
+//     /*
+//     * LIVE THEME UPDATE
+//     */
+
+// }
+
 void MainWindow::setupUi()
 {
-    auto* splitter = new QSplitter(this);
+    /*
+     * NAVIGATION MODEL
+     */
 
-    navigator_ = new QTreeView(splitter);
-    navModel_ = new QStandardItemModel(this);
-    navModel_->setHorizontalHeaderLabels({"Architecture"});
-    navigator_->setModel(navModel_);
+    navModel_ =
+        new QStandardItemModel(this);
 
-    scene_ = new QGraphicsScene(this);
+    navModel_->setHorizontalHeaderLabels(
+        {"Architecture"});
 
-    graphView_ = new GraphView(splitter);
-    graphView_->setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
-    // graphView_->setDragMode(QGraphicsView::RubberBandDrag);
+    /*
+     * NAVIGATOR
+     */
 
-    graphView_->setScene(scene_);
-    graphView_->setRenderHint(QPainter::Antialiasing);
+    navigator_ =
+        new QTreeView;
+
+    navigator_->setModel(
+        navModel_);
+
+    /*
+     * ARCHITECTURE DOCK
+     */
+
+    architectureDock_ =
+        new QDockWidget(
+            "Architecture",
+            this);
+
+    architectureDock_->setObjectName(
+        "ArchitectureDock");
+
+    architectureDock_->setWidget(
+        navigator_);
+
+    addDockWidget(
+        Qt::LeftDockWidgetArea,
+        architectureDock_);
+
+    /*
+     * GRAPH SCENE
+     */
+
+    scene_ =
+        new QGraphicsScene(this);
+
+    /*
+     * GRAPH VIEW
+     */
+
+    graphView_ =
+        new GraphView(this);
+
+    graphView_->setScene(
+        scene_);
+
+    graphView_->setViewportUpdateMode(
+        QGraphicsView::FullViewportUpdate);
+
+    graphView_->setRenderHint(
+        QPainter::Antialiasing);
+
     graphView_->setInteractive(true);
 
-    splitter->addWidget(navigator_);
-    splitter->addWidget(graphView_);
+    /*
+     * CENTRAL WIDGET
+     */
 
-    // Set 20:80 ratio
-    splitter->setStretchFactor(0, 1);  // navigator
-    splitter->setStretchFactor(1, 4);  // graph
+    setCentralWidget(
+        graphView_);
 
-    // Optional: initial size hint
-    splitter->setSizes({200, 800});
+    /*
+     * THEME EDITOR
+     */
 
-    setCentralWidget(splitter);
+    ThemeEditorDock* themeDock =
+        new ThemeEditorDock(this);
+
+    themeDock->setObjectName(
+        "ThemeDock");
+
+    addDockWidget(
+        Qt::RightDockWidgetArea,
+        themeDock);
+
+    /*
+     * LIVE THEME UPDATE
+     */
+
+    connect(
+        GraphThemeManager::instance(),
+        &GraphThemeManager::themeChanged,
+        this,
+        [this]()
+        {
+            scene_->update();
+        });
+
+    /*
+     * DOCK CONFIG
+     */
+
+    setDockNestingEnabled(true);
 }
+
 
 void MainWindow::setupToolbar()
 {
@@ -74,7 +244,6 @@ void MainWindow::setupToolbar()
     actionArch_->setCheckable(true);
     actionConn_->setCheckable(true);
     actionLayout_->setCheckable(true); 
-
 
     QActionGroup* group = new QActionGroup(this);
     group->addAction(actionView_);
@@ -144,6 +313,14 @@ void MainWindow::setupConnections()
             this, &MainWindow::handleConnectNodes);
     connect(scene_, &QGraphicsScene::selectionChanged,
             this, &MainWindow::onSelectionChanged);
+    connect(
+    GraphThemeManager::instance(),
+    &GraphThemeManager::themeChanged,
+    scene_,
+    [this]()
+    {
+        scene_->update();
+    });
     }
 
 void MainWindow::openDatabase()

@@ -86,6 +86,7 @@ add_executable(openarch-gui
 
     src/gui/GraphView.cpp    
     src/gui/theme/GraphThemeManager.cpp
+    src/gui/theme/ThemeEditorDock.cpp
 )
 
 

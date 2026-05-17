@@ -1,3 +1,4 @@
+
 // src/gui/theme/GraphThemeManager.cpp
 
 #include "GraphThemeManager.h"
@@ -7,7 +8,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-GraphTheme GraphThemeManager::m_theme;
+GraphThemeManager*
+GraphThemeManager::s_instance = nullptr;
 
 namespace
 {
@@ -38,7 +40,7 @@ bool loadBool(
 }
 
 /*
- * TEXT STYLE
+ * LOAD TEXT STYLE
  */
 
 GraphTextStyle loadTextStyle(
@@ -65,7 +67,7 @@ GraphTextStyle loadTextStyle(
 }
 
 /*
- * NODE STYLE
+ * LOAD NODE STYLE
  */
 
 GraphNodeStyle loadNodeStyle(
@@ -107,7 +109,44 @@ GraphNodeStyle loadNodeStyle(
 }
 
 /*
- * EDGE LABEL STYLE
+ * LOAD ARROW STYLE
+ */
+
+GraphArrowStyle loadArrowStyle(
+    const QJsonObject& obj)
+{
+    GraphArrowStyle style;
+
+    style.lineColor =
+        loadColor(obj,
+                  "lineColor",
+                  "#ffffff");
+
+    style.fillColor =
+        loadColor(obj,
+                  "fillColor",
+                  "#ffffff");
+
+    style.width =
+        loadInt(obj,
+                "width",
+                14);
+
+    style.height =
+        loadInt(obj,
+                "height",
+                10);
+
+    style.lineWidth =
+        loadInt(obj,
+                "lineWidth",
+                2);
+
+    return style;
+}
+
+/*
+ * LOAD EDGE LABEL STYLE
  */
 
 GraphEdgeLabelStyle loadEdgeLabelStyle(
@@ -169,44 +208,7 @@ GraphEdgeLabelStyle loadEdgeLabelStyle(
 }
 
 /*
- * ARROW STYLE
- */
-
-GraphArrowStyle loadArrowStyle(
-    const QJsonObject& obj)
-{
-    GraphArrowStyle style;
-
-    style.lineColor =
-        loadColor(obj,
-                  "lineColor",
-                  "#ffffff");
-
-    style.fillColor =
-        loadColor(obj,
-                  "fillColor",
-                  "#ffffff");
-
-    style.width =
-        loadInt(obj,
-                "width",
-                14);
-
-    style.height =
-        loadInt(obj,
-                "height",
-                10);
-
-    style.lineWidth =
-        loadInt(obj,
-                "lineWidth",
-                2);
-
-    return style;
-}
-
-/*
- * EDGE STYLE
+ * LOAD EDGE STYLE
  */
 
 GraphEdgeStyle loadEdgeStyle(
@@ -237,25 +239,192 @@ GraphEdgeStyle loadEdgeStyle(
     return style;
 }
 
+/*
+ * SAVE TEXT STYLE
+ */
+
+QJsonObject saveTextStyle(
+    const GraphTextStyle& style)
+{
+    QJsonObject obj;
+
+    obj["color"] =
+        style.color.name(
+            QColor::HexArgb);
+
+    obj["size"] =
+        style.size;
+
+    obj["bold"] =
+        style.bold;
+
+    return obj;
+}
+
+/*
+ * SAVE NODE STYLE
+ */
+
+QJsonObject saveNodeStyle(
+    const GraphNodeStyle& style)
+{
+    QJsonObject obj;
+
+    obj["background"] =
+        style.background.name(
+            QColor::HexArgb);
+
+    obj["border"] =
+        style.border.name(
+            QColor::HexArgb);
+
+    obj["borderWidth"] =
+        style.borderWidth;
+
+    obj["radius"] =
+        style.radius;
+
+    obj["title"] =
+        saveTextStyle(
+            style.title);
+
+    obj["body"] =
+        saveTextStyle(
+            style.body);
+
+    return obj;
+}
+
+/*
+ * SAVE ARROW STYLE
+ */
+
+QJsonObject saveArrowStyle(
+    const GraphArrowStyle& style)
+{
+    QJsonObject obj;
+
+    obj["lineColor"] =
+        style.lineColor.name(
+            QColor::HexArgb);
+
+    obj["fillColor"] =
+        style.fillColor.name(
+            QColor::HexArgb);
+
+    obj["width"] =
+        style.width;
+
+    obj["height"] =
+        style.height;
+
+    obj["lineWidth"] =
+        style.lineWidth;
+
+    return obj;
+}
+
+/*
+ * SAVE EDGE LABEL STYLE
+ */
+
+QJsonObject saveEdgeLabelStyle(
+    const GraphEdgeLabelStyle& style)
+{
+    QJsonObject obj;
+
+    obj["textColor"] =
+        style.textColor.name(
+            QColor::HexArgb);
+
+    obj["backgroundColor"] =
+        style.backgroundColor.name(
+            QColor::HexArgb);
+
+    obj["borderColor"] =
+        style.borderColor.name(
+            QColor::HexArgb);
+
+    obj["borderWidth"] =
+        style.borderWidth;
+
+    obj["fontSize"] =
+        style.fontSize;
+
+    obj["bold"] =
+        style.bold;
+
+    obj["paddingX"] =
+        style.paddingX;
+
+    obj["paddingY"] =
+        style.paddingY;
+
+    obj["radius"] =
+        style.radius;
+
+    obj["offset"] =
+        style.offset;
+
+    return obj;
+}
+
+/*
+ * SAVE EDGE STYLE
+ */
+
+QJsonObject saveEdgeStyle(
+    const GraphEdgeStyle& style)
+{
+    QJsonObject obj;
+
+    obj["lineColor"] =
+        style.lineColor.name(
+            QColor::HexArgb);
+
+    obj["lineWidth"] =
+        style.lineWidth;
+
+    obj["arrow"] =
+        saveArrowStyle(
+            style.arrow);
+
+    obj["label"] =
+        saveEdgeLabelStyle(
+            style.label);
+
+    return obj;
+}
+
 }
 
 /*
  * PUBLIC
  */
 
+GraphThemeManager::GraphThemeManager(
+    QObject* parent)
+    : QObject(parent)
+{
+    s_instance = this;
+}
+
+GraphThemeManager*
+GraphThemeManager::instance()
+{
+    return s_instance;
+}
+
 bool GraphThemeManager::load(
     const QString& path)
 {
-    qDebug()
-        << "Loading theme:"
-        << path;
-
     QFile file(path);
 
     if (!file.open(QIODevice::ReadOnly))
     {
         qDebug()
-            << "Failed to open theme file";
+            << "Failed to open theme file:"
+            << path;
 
         return false;
     }
@@ -276,14 +445,6 @@ bool GraphThemeManager::load(
         qDebug()
             << "Theme parse error:"
             << error.errorString();
-
-        return false;
-    }
-
-    if (!doc.isObject())
-    {
-        qDebug()
-            << "Theme root is not object";
 
         return false;
     }
@@ -393,80 +554,7 @@ bool GraphThemeManager::load(
                     .toObject());
     }
 
-    /*
-     * PORT
-     */
-
-    {
-        QJsonObject portObj =
-            root.value("port")
-                .toObject();
-
-        m_theme.port.inputColor =
-            loadColor(portObj,
-                      "inputColor",
-                      "#4ec9b0");
-
-        m_theme.port.outputColor =
-            loadColor(portObj,
-                      "outputColor",
-                      "#dcdcaa");
-
-        m_theme.port.hoverColor =
-            loadColor(portObj,
-                      "hoverColor",
-                      "#ffffff");
-
-        m_theme.port.radius =
-            loadInt(portObj,
-                    "radius",
-                    6);
-    }
-
-    /*
-     * SELECTION
-     */
-
-    {
-        QJsonObject selectionObj =
-            root.value("selection")
-                .toObject();
-
-        m_theme.selection.outline =
-            loadColor(selectionObj,
-                      "outline",
-                      "#ffcc00");
-
-        m_theme.selection.fill =
-            loadColor(selectionObj,
-                      "fill",
-                      "#ffcc0022");
-    }
-
-    /*
-     * INTERACTION
-     */
-
-    {
-        QJsonObject interactionObj =
-            root.value("interaction")
-                .toObject();
-
-        m_theme.interaction.hoverOutline =
-            loadColor(interactionObj,
-                      "hoverOutline",
-                      "#ffffff");
-
-        m_theme.interaction.invalidConnection =
-            loadColor(interactionObj,
-                      "invalidConnection",
-                      "#ff4444");
-
-        m_theme.interaction.dropTarget =
-            loadColor(interactionObj,
-                      "dropTarget",
-                      "#00ff88");
-    }
+    emit themeChanged();
 
     qDebug()
         << "Theme loaded successfully";
@@ -474,8 +562,88 @@ bool GraphThemeManager::load(
     return true;
 }
 
+bool GraphThemeManager::save(
+    const QString& path)
+{
+    QJsonObject root;
+
+    root["name"] =
+        m_theme.name;
+
+    /*
+     * NODE
+     */
+
+    {
+        QJsonObject nodeObj;
+
+        nodeObj["normal"] =
+            saveNodeStyle(
+                m_theme.node.normal);
+
+        nodeObj["hover"] =
+            saveNodeStyle(
+                m_theme.node.hover);
+
+        nodeObj["selected"] =
+            saveNodeStyle(
+                m_theme.node.selected);
+
+        root["node"] =
+            nodeObj;
+    }
+
+    /*
+     * EDGE
+     */
+
+    {
+        QJsonObject edgeObj;
+
+        edgeObj["normal"] =
+            saveEdgeStyle(
+                m_theme.edge.normal);
+
+        edgeObj["hover"] =
+            saveEdgeStyle(
+                m_theme.edge.hover);
+
+        edgeObj["selected"] =
+            saveEdgeStyle(
+                m_theme.edge.selected);
+
+        root["edge"] =
+            edgeObj;
+    }
+
+    QJsonDocument doc(root);
+
+    QFile file(path);
+
+    if (!file.open(QIODevice::WriteOnly))
+    {
+        return false;
+    }
+
+    file.write(
+        doc.toJson(
+            QJsonDocument::Indented));
+
+    return true;
+}
+
 const GraphTheme&
-GraphThemeManager::theme()
+GraphThemeManager::theme() const
+{
+    return m_theme;
+}
+
+void GraphThemeManager::notifyThemeChanged()
+{
+    emit themeChanged();
+}
+GraphTheme&
+GraphThemeManager::mutableTheme()
 {
     return m_theme;
 }

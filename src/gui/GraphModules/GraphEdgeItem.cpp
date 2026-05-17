@@ -250,7 +250,8 @@ void GraphEdgeItem::paint(QPainter* painter,
         return;
 
     const auto& theme =
-        GraphThemeManager::theme();
+        GraphThemeManager::instance()->theme();
+        // GraphThemeManager::theme();
 
     /*
      * EDGE STYLE
@@ -564,11 +565,119 @@ void GraphEdgeItem::paint(QPainter* painter,
 
 }
 
+// QPainterPath GraphEdgeItem::shape() const
+// {
+//     QPainterPathStroker stroker;
+//     stroker.setWidth(12);
+//     return stroker.createStroke(buildPath());
+// }
+
 QPainterPath GraphEdgeItem::shape() const
 {
+    QPainterPath result;
+
+    /*
+     * EDGE HIT AREA
+     */
+
     QPainterPathStroker stroker;
+
     stroker.setWidth(12);
-    return stroker.createStroke(buildPath());
+
+    result.addPath(
+        stroker.createStroke(
+            buildPath()));
+
+    /*
+     * LABEL HIT AREA
+     */
+
+    QString title =
+        QString::fromStdString(
+            edge_.edgeType);
+
+    if (!title.isEmpty())
+    {
+        const auto& theme =
+            GraphThemeManager::instance()
+                ->theme();
+
+        const GraphEdgeStyle* style =
+            &theme.edge.normal;
+
+        if (isSelected())
+        {
+            style =
+                &theme.edge.selected;
+        }
+        else if (hovered_)
+        {
+            style =
+                &theme.edge.hover;
+        }
+
+        const auto& label =
+            style->label;
+
+        /*
+         * FONT
+         */
+
+        QFont font;
+
+        font.setPointSize(
+            label.fontSize);
+
+        font.setBold(
+            label.bold);
+
+        QFontMetrics fm(font);
+
+        QRect textRect =
+            fm.boundingRect(title);
+
+        /*
+         * PATH MIDPOINT
+         */
+
+        QPainterPath path =
+            buildPath();
+
+        QPointF p =
+            path.pointAtPercent(0.5);
+
+        /*
+         * LABEL RECT
+         */
+
+        QRectF bgRect =
+            textRect.adjusted(
+                -label.paddingX,
+                -label.paddingY,
+                label.paddingX,
+                label.paddingY);
+
+        bgRect.moveCenter(
+            QPointF(
+                p.x(),
+                p.y() - label.offset));
+
+        /*
+         * ADD LABEL AREA
+         */
+
+        QPainterPath labelPath;
+
+        labelPath.addRoundedRect(
+            bgRect,
+            label.radius,
+            label.radius);
+
+        result.addPath(
+            labelPath);
+    }
+
+    return result;
 }
 
 void GraphEdgeItem::updateEndpoints()
