@@ -257,23 +257,23 @@ void GraphEdgeItem::paint(QPainter* painter,
      * EDGE STYLE
      */
 
-    const GraphEdgeStyle* style =
+    const GraphEdgeState* State =
         &theme.edge.normal;
 
     if (isSelected())
     {
-        style = &theme.edge.selected;
+        State = &theme.edge.selected;
     }
     else if (hovered_)
     {
-        style = &theme.edge.hover;
+        State = &theme.edge.hover;
     }
 
     const auto& arrow =
-        style->arrow;
+        State->arrow;
 
     const auto& label =
-        style->label;
+        State->label;
 
     painter->setRenderHint(
         QPainter::Antialiasing);
@@ -391,10 +391,10 @@ void GraphEdgeItem::paint(QPainter* painter,
      */
 
     QPen edgePen(
-        style->lineColor);
+        State->lineColor);
 
     edgePen.setWidth(
-        style->lineWidth);
+        State->lineWidth);
 
     edgePen.setJoinStyle(
         Qt::RoundJoin);
@@ -565,13 +565,6 @@ void GraphEdgeItem::paint(QPainter* painter,
 
 }
 
-// QPainterPath GraphEdgeItem::shape() const
-// {
-//     QPainterPathStroker stroker;
-//     stroker.setWidth(12);
-//     return stroker.createStroke(buildPath());
-// }
-
 QPainterPath GraphEdgeItem::shape() const
 {
     QPainterPath result;
@@ -602,22 +595,22 @@ QPainterPath GraphEdgeItem::shape() const
             GraphThemeManager::instance()
                 ->theme();
 
-        const GraphEdgeStyle* style =
+        const GraphEdgeState* State =
             &theme.edge.normal;
 
         if (isSelected())
         {
-            style =
+            State =
                 &theme.edge.selected;
         }
         else if (hovered_)
         {
-            style =
+            State =
                 &theme.edge.hover;
         }
 
         const auto& label =
-            style->label;
+            State->label;
 
         /*
          * FONT

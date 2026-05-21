@@ -6,7 +6,26 @@
 #include <QString>
 
 /*
+ * =========================================================
+ * TEXT STYLE
+ * =========================================================
+ */
+
+struct GraphTextStyle
+{
+    QColor color;
+
+    int size = 12;
+
+    bool bold = false;
+
+    bool italic = false;
+};
+
+/*
+ * =========================================================
  * VIEW
+ * =========================================================
  */
 
 struct GraphGridTheme
@@ -14,9 +33,11 @@ struct GraphGridTheme
     bool enabled = true;
 
     QColor minorColor;
+
     QColor majorColor;
 
     int spacing = 20;
+
     int majorSpacing = 100;
 };
 
@@ -28,25 +49,15 @@ struct GraphViewTheme
 };
 
 /*
- * TEXT
+ * =========================================================
+ * NODE STATE
+ * =========================================================
  */
 
-struct GraphTextStyle
-{
-    QColor color;
-
-    int size = 12;
-
-    bool bold = false;
-};
-
-/*
- * NODE
- */
-
-struct GraphNodeStyle
+struct GraphNodeState
 {
     QColor background;
+
     QColor border;
 
     int borderWidth = 2;
@@ -56,23 +67,32 @@ struct GraphNodeStyle
     int padding = 8;
 
     GraphTextStyle title;
+
     GraphTextStyle body;
 };
 
+/*
+ * =========================================================
+ * NODE STYLE
+ * =========================================================
+ */
+
 struct GraphNodeTheme
 {
-    GraphNodeStyle normal;
+    GraphNodeState normal;
 
-    GraphNodeStyle hover;
+    GraphNodeState hover;
 
-    GraphNodeStyle selected;
+    GraphNodeState selected;
 };
 
 /*
- * EDGE
+ * =========================================================
+ * EDGE LABEL STATE
+ * =========================================================
  */
 
-struct GraphEdgeLabelStyle
+struct GraphEdgeLabelState
 {
     QColor textColor;
 
@@ -87,6 +107,7 @@ struct GraphEdgeLabelStyle
     bool bold = false;
 
     int paddingX = 6;
+
     int paddingY = 3;
 
     int radius = 4;
@@ -94,7 +115,13 @@ struct GraphEdgeLabelStyle
     int offset = 8;
 };
 
-struct GraphArrowStyle
+/*
+ * =========================================================
+ * ARROW STATE
+ * =========================================================
+ */
+
+struct GraphArrowState
 {
     QColor lineColor;
 
@@ -103,6 +130,7 @@ struct GraphArrowStyle
     QColor borderColor;
 
     int width = 14;
+
     int height = 10;
 
     int lineWidth = 2;
@@ -110,7 +138,13 @@ struct GraphArrowStyle
     int borderWidth = 1;
 };
 
-struct GraphEdgeStyle
+/*
+ * =========================================================
+ * EDGE STATE
+ * =========================================================
+ */
+
+struct GraphEdgeState
 {
     QColor lineColor;
 
@@ -118,46 +152,81 @@ struct GraphEdgeStyle
 
     bool dashed = false;
 
-    GraphArrowStyle arrow;
+    GraphArrowState arrow;
 
-    GraphEdgeLabelStyle label;
-};
-
-struct GraphEdgeTheme
-{
-    GraphEdgeStyle normal;
-
-    GraphEdgeStyle hover;
-
-    GraphEdgeStyle selected;
+    GraphEdgeLabelState label;
 };
 
 /*
- * PORT
+ * =========================================================
+ * EDGE STYLE
+ * =========================================================
  */
 
-struct GraphPortTheme
+struct GraphEdgeTheme
+{
+    GraphEdgeState normal;
+
+    GraphEdgeState hover;
+
+    GraphEdgeState selected;
+};
+
+/*
+ * =========================================================
+ * PORT STATE
+ * =========================================================
+ */
+
+struct GraphPortState
 {
     QColor inputColor;
+
     QColor outputColor;
 
     QColor hoverColor;
 
     int radius = 6;
+
+    int borderWidth = 1;
+
+    QColor borderColor;
 };
 
 /*
+ * =========================================================
+ * PORT STYLE
+ * =========================================================
+ */
+
+struct GraphPortTheme
+{
+    GraphPortState normal;
+
+    GraphPortState hover;
+
+    GraphPortState selected;
+};
+
+/*
+ * =========================================================
  * SELECTION
+ * =========================================================
  */
 
 struct GraphSelectionTheme
 {
     QColor outline;
+
     QColor fill;
+
+    int borderWidth = 1;
 };
 
 /*
+ * =========================================================
  * INTERACTION
+ * =========================================================
  */
 
 struct GraphInteractionTheme
@@ -167,10 +236,16 @@ struct GraphInteractionTheme
     QColor invalidConnection;
 
     QColor dropTarget;
+
+    QColor snapGuide;
+
+    int snapGuideWidth = 1;
 };
 
 /*
+ * =========================================================
  * ROOT THEME
+ * =========================================================
  */
 
 struct GraphTheme

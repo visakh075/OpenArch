@@ -7,6 +7,12 @@
 #include <QObject>
 #include <QString>
 
+/*
+ * =========================================================
+ * GRAPH THEME MANAGER
+ * =========================================================
+ */
+
 class GraphThemeManager : public QObject
 {
     Q_OBJECT
@@ -15,6 +21,10 @@ public:
 
     explicit GraphThemeManager(
         QObject* parent = nullptr);
+
+    /*
+     * SINGLETON
+     */
 
     static GraphThemeManager* instance();
 
@@ -26,7 +36,7 @@ public:
         const QString& path);
 
     bool save(
-        const QString& path);
+        const QString& path) const;
 
     /*
      * ACCESS
@@ -36,11 +46,25 @@ public:
 
     GraphTheme& mutableTheme();
 
+    /*
+     * UTILITIES
+     */
+
+    void resetDefaults();
+
     void notifyThemeChanged();
 
 signals:
 
     void themeChanged();
+
+private:
+
+    /*
+     * INTERNAL HELPERS
+     */
+
+    void initializeDefaults();
 
 private:
 

@@ -749,7 +749,7 @@ void MainWindow::onSelectionChanged()
     // --- Status bar ---
     if (primaryNode_)
     {
-        QString text = primaryNode_->displayText();
+        QString text = primaryNode_->displayTitle();
         text.replace("\n", " | ");
 
         QString msg = QString("Primary: %1 | Selected: %2")

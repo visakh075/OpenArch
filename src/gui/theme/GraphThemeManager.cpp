@@ -1,4 +1,3 @@
-
 // src/gui/theme/GraphThemeManager.cpp
 
 #include "GraphThemeManager.h"
@@ -11,6 +10,12 @@
 GraphThemeManager*
 GraphThemeManager::s_instance = nullptr;
 
+/*
+ * =========================================================
+ * HELPERS
+ * =========================================================
+ */
+
 namespace
 {
 
@@ -20,7 +25,8 @@ QColor loadColor(
     const QString& fallback = "#ffffff")
 {
     return QColor(
-        obj.value(key).toString(fallback));
+        obj.value(key)
+            .toString(fallback));
 }
 
 int loadInt(
@@ -28,7 +34,8 @@ int loadInt(
     const QString& key,
     int fallback)
 {
-    return obj.value(key).toInt(fallback);
+    return obj.value(key)
+        .toInt(fallback);
 }
 
 bool loadBool(
@@ -36,11 +43,14 @@ bool loadBool(
     const QString& key,
     bool fallback)
 {
-    return obj.value(key).toBool(fallback);
+    return obj.value(key)
+        .toBool(fallback);
 }
 
 /*
- * LOAD TEXT STYLE
+ * ---------------------------------------------------------
+ * TEXT STYLE
+ * ---------------------------------------------------------
  */
 
 GraphTextStyle loadTextStyle(
@@ -49,199 +59,31 @@ GraphTextStyle loadTextStyle(
     GraphTextStyle style;
 
     style.color =
-        loadColor(obj,
-                  "color",
-                  "#ffffff");
+        loadColor(
+            obj,
+            "color",
+            "#ffffff");
 
     style.size =
-        loadInt(obj,
-                "size",
-                12);
+        loadInt(
+            obj,
+            "size",
+            12);
 
     style.bold =
-        loadBool(obj,
-                 "bold",
-                 false);
+        loadBool(
+            obj,
+            "bold",
+            false);
+
+    style.italic =
+        loadBool(
+            obj,
+            "italic",
+            false);
 
     return style;
 }
-
-/*
- * LOAD NODE STYLE
- */
-
-GraphNodeStyle loadNodeStyle(
-    const QJsonObject& obj)
-{
-    GraphNodeStyle style;
-
-    style.background =
-        loadColor(obj,
-                  "background",
-                  "#2d2d30");
-
-    style.border =
-        loadColor(obj,
-                  "border",
-                  "#6a95ff");
-
-    style.borderWidth =
-        loadInt(obj,
-                "borderWidth",
-                2);
-
-    style.radius =
-        loadInt(obj,
-                "radius",
-                8);
-
-    style.title =
-        loadTextStyle(
-            obj.value("title")
-                .toObject());
-
-    style.body =
-        loadTextStyle(
-            obj.value("body")
-                .toObject());
-
-    return style;
-}
-
-/*
- * LOAD ARROW STYLE
- */
-
-GraphArrowStyle loadArrowStyle(
-    const QJsonObject& obj)
-{
-    GraphArrowStyle style;
-
-    style.lineColor =
-        loadColor(obj,
-                  "lineColor",
-                  "#ffffff");
-
-    style.fillColor =
-        loadColor(obj,
-                  "fillColor",
-                  "#ffffff");
-
-    style.width =
-        loadInt(obj,
-                "width",
-                14);
-
-    style.height =
-        loadInt(obj,
-                "height",
-                10);
-
-    style.lineWidth =
-        loadInt(obj,
-                "lineWidth",
-                2);
-
-    return style;
-}
-
-/*
- * LOAD EDGE LABEL STYLE
- */
-
-GraphEdgeLabelStyle loadEdgeLabelStyle(
-    const QJsonObject& obj)
-{
-    GraphEdgeLabelStyle style;
-
-    style.textColor =
-        loadColor(obj,
-                  "textColor",
-                  "#ffffff");
-
-    style.backgroundColor =
-        loadColor(obj,
-                  "backgroundColor",
-                  "#202020");
-
-    style.borderColor =
-        loadColor(obj,
-                  "borderColor",
-                  "#404040");
-
-    style.borderWidth =
-        loadInt(obj,
-                "borderWidth",
-                1);
-
-    style.fontSize =
-        loadInt(obj,
-                "fontSize",
-                11);
-
-    style.bold =
-        loadBool(obj,
-                 "bold",
-                 false);
-
-    style.paddingX =
-        loadInt(obj,
-                "paddingX",
-                6);
-
-    style.paddingY =
-        loadInt(obj,
-                "paddingY",
-                3);
-
-    style.radius =
-        loadInt(obj,
-                "radius",
-                4);
-
-    style.offset =
-        loadInt(obj,
-                "offset",
-                8);
-
-    return style;
-}
-
-/*
- * LOAD EDGE STYLE
- */
-
-GraphEdgeStyle loadEdgeStyle(
-    const QJsonObject& obj)
-{
-    GraphEdgeStyle style;
-
-    style.lineColor =
-        loadColor(obj,
-                  "lineColor",
-                  "#ffffff");
-
-    style.lineWidth =
-        loadInt(obj,
-                "lineWidth",
-                2);
-
-    style.arrow =
-        loadArrowStyle(
-            obj.value("arrow")
-                .toObject());
-
-    style.label =
-        loadEdgeLabelStyle(
-            obj.value("label")
-                .toObject());
-
-    return style;
-}
-
-/*
- * SAVE TEXT STYLE
- */
 
 QJsonObject saveTextStyle(
     const GraphTextStyle& style)
@@ -258,140 +100,366 @@ QJsonObject saveTextStyle(
     obj["bold"] =
         style.bold;
 
+    obj["italic"] =
+        style.italic;
+
     return obj;
 }
 
 /*
- * SAVE NODE STYLE
+ * ---------------------------------------------------------
+ * NODE STATE
+ * ---------------------------------------------------------
  */
 
-QJsonObject saveNodeStyle(
-    const GraphNodeStyle& style)
+GraphNodeState loadNodeState(
+    const QJsonObject& obj)
+{
+    GraphNodeState state;
+
+    state.background =
+        loadColor(
+            obj,
+            "background",
+            "#2d2d30");
+
+    state.border =
+        loadColor(
+            obj,
+            "border",
+            "#6a95ff");
+
+    state.borderWidth =
+        loadInt(
+            obj,
+            "borderWidth",
+            2);
+
+    state.radius =
+        loadInt(
+            obj,
+            "radius",
+            8);
+
+    state.padding =
+        loadInt(
+            obj,
+            "padding",
+            8);
+
+    state.title =
+        loadTextStyle(
+            obj.value("title")
+                .toObject());
+
+    state.body =
+        loadTextStyle(
+            obj.value("body")
+                .toObject());
+
+    return state;
+}
+
+QJsonObject saveNodeState(
+    const GraphNodeState& state)
 {
     QJsonObject obj;
 
     obj["background"] =
-        style.background.name(
+        state.background.name(
             QColor::HexArgb);
 
     obj["border"] =
-        style.border.name(
+        state.border.name(
             QColor::HexArgb);
 
     obj["borderWidth"] =
-        style.borderWidth;
+        state.borderWidth;
 
     obj["radius"] =
-        style.radius;
+        state.radius;
+
+    obj["padding"] =
+        state.padding;
 
     obj["title"] =
         saveTextStyle(
-            style.title);
+            state.title);
 
     obj["body"] =
         saveTextStyle(
-            style.body);
+            state.body);
 
     return obj;
 }
 
 /*
- * SAVE ARROW STYLE
+ * ---------------------------------------------------------
+ * ARROW STATE
+ * ---------------------------------------------------------
  */
 
-QJsonObject saveArrowStyle(
-    const GraphArrowStyle& style)
+GraphArrowState loadArrowState(
+    const QJsonObject& obj)
+{
+    GraphArrowState state;
+
+    state.lineColor =
+        loadColor(
+            obj,
+            "lineColor",
+            "#ffffff");
+
+    state.fillColor =
+        loadColor(
+            obj,
+            "fillColor",
+            "#ffffff");
+
+    state.borderColor =
+        loadColor(
+            obj,
+            "borderColor",
+            "#000000");
+
+    state.width =
+        loadInt(
+            obj,
+            "width",
+            14);
+
+    state.height =
+        loadInt(
+            obj,
+            "height",
+            10);
+
+    state.lineWidth =
+        loadInt(
+            obj,
+            "lineWidth",
+            2);
+
+    state.borderWidth =
+        loadInt(
+            obj,
+            "borderWidth",
+            1);
+
+    return state;
+}
+
+QJsonObject saveArrowState(
+    const GraphArrowState& state)
 {
     QJsonObject obj;
 
     obj["lineColor"] =
-        style.lineColor.name(
+        state.lineColor.name(
             QColor::HexArgb);
 
     obj["fillColor"] =
-        style.fillColor.name(
+        state.fillColor.name(
+            QColor::HexArgb);
+
+    obj["borderColor"] =
+        state.borderColor.name(
             QColor::HexArgb);
 
     obj["width"] =
-        style.width;
+        state.width;
 
     obj["height"] =
-        style.height;
+        state.height;
 
     obj["lineWidth"] =
-        style.lineWidth;
+        state.lineWidth;
+
+    obj["borderWidth"] =
+        state.borderWidth;
 
     return obj;
 }
 
 /*
- * SAVE EDGE LABEL STYLE
+ * ---------------------------------------------------------
+ * EDGE LABEL STATE
+ * ---------------------------------------------------------
  */
 
-QJsonObject saveEdgeLabelStyle(
-    const GraphEdgeLabelStyle& style)
+GraphEdgeLabelState loadEdgeLabelState(
+    const QJsonObject& obj)
+{
+    GraphEdgeLabelState state;
+
+    state.textColor =
+        loadColor(
+            obj,
+            "textColor",
+            "#ffffff");
+
+    state.backgroundColor =
+        loadColor(
+            obj,
+            "backgroundColor",
+            "#202020");
+
+    state.borderColor =
+        loadColor(
+            obj,
+            "borderColor",
+            "#404040");
+
+    state.borderWidth =
+        loadInt(
+            obj,
+            "borderWidth",
+            1);
+
+    state.fontSize =
+        loadInt(
+            obj,
+            "fontSize",
+            11);
+
+    state.bold =
+        loadBool(
+            obj,
+            "bold",
+            false);
+
+    state.paddingX =
+        loadInt(
+            obj,
+            "paddingX",
+            6);
+
+    state.paddingY =
+        loadInt(
+            obj,
+            "paddingY",
+            3);
+
+    state.radius =
+        loadInt(
+            obj,
+            "radius",
+            4);
+
+    state.offset =
+        loadInt(
+            obj,
+            "offset",
+            8);
+
+    return state;
+}
+
+QJsonObject saveEdgeLabelState(
+    const GraphEdgeLabelState& state)
 {
     QJsonObject obj;
 
     obj["textColor"] =
-        style.textColor.name(
+        state.textColor.name(
             QColor::HexArgb);
 
     obj["backgroundColor"] =
-        style.backgroundColor.name(
+        state.backgroundColor.name(
             QColor::HexArgb);
 
     obj["borderColor"] =
-        style.borderColor.name(
+        state.borderColor.name(
             QColor::HexArgb);
 
     obj["borderWidth"] =
-        style.borderWidth;
+        state.borderWidth;
 
     obj["fontSize"] =
-        style.fontSize;
+        state.fontSize;
 
     obj["bold"] =
-        style.bold;
+        state.bold;
 
     obj["paddingX"] =
-        style.paddingX;
+        state.paddingX;
 
     obj["paddingY"] =
-        style.paddingY;
+        state.paddingY;
 
     obj["radius"] =
-        style.radius;
+        state.radius;
 
     obj["offset"] =
-        style.offset;
+        state.offset;
 
     return obj;
 }
 
 /*
- * SAVE EDGE STYLE
+ * ---------------------------------------------------------
+ * EDGE STATE
+ * ---------------------------------------------------------
  */
 
-QJsonObject saveEdgeStyle(
-    const GraphEdgeStyle& style)
+GraphEdgeState loadEdgeState(
+    const QJsonObject& obj)
+{
+    GraphEdgeState state;
+
+    state.lineColor =
+        loadColor(
+            obj,
+            "lineColor",
+            "#ffffff");
+
+    state.lineWidth =
+        loadInt(
+            obj,
+            "lineWidth",
+            2);
+
+    state.dashed =
+        loadBool(
+            obj,
+            "dashed",
+            false);
+
+    state.arrow =
+        loadArrowState(
+            obj.value("arrow")
+                .toObject());
+
+    state.label =
+        loadEdgeLabelState(
+            obj.value("label")
+                .toObject());
+
+    return state;
+}
+
+QJsonObject saveEdgeState(
+    const GraphEdgeState& state)
 {
     QJsonObject obj;
 
     obj["lineColor"] =
-        style.lineColor.name(
+        state.lineColor.name(
             QColor::HexArgb);
 
     obj["lineWidth"] =
-        style.lineWidth;
+        state.lineWidth;
+
+    obj["dashed"] =
+        state.dashed;
 
     obj["arrow"] =
-        saveArrowStyle(
-            style.arrow);
+        saveArrowState(
+            state.arrow);
 
     obj["label"] =
-        saveEdgeLabelStyle(
-            style.label);
+        saveEdgeLabelState(
+            state.label);
 
     return obj;
 }
@@ -399,7 +467,9 @@ QJsonObject saveEdgeStyle(
 }
 
 /*
+ * =========================================================
  * PUBLIC
+ * =========================================================
  */
 
 GraphThemeManager::GraphThemeManager(
@@ -407,6 +477,8 @@ GraphThemeManager::GraphThemeManager(
     : QObject(parent)
 {
     s_instance = this;
+
+    initializeDefaults();
 }
 
 GraphThemeManager*
@@ -414,6 +486,47 @@ GraphThemeManager::instance()
 {
     return s_instance;
 }
+
+/*
+ * ---------------------------------------------------------
+ * DEFAULTS
+ * ---------------------------------------------------------
+ */
+
+void GraphThemeManager::initializeDefaults()
+{
+    m_theme.name =
+        "Default";
+
+    /*
+     * VIEW
+     */
+
+    m_theme.view.background =
+        QColor("#202020");
+
+    m_theme.view.grid.enabled =
+        true;
+
+    m_theme.view.grid.minorColor =
+        QColor("#2a2a2a");
+
+    m_theme.view.grid.majorColor =
+        QColor("#353535");
+}
+
+void GraphThemeManager::resetDefaults()
+{
+    initializeDefaults();
+
+    emit themeChanged();
+}
+
+/*
+ * ---------------------------------------------------------
+ * LOAD
+ * ---------------------------------------------------------
+ */
 
 bool GraphThemeManager::load(
     const QString& path)
@@ -470,38 +583,44 @@ bool GraphThemeManager::load(
                 .toObject();
 
         m_theme.view.background =
-            loadColor(viewObj,
-                      "background",
-                      "#202020");
+            loadColor(
+                viewObj,
+                "background",
+                "#202020");
 
         QJsonObject gridObj =
             viewObj.value("grid")
                 .toObject();
 
         m_theme.view.grid.enabled =
-            loadBool(gridObj,
-                     "enabled",
-                     true);
+            loadBool(
+                gridObj,
+                "enabled",
+                true);
 
         m_theme.view.grid.minorColor =
-            loadColor(gridObj,
-                      "minorColor",
-                      "#2a2a2a");
+            loadColor(
+                gridObj,
+                "minorColor",
+                "#2a2a2a");
 
         m_theme.view.grid.majorColor =
-            loadColor(gridObj,
-                      "majorColor",
-                      "#353535");
+            loadColor(
+                gridObj,
+                "majorColor",
+                "#353535");
 
         m_theme.view.grid.spacing =
-            loadInt(gridObj,
-                    "spacing",
-                    20);
+            loadInt(
+                gridObj,
+                "spacing",
+                20);
 
         m_theme.view.grid.majorSpacing =
-            loadInt(gridObj,
-                    "majorSpacing",
-                    100);
+            loadInt(
+                gridObj,
+                "majorSpacing",
+                100);
     }
 
     /*
@@ -514,17 +633,17 @@ bool GraphThemeManager::load(
                 .toObject();
 
         m_theme.node.normal =
-            loadNodeStyle(
+            loadNodeState(
                 nodeObj.value("normal")
                     .toObject());
 
         m_theme.node.hover =
-            loadNodeStyle(
+            loadNodeState(
                 nodeObj.value("hover")
                     .toObject());
 
         m_theme.node.selected =
-            loadNodeStyle(
+            loadNodeState(
                 nodeObj.value("selected")
                     .toObject());
     }
@@ -539,17 +658,17 @@ bool GraphThemeManager::load(
                 .toObject();
 
         m_theme.edge.normal =
-            loadEdgeStyle(
+            loadEdgeState(
                 edgeObj.value("normal")
                     .toObject());
 
         m_theme.edge.hover =
-            loadEdgeStyle(
+            loadEdgeState(
                 edgeObj.value("hover")
                     .toObject());
 
         m_theme.edge.selected =
-            loadEdgeStyle(
+            loadEdgeState(
                 edgeObj.value("selected")
                     .toObject());
     }
@@ -562,13 +681,56 @@ bool GraphThemeManager::load(
     return true;
 }
 
+/*
+ * ---------------------------------------------------------
+ * SAVE
+ * ---------------------------------------------------------
+ */
+
 bool GraphThemeManager::save(
-    const QString& path)
+    const QString& path) const
 {
     QJsonObject root;
 
     root["name"] =
         m_theme.name;
+
+    /*
+     * VIEW
+     */
+
+    {
+        QJsonObject viewObj;
+
+        viewObj["background"] =
+            m_theme.view.background.name(
+                QColor::HexArgb);
+
+        QJsonObject gridObj;
+
+        gridObj["enabled"] =
+            m_theme.view.grid.enabled;
+
+        gridObj["minorColor"] =
+            m_theme.view.grid.minorColor.name(
+                QColor::HexArgb);
+
+        gridObj["majorColor"] =
+            m_theme.view.grid.majorColor.name(
+                QColor::HexArgb);
+
+        gridObj["spacing"] =
+            m_theme.view.grid.spacing;
+
+        gridObj["majorSpacing"] =
+            m_theme.view.grid.majorSpacing;
+
+        viewObj["grid"] =
+            gridObj;
+
+        root["view"] =
+            viewObj;
+    }
 
     /*
      * NODE
@@ -578,15 +740,15 @@ bool GraphThemeManager::save(
         QJsonObject nodeObj;
 
         nodeObj["normal"] =
-            saveNodeStyle(
+            saveNodeState(
                 m_theme.node.normal);
 
         nodeObj["hover"] =
-            saveNodeStyle(
+            saveNodeState(
                 m_theme.node.hover);
 
         nodeObj["selected"] =
-            saveNodeStyle(
+            saveNodeState(
                 m_theme.node.selected);
 
         root["node"] =
@@ -601,15 +763,15 @@ bool GraphThemeManager::save(
         QJsonObject edgeObj;
 
         edgeObj["normal"] =
-            saveEdgeStyle(
+            saveEdgeState(
                 m_theme.edge.normal);
 
         edgeObj["hover"] =
-            saveEdgeStyle(
+            saveEdgeState(
                 m_theme.edge.hover);
 
         edgeObj["selected"] =
-            saveEdgeStyle(
+            saveEdgeState(
                 m_theme.edge.selected);
 
         root["edge"] =
@@ -632,18 +794,31 @@ bool GraphThemeManager::save(
     return true;
 }
 
+/*
+ * ---------------------------------------------------------
+ * ACCESS
+ * ---------------------------------------------------------
+ */
+
 const GraphTheme&
 GraphThemeManager::theme() const
 {
     return m_theme;
 }
 
-void GraphThemeManager::notifyThemeChanged()
-{
-    emit themeChanged();
-}
 GraphTheme&
 GraphThemeManager::mutableTheme()
 {
     return m_theme;
+}
+
+/*
+ * ---------------------------------------------------------
+ * SIGNALS
+ * ---------------------------------------------------------
+ */
+
+void GraphThemeManager::notifyThemeChanged()
+{
+    emit themeChanged();
 }

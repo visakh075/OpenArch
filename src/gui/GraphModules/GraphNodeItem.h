@@ -21,7 +21,9 @@ public:
     QRectF rect() const;
     void setPrimary(bool p);
     bool isPrimary() const;
-    QString displayText() const;
+    QString displayTitle() const;
+    QString displayType() const;
+    
     void setEditable(bool enabled);
 
 protected:

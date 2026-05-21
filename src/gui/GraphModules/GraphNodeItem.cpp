@@ -35,16 +35,22 @@ QRectF GraphNodeItem::boundingRect() const
     return {0, 0, NODE_WIDTH, NODE_HEIGHT};
 }
 
-QString GraphNodeItem::displayText() const
+QString GraphNodeItem::displayTitle() const
 {
     auto n = model_->getNodeById(nodeId_);
     if (!n)
         return "<deleted>";
 
-    return QString::fromStdString(n->name) + "\n" +
-           QString::fromStdString(n->type);
+    return QString::fromStdString(n->name);
 }
+QString GraphNodeItem::displayType() const
+{
+    auto n = model_->getNodeById(nodeId_);
+    if (!n)
+        return "<deleted>";
 
+    return QString::fromStdString(n->type);
+}
 void GraphNodeItem::paint(QPainter *p,
                           const QStyleOptionGraphicsItem *,
                           QWidget *)
@@ -60,16 +66,16 @@ void GraphNodeItem::paint(QPainter *p,
      * STYLE
      */
 
-    const GraphNodeStyle* style =
+    const GraphNodeState* State =
         &theme.node.normal;
 
     if (isSelected())
     {
-        style = &theme.node.selected;
+        State = &theme.node.selected;
     }
     else if (hovered_)
     {
-        style = &theme.node.hover;
+        State = &theme.node.hover;
     }
 
     /*
@@ -77,15 +83,15 @@ void GraphNodeItem::paint(QPainter *p,
      */
 
     QColor borderColor =
-        style->border;
+        State->border;
 
     int borderWidth =
-        style->borderWidth;
+        State->borderWidth;
 
     if (isPrimary_)
     {
-        borderColor =
-            QColor("#ff4444");
+        // borderColor =
+        //     QColor("#ff4444");
 
         borderWidth += 1;
     }
@@ -108,7 +114,7 @@ void GraphNodeItem::paint(QPainter *p,
      */
 
     p->setBrush(
-        style->background);
+        State->background);
 
     /*
      * NODE RECT
@@ -119,50 +125,103 @@ void GraphNodeItem::paint(QPainter *p,
 
     p->drawRoundedRect(
         rect,
-        style->radius,
-        style->radius);
+        State->radius,
+        State->radius);
+/*
+ * CONTENT LAYOUT
+ */
+
+const int padding =
+    State->padding;
+
+QRectF contentRect =
+    rect.adjusted(
+        padding,
+        padding,
+        -padding,
+        -padding);
 
     /*
-     * TITLE FONT
-     */
+    * TITLE AREA
+    */
+
+    QRectF titleRect =
+        contentRect;
+
+    titleRect.setHeight(
+        28);
+
+    /*
+    * BODY AREA
+    */
+
+    QRectF bodyRect =
+        contentRect;
+
+    bodyRect.setTop(
+        titleRect.bottom() + 4);
+
+    /*
+    * TITLE FONT
+    */
 
     QFont titleFont;
 
     titleFont.setPointSize(
-        style->title.size);
+        State->title.size);
 
     titleFont.setBold(
-        style->title.bold);
+        State->title.bold);
+
+    titleFont.setItalic(
+        State->title.italic);
 
     p->setFont(titleFont);
 
-    /*
-     * TEXT COLOR
-     */
-
     p->setPen(
-        style->title.color);
+        State->title.color);
 
     /*
-     * TEXT RECT
-     */
-
-    QRectF textRect =
-        rect.adjusted(
-            8,
-            8,
-            -8,
-            -8);
-
-    /*
-     * DRAW TEXT
-     */
+    * DRAW TITLE
+    */
 
     p->drawText(
-        textRect,
-        Qt::AlignCenter |
+        titleRect,
+        Qt::AlignHCenter |
+        Qt::AlignTop |
         Qt::TextWordWrap,
-        displayText());
+        displayTitle());
+
+    /*
+    * BODY FONT
+    */
+
+    QFont bodyFont;
+
+    bodyFont.setPointSize(
+        State->body.size);
+
+    bodyFont.setBold(
+        State->body.bold);
+
+    bodyFont.setItalic(
+        State->body.italic);
+
+    p->setFont(bodyFont);
+
+    p->setPen(
+        State->body.color);
+
+    /*
+    * DRAW BODY
+    */
+
+    p->drawText(
+        bodyRect,
+        Qt::AlignTop |
+        Qt::AlignHCenter |
+        Qt::TextWordWrap,
+        displayType());
 }
 
 QVariant GraphNodeItem::itemChange(
