@@ -47,15 +47,15 @@ struct GraphTextStyle
 struct GraphNodeStyle
 {
     QColor background;
-
     QColor border;
 
     int borderWidth = 2;
 
     int radius = 8;
 
-    GraphTextStyle title;
+    int padding = 8;
 
+    GraphTextStyle title;
     GraphTextStyle body;
 };
 
@@ -97,12 +97,17 @@ struct GraphEdgeLabelStyle
 struct GraphArrowStyle
 {
     QColor lineColor;
+
     QColor fillColor;
+
+    QColor borderColor;
 
     int width = 14;
     int height = 10;
 
     int lineWidth = 2;
+
+    int borderWidth = 1;
 };
 
 struct GraphEdgeStyle
@@ -110,6 +115,8 @@ struct GraphEdgeStyle
     QColor lineColor;
 
     int lineWidth = 2;
+
+    bool dashed = false;
 
     GraphArrowStyle arrow;
 
