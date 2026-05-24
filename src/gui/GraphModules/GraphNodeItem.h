@@ -36,6 +36,9 @@ protected:
 private:
     ArchitectureModel* model_;
     NodeId nodeId_;
+    
+    mutable QRectF cachedRect_;
+    QRectF calculateNodeRect() const;
     bool hovered_ = false;
     bool isPrimary_ = false;
     // QList<GraphEdgeItem*> edges_;

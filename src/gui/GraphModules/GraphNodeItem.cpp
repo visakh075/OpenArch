@@ -30,9 +30,139 @@ GraphNodeItem::GraphNodeItem(ArchitectureModel *m, NodeId id, QGraphicsItem *p)
     setZValue(1);
 }
 
+QRectF GraphNodeItem::calculateNodeRect() const
+{
+    const auto& theme =
+        GraphThemeManager::instance()->theme();
+
+    const GraphNodeState* State =
+        &theme.node.normal;
+
+    if (isSelected())
+    {
+        State = &theme.node.selected;
+    }
+    else if (hovered_)
+    {
+        State = &theme.node.hover;
+    }
+
+    /*
+     * FONTS
+     */
+
+    QFont titleFont;
+
+    titleFont.setPointSize(
+        State->title.size);
+
+    titleFont.setBold(
+        State->title.bold);
+
+    titleFont.setItalic(
+        State->title.italic);
+
+    QFont bodyFont;
+
+    bodyFont.setPointSize(
+        State->body.size);
+
+    bodyFont.setBold(
+        State->body.bold);
+
+    bodyFont.setItalic(
+        State->body.italic);
+
+    /*
+     * FONT METRICS
+     */
+
+    QFontMetrics titleFm(
+        titleFont);
+
+    QFontMetrics bodyFm(
+        bodyFont);
+
+    /*
+     * TEXT MEASURE WIDTH
+     */
+
+    const int maxTextWidth = 320;
+
+    /*
+     * TEXT BOUNDS
+     */
+
+    QRect titleBounds =
+        titleFm.boundingRect(
+            QRect(
+                0,
+                0,
+                maxTextWidth,
+                2000),
+            Qt::TextWordWrap,
+            displayTitle());
+
+    QRect bodyBounds =
+        bodyFm.boundingRect(
+            QRect(
+                0,
+                0,
+                maxTextWidth,
+                2000),
+            Qt::TextWordWrap,
+            displayType());
+
+    /*
+     * LAYOUT
+     */
+
+    const int padding =
+        State->padding;
+
+    const int spacing = 6;
+
+    /*
+     * NODE SIZE
+     */
+
+    qreal width =
+        std::max(
+            titleBounds.width(),
+            bodyBounds.width()) +
+        (padding * 2);
+
+    qreal height =
+        titleBounds.height() +
+        bodyBounds.height() +
+        spacing +
+        (padding * 2);
+
+    /*
+     * MINIMUM SIZE
+     */
+
+    width =
+        std::max<qreal>(
+            width,
+            120);
+
+    height =
+        std::max<qreal>(
+            height,
+            50);
+
+    return QRectF(
+        0,
+        0,
+        width,
+        height);
+}
+
 QRectF GraphNodeItem::boundingRect() const
 {
-    return {0, 0, NODE_WIDTH, NODE_HEIGHT};
+    cachedRect_ = calculateNodeRect();
+    return cachedRect_;
 }
 
 QString GraphNodeItem::displayTitle() const
@@ -51,20 +181,21 @@ QString GraphNodeItem::displayType() const
 
     return QString::fromStdString(n->type);
 }
-void GraphNodeItem::paint(QPainter *p,
-                          const QStyleOptionGraphicsItem *,
-                          QWidget *)
+
+void GraphNodeItem::paint(
+    QPainter* painter,
+    const QStyleOptionGraphicsItem*,
+    QWidget*)
 {
-    p->setRenderHint(
+    painter->setRenderHint(
         QPainter::Antialiasing);
 
-    const auto& theme =
-        // GraphThemeManager::theme;
-        GraphThemeManager::instance()->theme();
-
     /*
-     * STYLE
+     * THEME STATE
      */
+
+    const auto& theme =
+        GraphThemeManager::instance()->theme();
 
     const GraphNodeState* State =
         &theme.node.normal;
@@ -79,91 +210,52 @@ void GraphNodeItem::paint(QPainter *p,
     }
 
     /*
-     * PRIMARY NODE OVERRIDE
+     * NODE RECT
      */
 
-    QColor borderColor =
-        State->border;
-
-    int borderWidth =
-        State->borderWidth;
-
-    if (isPrimary_)
-    {
-        // borderColor =
-        //     QColor("#ff4444");
-
-        borderWidth += 1;
-    }
-
-    /*
-     * PEN
-     */
-
-    QPen pen(borderColor);
-
-    pen.setWidth(borderWidth);
-
-    pen.setJoinStyle(
-        Qt::RoundJoin);
-
-    p->setPen(pen);
+    QRectF rect =
+        calculateNodeRect();
 
     /*
      * BACKGROUND
      */
 
-    p->setBrush(
-        State->background);
+    QPainterPath path;
 
-    /*
-     * NODE RECT
-     */
-
-    QRectF rect =
-        boundingRect();
-
-    p->drawRoundedRect(
+    path.addRoundedRect(
         rect,
         State->radius,
         State->radius);
-/*
- * CONTENT LAYOUT
- */
 
-const int padding =
-    State->padding;
+    painter->setPen(
+        QPen(
+            State->border,
+            State->borderWidth));
 
-QRectF contentRect =
-    rect.adjusted(
-        padding,
-        padding,
-        -padding,
-        -padding);
+    painter->setBrush(
+        State->background);
+
+    painter->drawPath(path);
 
     /*
-    * TITLE AREA
-    */
+     * CONTENT RECT
+     */
 
-    QRectF titleRect =
-        contentRect;
+    const int padding =
+        State->padding;
 
-    titleRect.setHeight(
-        28);
+    const int spacing = 6;
 
-    /*
-    * BODY AREA
-    */
-
-    QRectF bodyRect =
-        contentRect;
-
-    bodyRect.setTop(
-        titleRect.bottom() + 4);
+    QRectF contentRect =
+        rect.adjusted(
+            padding,
+            padding,
+            -padding,
+            -padding);
 
     /*
-    * TITLE FONT
-    */
+     * TITLE FONT
+     */
 
     QFont titleFont;
 
@@ -176,25 +268,9 @@ QRectF contentRect =
     titleFont.setItalic(
         State->title.italic);
 
-    p->setFont(titleFont);
-
-    p->setPen(
-        State->title.color);
-
     /*
-    * DRAW TITLE
-    */
-
-    p->drawText(
-        titleRect,
-        Qt::AlignHCenter |
-        Qt::AlignTop |
-        Qt::TextWordWrap,
-        displayTitle());
-
-    /*
-    * BODY FONT
-    */
+     * BODY FONT
+     */
 
     QFont bodyFont;
 
@@ -207,19 +283,91 @@ QRectF contentRect =
     bodyFont.setItalic(
         State->body.italic);
 
-    p->setFont(bodyFont);
+    /*
+     * FONT METRICS
+     */
 
-    p->setPen(
-        State->body.color);
+    QFontMetrics titleFm(
+        titleFont);
+
+    QFontMetrics bodyFm(
+        bodyFont);
 
     /*
-    * DRAW BODY
-    */
+     * TEXT BOUNDS
+     */
 
-    p->drawText(
+    QRect titleBounds =
+        titleFm.boundingRect(
+            QRect(
+                0,
+                0,
+                static_cast<int>(
+                    contentRect.width()),
+                2000),
+            Qt::TextWordWrap,
+            displayTitle());
+
+    QRect bodyBounds =
+        bodyFm.boundingRect(
+            QRect(
+                0,
+                0,
+                static_cast<int>(
+                    contentRect.width()),
+                2000),
+            Qt::TextWordWrap,
+            displayType());
+
+    /*
+     * FULL WIDTH TITLE RECT
+     */
+
+    QRectF titleRect(
+        contentRect.left(),
+        contentRect.top(),
+        contentRect.width(),
+        titleBounds.height());
+
+    /*
+     * FULL WIDTH BODY RECT
+     */
+
+    QRectF bodyRect(
+        contentRect.left(),
+        titleRect.bottom() + spacing,
+        contentRect.width(),
+        bodyBounds.height());
+
+    /*
+     * DRAW TITLE
+     */
+
+    painter->setFont(
+        titleFont);
+
+    painter->setPen(
+        State->title.color);
+
+    painter->drawText(
+        titleRect,
+        State->title.alignment |
+        Qt::TextWordWrap,
+        displayTitle());
+
+    /*
+     * DRAW BODY
+     */
+
+    painter->setFont(
+        bodyFont);
+
+    painter->setPen(
+        State->body.color);
+
+    painter->drawText(
         bodyRect,
-        Qt::AlignTop |
-        Qt::AlignHCenter |
+        State->body.alignment |
         Qt::TextWordWrap,
         displayType());
 }

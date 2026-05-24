@@ -13,13 +13,12 @@
 
 GraphEdgeItem::GraphEdgeItem(
     ArchitectureModel* model,
-    const EdgeData& edge,
+    const EdgeId id,
     GraphNodeItem* src,
     GraphNodeItem* dst,
     QGraphicsItem* parent)
     : QGraphicsObject(parent),
       model_(model),
-      edge_(edge),
       src_(src),
       dst_(dst),
       srcPort_(Port::Right),
@@ -28,6 +27,8 @@ GraphEdgeItem::GraphEdgeItem(
     setAcceptHoverEvents(true);
     setFlag(QGraphicsItem::ItemIsSelectable, true);
     setZValue(-1);
+    e_id = id;
+    // edge_= model->getEdgeById(id);
 
     normalPen_ = QPen(Qt::darkGray, 2);
     highlightPen_ = QPen(Qt::blue, 3);
@@ -442,10 +443,10 @@ void GraphEdgeItem::paint(QPainter* painter,
      * LABEL
      */
 
-
+    auto edge_ = model_->getEdgeById(e_id);
     QString title =
         QString::fromStdString(
-            edge_.edgeType);
+            edge_->edgeType);
 
     /*
         * FONT
@@ -584,10 +585,11 @@ QPainterPath GraphEdgeItem::shape() const
     /*
      * LABEL HIT AREA
      */
-
+    
+    auto edge_ = model_->getEdgeById(e_id);
     QString title =
         QString::fromStdString(
-            edge_.edgeType);
+            edge_->edgeType);
 
     if (!title.isEmpty())
     {
@@ -722,7 +724,7 @@ void GraphEdgeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
     if (!model_)
         return;
 
-    EdgeEditorDialog dlg(model_, edge_.id);
+    EdgeEditorDialog dlg(model_, e_id);
     dlg.exec();
 
     QGraphicsObject::mouseDoubleClickEvent(event);

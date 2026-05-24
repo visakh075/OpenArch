@@ -74,7 +74,7 @@ public:
     
     std::optional<NodeData>  getNodeById(NodeId id) const;
     std::optional<LayerData> getLayerById(LayerId id) const;
-
+    std::optional<EdgeData> getEdgeById(EdgeId id) const;
     std::vector<NodeLayer> layersForNode(NodeId nodeId) const;
 
 private:

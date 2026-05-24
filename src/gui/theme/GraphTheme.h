@@ -20,6 +20,8 @@ struct GraphTextStyle
     bool bold = false;
 
     bool italic = false;
+
+    Qt::Alignment alignment = Qt::AlignCenter;
 };
 
 /*

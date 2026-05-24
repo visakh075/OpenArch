@@ -23,10 +23,12 @@ public:
     };
 
     GraphEdgeItem(ArchitectureModel* model,
-                  const EdgeData& edge,
-                  GraphNodeItem* src,
-                  GraphNodeItem* dst,
-                  QGraphicsItem* parent = nullptr);
+                //   const EdgeData& edge,
+                const EdgeId id,
+                // const EdgeData& edge,
+                GraphNodeItem* src,
+                GraphNodeItem* dst,
+                QGraphicsItem* parent = nullptr);
 
     QRectF boundingRect() const override;
     void paint(QPainter* painter,
@@ -55,7 +57,9 @@ private:
     ArchitectureModel* model_;
 
     
-    EdgeData edge_;
+    // EdgeData& edge_;
+
+    EdgeId e_id;
 
     GraphNodeItem* src_;
     GraphNodeItem* dst_;

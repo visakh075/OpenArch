@@ -31,96 +31,6 @@ MainWindow::~MainWindow()
     delete model_;
 }
 
-// void MainWindow::setupUi()
-// {
-//     // auto* splitter = new QSplitter(this);
-
-//     // navigator_ = new QTreeView(splitter);
-//     // navModel_ = new QStandardItemModel(this);
-//     // navModel_->setHorizontalHeaderLabels({"Architecture"});
-//     // navigator_->setModel(navModel_);
-
-//     // scene_ = new QGraphicsScene(this);
-
-//     // graphView_ = new GraphView(splitter);
-
-//     navModel_ = new QStandardItemModel(this);
-
-//     navModel_->setHorizontalHeaderLabels(
-//         {"Architecture"});
-
-//     navigator_ =
-//         new QTreeView;
-
-//     navigator_->setModel(navModel_);
-
-//     /*
-//     * ARCHITECTURE DOCK
-//     */
-
-//     architectureDock_ =
-//         new QDockWidget(
-//             "Architecture",
-//             this);
-
-//     architectureDock_->setWidget(
-//         navigator_);
-
-//     addDockWidget(
-//         Qt::LeftDockWidgetArea,
-//         architectureDock_);
-
-//     /*
-//     * GRAPH
-//     */
-
-//     scene_ =
-//         new QGraphicsScene(this);
-
-//     graphView_ =
-//         new GraphView(this);
-
-//     graphView_->setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
-//     // graphView_->setDragMode(QGraphicsView::RubberBandDrag);
-
-//     graphView_->setScene(scene_);
-//     graphView_->setRenderHint(QPainter::Antialiasing);
-//     graphView_->setInteractive(true);
-
-//     // splitter->addWidget(navigator_);
-//     // splitter->addWidget(graphView_);
-
-//     // // Set 20:80 ratio
-//     // splitter->setStretchFactor(0, 1);  // navigator
-//     // splitter->setStretchFactor(1, 4);  // graph
-
-//     setCentralWidget(graphView_);
-//     // Optional: initial size hint
-//     // splitter->setSizes({200, 800});
-//     // setCentralWidget(splitter);
-
-//     splitter->setSizes({200, 800});
-
-//     setCentralWidget(splitter);
-
-//     /*
-
-//     * THEME EDITOR
-//     */
-
-//     ThemeEditorDock* themeDock =
-//         new ThemeEditorDock(this);
-
-//     addDockWidget(
-//         Qt::RightDockWidgetArea,
-//         themeDock);
-
-//     /*
-//     * LIVE THEME UPDATE
-//     */
-
-// }
-
 void MainWindow::setupUi()
 {
     /*
@@ -478,11 +388,10 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
     isRendering_ = true;
     scene_->clear();
 
-    primaryNode_ = nullptr;   // 🔥 CRITICAL FIX
+    primaryNode_ = nullptr;
 
     std::unordered_map<NodeId, GraphNodeItem*> nodeItems;
 
-    // 1️⃣ Create nodes
     int i = 0;
     for (const auto& n : snap.nodes) {
         auto* nodeItem = new GraphNodeItem(model_, n.id);
@@ -496,7 +405,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         nodeItem->setFlag(QGraphicsItem::ItemIsSelectable, selectable);
         nodeItem->setFlag(QGraphicsItem::ItemIsMovable, movable);
 
-        nodeItem->setAcceptHoverEvents(true); // 🔥 enable hover ALWAYS
+        nodeItem->setAcceptHoverEvents(true);
         
         auto nodeOpt = model_->getNodeById(n.id);
         bool restored = false;
@@ -526,7 +435,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         ++i;
     }
 
-    // 2️⃣ Create edges (CONNECTED to nodes)
     for (const auto& e : snap.edges) {
         auto srcIt = nodeItems.find(e.srcNode);
         auto dstIt = nodeItems.find(e.dstNode);
@@ -536,7 +444,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
 
         auto* edgeItem = new GraphEdgeItem(
             model_,
-            e,
+            e.id,
             srcIt->second,
             dstIt->second
         );

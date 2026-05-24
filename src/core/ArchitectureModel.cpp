@@ -357,6 +357,18 @@ std::optional<LayerData> ArchitectureModel::getLayerById(LayerId id) const
     }
     return std::nullopt;
 }
+std::optional <EdgeData> ArchitectureModel::getEdgeById(EdgeId id) const
+{
+    std::vector<EdgeData> result;
+    for (const auto& _edge : edges())
+    {
+        if(_edge.id == id)
+        {
+            return _edge;
+        }
+    }
+    return std::nullopt;
+}
 std::vector<NodeLayer> ArchitectureModel::layersForNode(NodeId nodeId) const
 {
     std::vector<NodeLayer> result;
