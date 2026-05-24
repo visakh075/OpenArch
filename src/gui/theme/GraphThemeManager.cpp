@@ -508,7 +508,7 @@ void GraphThemeManager::initializeDefaults()
     m_theme.view.grid.enabled =
         true;
 
-    m_theme.view.grid.minorColor =
+    m_theme.view.grid.color =
         QColor("#2a2a2a");
 
     m_theme.view.grid.majorColor =
@@ -598,10 +598,10 @@ bool GraphThemeManager::load(
                 "enabled",
                 true);
 
-        m_theme.view.grid.minorColor =
+        m_theme.view.grid.color =
             loadColor(
                 gridObj,
-                "minorColor",
+                "color",
                 "#2a2a2a");
 
         m_theme.view.grid.majorColor =
@@ -711,8 +711,8 @@ bool GraphThemeManager::save(
         gridObj["enabled"] =
             m_theme.view.grid.enabled;
 
-        gridObj["minorColor"] =
-            m_theme.view.grid.minorColor.name(
+        gridObj["color"] =
+            m_theme.view.grid.color.name(
                 QColor::HexArgb);
 
         gridObj["majorColor"] =

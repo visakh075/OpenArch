@@ -23,9 +23,7 @@ public:
     };
 
     GraphEdgeItem(ArchitectureModel* model,
-                //   const EdgeData& edge,
                 const EdgeId id,
-                // const EdgeData& edge,
                 GraphNodeItem* src,
                 GraphNodeItem* dst,
                 QGraphicsItem* parent = nullptr);
@@ -55,10 +53,7 @@ protected:
 
 private:
     ArchitectureModel* model_;
-
     
-    // EdgeData& edge_;
-
     EdgeId e_id;
 
     GraphNodeItem* src_;

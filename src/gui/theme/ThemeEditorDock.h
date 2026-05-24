@@ -2,15 +2,14 @@
 
 #include <QDockWidget>
 #include <QColor>
-#include <QString>
-#include <QWidget>
 
 #include <functional>
 
 class QPushButton;
 class QVBoxLayout;
-class QGroupBox;
-class QToolBox;
+class QTreeWidget;
+class QTreeWidgetItem;
+class QStackedWidget;
 
 struct GraphNodeState;
 struct GraphEdgeState;
@@ -30,76 +29,30 @@ public:
 
 private:
 
-    /*
-     * ROOT BUILDERS
-     */
+    struct InspectorPage
+    {
+        QWidget* container = nullptr;
+        QWidget* content = nullptr;
+        QVBoxLayout* layout = nullptr;
+    };
 
-    void buildViewSection(
-        QVBoxLayout* parentLayout);
+    QTreeWidget* m_tree = nullptr;
 
-    void buildGridSection(
-        QVBoxLayout* parentLayout);
+    QStackedWidget* m_stack = nullptr;
 
-    void buildNodeSection(
-        QVBoxLayout* parentLayout);
+    void populateTree();
 
-    void buildEdgeSection(
-        QVBoxLayout* parentLayout);
+    void connectTree();
 
-    void buildPortSection(
-        QVBoxLayout* parentLayout);
+    InspectorPage createInspectorPage();
 
-    void buildSelectionSection(
-        QVBoxLayout* parentLayout);
-
-    void buildInteractionSection(
-        QVBoxLayout* parentLayout);
-
-    /*
-     * STATE BUILDERS
-     */
-
-    void buildNodeStateSection(
+    QWidget* createCollapsibleSection(
         const QString& title,
-        GraphNodeState& state,
-        QVBoxLayout* parentLayout);
+        QVBoxLayout*& contentLayout);
 
-    void buildEdgeStateSection(
-        const QString& title,
-        GraphEdgeState& state,
-        QVBoxLayout* parentLayout);
-
-    void buildArrowStateSection(
-        const QString& title,
-        GraphArrowState& state,
-        QVBoxLayout* parentLayout);
-
-    void buildPortStateSection(
-        const QString& title,
-        GraphPortState& state,
-        QVBoxLayout* parentLayout);
-
-    /*
-     * STYLE BUILDERS
-     */
-
-    void buildTextStyleSection(
-        const QString& title,
-        GraphTextStyle& style,
-        QVBoxLayout* parentLayout);
-
-    void buildEdgeLabelStyleSection(
-        const QString& title,
-        GraphEdgeLabelState& style,
-        QVBoxLayout* parentLayout);
-
-    /*
-     * HELPERS
-     */
-
-    QGroupBox* createSection(
-        const QString& title,
-        QVBoxLayout*& outLayout);
+    QPushButton* makeColorButton(
+        const QColor& initial,
+        std::function<void(const QColor&)> onChanged);
 
     QWidget* createColorEditor(
         const QString& title,
@@ -118,17 +71,44 @@ private:
         bool value,
         std::function<void(bool)> onChanged);
 
-    QPushButton* makeColorButton(
-        const QColor& initial,
-        std::function<void(const QColor&)> onChanged);
+    void buildTextStyleSection(
+        const QString& title,
+        GraphTextStyle& style,
+        QVBoxLayout* parentLayout);
 
-    /*
-     * UTILITIES
-     */
+    void buildArrowStateSection(
+        const QString& title,
+        GraphArrowState& state,
+        QVBoxLayout* parentLayout);
 
-    QWidget* createToolBoxPage(
-        QToolBox* toolBox,
-        const QString& title);
+    void buildEdgeLabelStyleSection(
+        const QString& title,
+        GraphEdgeLabelState& style,
+        QVBoxLayout* parentLayout);
+
+    void buildNodeStateProperties(
+        GraphNodeState& state,
+        QVBoxLayout* layout);
+
+    void buildEdgeStateProperties(
+        GraphEdgeState& state,
+        QVBoxLayout* layout);
+
+    void buildPortStateProperties(
+        GraphPortState& state,
+        QVBoxLayout* layout);
+
+    void buildViewProperties(
+        QVBoxLayout* layout);
+
+    void buildGridProperties(
+        QVBoxLayout* layout);
+
+    void buildSelectionProperties(
+        QVBoxLayout* layout);
+
+    void buildInteractionProperties(
+        QVBoxLayout* layout);
 
     void emitThemeChanged();
 };

@@ -34,7 +34,7 @@ struct GraphGridTheme
 {
     bool enabled = true;
 
-    QColor minorColor;
+    QColor color;
 
     QColor majorColor;
 

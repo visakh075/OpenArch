@@ -14,7 +14,7 @@
 #include "GraphEdgeItem.h"
 #include "GraphThemeManager.h"
 #include "ThemeEditorDock.h"
-
+#include <QInputDialog>
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
@@ -138,7 +138,6 @@ void MainWindow::setupUi()
     setDockNestingEnabled(true);
 }
 
-
 void MainWindow::setupToolbar()
 {
     graphToolBar_ = addToolBar("Graph Modes");
@@ -206,6 +205,89 @@ void MainWindow::setupMenu()
 
     auto* alignV = editMenu->addAction("Align Vertical", this, &MainWindow::alignVertical);
     alignV->setShortcut(Qt::CTRL | Qt::Key_V);
+
+    QAction* exportCurrentAction =
+    new QAction(
+        "Export Current View",
+        this);
+
+    connect(
+        exportCurrentAction,
+        &QAction::triggered,
+        this,
+        [this]()
+        {
+            graphView_->exportToSvg(
+                GraphView::ExportMode::CurrentView);
+        });
+
+    fileMenu->addAction(exportCurrentAction);
+
+    QAction* exportWholeAction =
+    new QAction(
+        "Export Whole Diagram",
+        this);
+
+    connect(
+        exportWholeAction,
+        &QAction::triggered,
+        this,
+        [this]()
+        {
+            graphView_->exportToSvg(
+                GraphView::ExportMode::WholeScene);
+        });
+
+    fileMenu->addAction(exportWholeAction);
+    
+
+    QAction* moveAction =
+    new QAction(
+        "Move Selection To...",
+        this);
+
+    connect(
+    moveAction,
+    &QAction::triggered,
+    this,
+    [this]()
+    {
+        bool okX = false;
+        bool okY = false;
+
+        double x =
+            QInputDialog::getDouble(
+                this,
+                "Move Selection",
+                "Target X:",
+                0.0,
+                -100000,
+                100000,
+                2,
+                &okX);
+
+        if (!okX)
+            return;
+
+        double y =
+            QInputDialog::getDouble(
+                this,
+                "Move Selection",
+                "Target Y:",
+                0.0,
+                -100000,
+                100000,
+                2,
+                &okY);
+
+        if (!okY)
+            return;
+
+        graphView_->moveSelectionTo(
+            QPointF(x, y));
+    });
+
+        editMenu->addAction(moveAction);
 }
 
 void MainWindow::setupConnections()
@@ -527,13 +609,13 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
 
             model_->addNodeToLayer(newId, layerId);
 
-            populateNavigator();                    // 🔥 FIX
+            populateNavigator();
             renderGraph(model_->extractGraph(layerId));
             return;
         }
     }
 
-    populateNavigator();                            // 🔥 FIX
+    populateNavigator();
     renderGraph(model_->extractGraph(std::nullopt));
 }
 
@@ -591,6 +673,9 @@ void MainWindow::setGraphMode(GraphView::Mode mode)
     switch (mode) {
     case GraphView::Mode::View:
         text = "Mode: View";
+        break;
+    case GraphView::Mode::Layout:
+        text = "Mode: Layout";
         break;
     case GraphView::Mode::Add:
         text = "Mode: Add";

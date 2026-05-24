@@ -17,17 +17,28 @@ public:
         Arch,
         Connect
     };
+    enum class ExportMode
+    {
+        CurrentView,
+        WholeScene
+    };
+
+
 
     explicit GraphView(QWidget* parent = nullptr);
 
     void setMode(Mode mode);
     Mode mode() const { return mode_; }
-
+    void exportToSvg(ExportMode mode);
+    void moveSelectionTo(const QPointF& target);
 signals:
     void requestAddNode(QPointF scenePos);
     void requestConnectNodes(qulonglong srcId, qulonglong dstId);
 
 protected:
+    void drawBackground(
+    QPainter* painter,
+    const QRectF& rect) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;

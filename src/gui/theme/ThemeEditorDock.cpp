@@ -1,18 +1,20 @@
-
 #include "ThemeEditorDock.h"
 
-#include "theme/GraphThemeManager.h"
+#include "GraphTheme.h"
+#include "GraphThemeManager.h"
 
-#include <QVBoxLayout>
+#include <QTreeWidget>
+#include <QStackedWidget>
 #include <QHBoxLayout>
-#include <QPushButton>
+#include <QVBoxLayout>
 #include <QLabel>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QCheckBox>
+#include <QToolButton>
 #include <QColorDialog>
 #include <QScrollArea>
-#include <QGroupBox>
-#include <QToolBox>
+#include <QFrame>
 
 ThemeEditorDock::ThemeEditorDock(
     QWidget* parent)
@@ -23,184 +25,316 @@ ThemeEditorDock::ThemeEditorDock(
     QWidget* root =
         new QWidget;
 
-    QVBoxLayout* rootLayout =
-        new QVBoxLayout(root);
+    auto* rootLayout =
+        new QHBoxLayout(root);
 
-    QToolBox* toolbox =
-        new QToolBox;
+    rootLayout->setContentsMargins(0,0,0,0);
 
-    createToolBoxPage(toolbox, "View");
-    createToolBoxPage(toolbox, "Grid");
-    createToolBoxPage(toolbox, "Node");
-    createToolBoxPage(toolbox, "Edge");
-    createToolBoxPage(toolbox, "Port");
-    createToolBoxPage(toolbox, "Selection");
-    createToolBoxPage(toolbox, "Interaction");
+    m_tree =
+        new QTreeWidget;
 
-    {
-        QWidget* page =
-            toolbox->widget(0);
+    m_tree->setHeaderHidden(true);
+    m_tree->setMinimumWidth(240);
 
-        auto* layout =
-            qobject_cast<QVBoxLayout*>(
-                page->layout());
+    m_stack =
+        new QStackedWidget;
 
-        buildViewSection(layout);
-    }
+    rootLayout->addWidget(m_tree);
+    rootLayout->addWidget(m_stack, 1);
 
-    {
-        QWidget* page =
-            toolbox->widget(1);
+    setWidget(root);
 
-        auto* layout =
-            qobject_cast<QVBoxLayout*>(
-                page->layout());
+    populateTree();
+    connectTree();
+}
 
-        buildGridSection(layout);
-    }
+ThemeEditorDock::InspectorPage
+ThemeEditorDock::createInspectorPage()
+{
+    InspectorPage page;
 
-    {
-        QWidget* page =
-            toolbox->widget(2);
+    page.content =
+        new QWidget;
 
-        auto* layout =
-            qobject_cast<QVBoxLayout*>(
-                page->layout());
+    page.layout =
+        new QVBoxLayout(page.content);
 
-        buildNodeSection(layout);
-    }
-
-    {
-        QWidget* page =
-            toolbox->widget(3);
-
-        auto* layout =
-            qobject_cast<QVBoxLayout*>(
-                page->layout());
-
-        buildEdgeSection(layout);
-    }
-
-    {
-        QWidget* page =
-            toolbox->widget(4);
-
-        auto* layout =
-            qobject_cast<QVBoxLayout*>(
-                page->layout());
-
-        buildPortSection(layout);
-    }
-
-    {
-        QWidget* page =
-            toolbox->widget(5);
-
-        auto* layout =
-            qobject_cast<QVBoxLayout*>(
-                page->layout());
-
-        buildSelectionSection(layout);
-    }
-
-    {
-        QWidget* page =
-            toolbox->widget(6);
-
-        auto* layout =
-            qobject_cast<QVBoxLayout*>(
-                page->layout());
-
-        buildInteractionSection(layout);
-    }
-
-    rootLayout->addWidget(toolbox);
+    page.layout->setAlignment(Qt::AlignTop);
 
     QScrollArea* scroll =
         new QScrollArea;
 
-    scroll->setWidget(root);
+    scroll->setWidget(page.content);
     scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
 
-    setWidget(scroll);
-}
-
-QWidget* ThemeEditorDock::createToolBoxPage(
-    QToolBox* toolBox,
-    const QString& title)
-{
-    QWidget* page =
+    page.container =
         new QWidget;
 
     auto* layout =
-        new QVBoxLayout(page);
+        new QVBoxLayout(page.container);
 
-    layout->setContentsMargins(4, 4, 4, 4);
+    layout->setContentsMargins(0,0,0,0);
 
-    toolBox->addItem(page, title);
+    layout->addWidget(scroll);
 
     return page;
 }
 
-void ThemeEditorDock::emitThemeChanged()
+void ThemeEditorDock::populateTree()
 {
-    GraphThemeManager::instance()
-        ->notifyThemeChanged();
+    auto& theme =
+        GraphThemeManager::instance()
+            ->mutableTheme();
+
+    auto addPage =
+        [&](QTreeWidgetItem* item,
+            auto builder)
+        {
+            auto page =
+                createInspectorPage();
+
+            builder(page.layout);
+
+            int index =
+                m_stack->addWidget(
+                    page.container);
+
+            item->setData(
+                0,
+                Qt::UserRole,
+                index);
+        };
+
+    auto* viewItem =
+        new QTreeWidgetItem(
+            QStringList() << "View");
+
+    m_tree->addTopLevelItem(viewItem);
+
+    addPage(
+        viewItem,
+        [&](QVBoxLayout* layout)
+        {
+            buildViewProperties(layout);
+        });
+
+    auto* gridItem =
+        new QTreeWidgetItem(
+            QStringList() << "Grid");
+
+    m_tree->addTopLevelItem(gridItem);
+
+    addPage(
+        gridItem,
+        [&](QVBoxLayout* layout)
+        {
+            buildGridProperties(layout);
+        });
+
+    auto* nodeRoot =
+        new QTreeWidgetItem(
+            QStringList() << "Node");
+
+    m_tree->addTopLevelItem(nodeRoot);
+
+    struct NodeEntry
+    {
+        QString name;
+        GraphNodeState* state;
+    };
+
+    QVector<NodeEntry> nodeStates =
+    {
+        { "Normal", &theme.node.normal },
+        { "Hover", &theme.node.hover },
+        { "Selected", &theme.node.selected }
+    };
+
+    for (auto& entry : nodeStates)
+    {
+        auto* item =
+            new QTreeWidgetItem(
+                QStringList() << entry.name);
+
+        nodeRoot->addChild(item);
+
+        addPage(
+            item,
+            [&](QVBoxLayout* layout)
+            {
+                buildNodeStateProperties(
+                    *entry.state,
+                    layout);
+            });
+    }
+
+    auto* edgeRoot =
+        new QTreeWidgetItem(
+            QStringList() << "Edge");
+
+    m_tree->addTopLevelItem(edgeRoot);
+
+    struct EdgeEntry
+    {
+        QString name;
+        GraphEdgeState* state;
+    };
+
+    QVector<EdgeEntry> edgeStates =
+    {
+        { "Normal", &theme.edge.normal },
+        { "Hover", &theme.edge.hover },
+        { "Selected", &theme.edge.selected }
+    };
+
+    for (auto& entry : edgeStates)
+    {
+        auto* item =
+            new QTreeWidgetItem(
+                QStringList() << entry.name);
+
+        edgeRoot->addChild(item);
+
+        addPage(
+            item,
+            [&](QVBoxLayout* layout)
+            {
+                buildEdgeStateProperties(
+                    *entry.state,
+                    layout);
+            });
+    }
+
+    auto* portRoot =
+        new QTreeWidgetItem(
+            QStringList() << "Port");
+
+    m_tree->addTopLevelItem(portRoot);
+
+    struct PortEntry
+    {
+        QString name;
+        GraphPortState* state;
+    };
+
+    QVector<PortEntry> portStates =
+    {
+        { "Normal", &theme.port.normal },
+        { "Hover", &theme.port.hover },
+        { "Selected", &theme.port.selected }
+    };
+
+    for (auto& entry : portStates)
+    {
+        auto* item =
+            new QTreeWidgetItem(
+                QStringList() << entry.name);
+
+        portRoot->addChild(item);
+
+        addPage(
+            item,
+            [&](QVBoxLayout* layout)
+            {
+                buildPortStateProperties(
+                    *entry.state,
+                    layout);
+            });
+    }
+
+    auto* selectionItem =
+        new QTreeWidgetItem(
+            QStringList() << "Selection");
+
+    m_tree->addTopLevelItem(selectionItem);
+
+    addPage(
+        selectionItem,
+        [&](QVBoxLayout* layout)
+        {
+            buildSelectionProperties(layout);
+        });
+
+    auto* interactionItem =
+        new QTreeWidgetItem(
+            QStringList() << "Interaction");
+
+    m_tree->addTopLevelItem(interactionItem);
+
+    addPage(
+        interactionItem,
+        [&](QVBoxLayout* layout)
+        {
+            buildInteractionProperties(layout);
+        });
+
+    m_tree->expandAll();
 }
 
-QGroupBox* ThemeEditorDock::createSection(
+void ThemeEditorDock::connectTree()
+{
+    connect(m_tree,
+            &QTreeWidget::itemSelectionChanged,
+            this,
+            [this]()
+            {
+                auto items =
+                    m_tree->selectedItems();
+
+                if (items.isEmpty())
+                    return;
+
+                int index =
+                    items.first()
+                        ->data(0, Qt::UserRole)
+                        .toInt();
+
+                if (index >= 0 &&
+                    index < m_stack->count())
+                {
+                    m_stack->setCurrentIndex(index);
+                }
+            });
+}
+
+QWidget* ThemeEditorDock::createCollapsibleSection(
     const QString& title,
-    QVBoxLayout*& outLayout)
+    QVBoxLayout*& contentLayout)
 {
-    auto* group =
-        new QGroupBox(title);
+    QWidget* root =
+        new QWidget;
 
-    outLayout =
-        new QVBoxLayout(group);
+    auto* rootLayout =
+        new QVBoxLayout(root);
 
-    return group;
+    QToolButton* button =
+        new QToolButton;
+
+    button->setText(title);
+    button->setCheckable(true);
+    button->setChecked(true);
+
+    QWidget* content =
+        new QWidget;
+
+    contentLayout =
+        new QVBoxLayout(content);
+
+    connect(button,
+            &QToolButton::toggled,
+            this,
+            [=](bool checked)
+            {
+                content->setVisible(checked);
+            });
+
+    rootLayout->addWidget(button);
+    rootLayout->addWidget(content);
+
+    return root;
 }
 
-// QPushButton* ThemeEditorDock::makeColorButton(
-//     const QColor& initial,
-//     std::function<void(const QColor&)> onChanged)
-// {
-//     QPushButton* btn =
-//         new QPushButton;
-
-//     btn->setMinimumHeight(24);
-
-//     auto applyColor =
-//         [btn](const QColor& c)
-//         {
-//             btn->setStyleSheet(
-//                 QString("background:%1;")
-//                     .arg(c.name()));
-//         };
-
-//     applyColor(initial);
-
-//     connect(btn,
-//             &QPushButton::clicked,
-//             this,
-//             [=]() mutable
-//             {
-//                 QColor color =
-//                     QColorDialog::getColor(
-//                         initial,
-//                         this,
-//                         "Select Color");
-
-//                 if (!color.isValid())
-//                     return;
-
-//                 applyColor(color);
-
-//                 onChanged(color);
-//             });
-
-//     return btn;
-// }
 QPushButton* ThemeEditorDock::makeColorButton(
     const QColor& initial,
     std::function<void(const QColor&)> onChanged)
@@ -209,6 +343,9 @@ QPushButton* ThemeEditorDock::makeColorButton(
         new QPushButton;
 
     btn->setMinimumHeight(24);
+
+    QColor currentColor =
+        initial;
 
     auto applyColor =
         [btn](const QColor& c)
@@ -225,11 +362,12 @@ QPushButton* ThemeEditorDock::makeColorButton(
                     "QPushButton {"
                     "border: 1px solid #444;"
                     "background: %1;"
+                    "min-width: 40px;"
                     "}")
                     .arg(rgba));
         };
 
-    applyColor(initial);
+    applyColor(currentColor);
 
     connect(btn,
             &QPushButton::clicked,
@@ -237,7 +375,7 @@ QPushButton* ThemeEditorDock::makeColorButton(
             [=]() mutable
             {
                 QColorDialog dialog(
-                    initial,
+                    currentColor,
                     this);
 
                 dialog.setWindowTitle(
@@ -258,9 +396,12 @@ QPushButton* ThemeEditorDock::makeColorButton(
                 if (!color.isValid())
                     return;
 
-                applyColor(color);
+                currentColor =
+                    color;
 
-                onChanged(color);
+                applyColor(currentColor);
+
+                onChanged(currentColor);
             });
 
     return btn;
@@ -362,8 +503,10 @@ void ThemeEditorDock::buildTextStyleSection(
 {
     QVBoxLayout* layout = nullptr;
 
-    auto* group =
-        createSection(title, layout);
+    auto* section =
+        createCollapsibleSection(
+            title,
+            layout);
 
     layout->addWidget(
         createColorEditor(
@@ -407,19 +550,63 @@ void ThemeEditorDock::buildTextStyleSection(
                 emitThemeChanged();
             }));
 
-    parentLayout->addWidget(group);
+    parentLayout->addWidget(section);
 }
 
-void ThemeEditorDock::buildNodeStateSection(
+void ThemeEditorDock::buildArrowStateSection(
     const QString& title,
-    GraphNodeState& state,
+    GraphArrowState& state,
     QVBoxLayout* parentLayout)
 {
     QVBoxLayout* layout = nullptr;
 
-    auto* group =
-        createSection(title, layout);
+    auto* section =
+        createCollapsibleSection(
+            title,
+            layout);
 
+    layout->addWidget(
+        createColorEditor(
+            "Line Color",
+            state.lineColor,
+            [&](const QColor& c)
+            {
+                state.lineColor = c;
+                emitThemeChanged();
+            }));
+
+    parentLayout->addWidget(section);
+}
+
+void ThemeEditorDock::buildEdgeLabelStyleSection(
+    const QString& title,
+    GraphEdgeLabelState& style,
+    QVBoxLayout* parentLayout)
+{
+    QVBoxLayout* layout = nullptr;
+
+    auto* section =
+        createCollapsibleSection(
+            title,
+            layout);
+
+    layout->addWidget(
+        createColorEditor(
+            "Text Color",
+            style.textColor,
+            [&](const QColor& c)
+            {
+                style.textColor = c;
+                emitThemeChanged();
+            }));
+
+    parentLayout->addWidget(section);
+}
+
+void ThemeEditorDock::buildNodeStateProperties(
+    GraphNodeState& state,
+    QVBoxLayout* layout)
+{
     layout->addWidget(
         createColorEditor(
             "Background",
@@ -440,42 +627,6 @@ void ThemeEditorDock::buildNodeStateSection(
                 emitThemeChanged();
             }));
 
-    layout->addWidget(
-        createIntEditor(
-            "Border Width",
-            state.borderWidth,
-            1,
-            20,
-            [&](int v)
-            {
-                state.borderWidth = v;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Radius",
-            state.radius,
-            0,
-            100,
-            [&](int v)
-            {
-                state.radius = v;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Padding",
-            state.padding,
-            0,
-            100,
-            [&](int v)
-            {
-                state.padding = v;
-                emitThemeChanged();
-            }));
-
     buildTextStyleSection(
         "Title Text",
         state.title,
@@ -485,165 +636,12 @@ void ThemeEditorDock::buildNodeStateSection(
         "Body Text",
         state.body,
         layout);
-
-    parentLayout->addWidget(group);
 }
 
-void ThemeEditorDock::buildNodeSection(
-    QVBoxLayout* parentLayout)
-{
-    auto& theme =
-        GraphThemeManager::instance()
-            ->mutableTheme();
-
-    buildNodeStateSection(
-        "Normal",
-        theme.node.normal,
-        parentLayout);
-
-    buildNodeStateSection(
-        "Hover",
-        theme.node.hover,
-        parentLayout);
-
-    buildNodeStateSection(
-        "Selected",
-        theme.node.selected,
-        parentLayout);
-}
-
-void ThemeEditorDock::buildArrowStateSection(
-    const QString& title,
-    GraphArrowState& state,
-    QVBoxLayout* parentLayout)
-{
-    QVBoxLayout* layout = nullptr;
-
-    auto* group =
-        createSection(title, layout);
-
-    layout->addWidget(
-        createColorEditor(
-            "Line Color",
-            state.lineColor,
-            [&](const QColor& c)
-            {
-                state.lineColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Fill Color",
-            state.fillColor,
-            [&](const QColor& c)
-            {
-                state.fillColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Border Color",
-            state.borderColor,
-            [&](const QColor& c)
-            {
-                state.borderColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Width",
-            state.width,
-            1,
-            100,
-            [&](int v)
-            {
-                state.width = v;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Height",
-            state.height,
-            1,
-            100,
-            [&](int v)
-            {
-                state.height = v;
-                emitThemeChanged();
-            }));
-
-    parentLayout->addWidget(group);
-}
-
-void ThemeEditorDock::buildEdgeLabelStyleSection(
-    const QString& title,
-    GraphEdgeLabelState& style,
-    QVBoxLayout* parentLayout)
-{
-    QVBoxLayout* layout = nullptr;
-
-    auto* group =
-        createSection(title, layout);
-
-    layout->addWidget(
-        createColorEditor(
-            "Text Color",
-            style.textColor,
-            [&](const QColor& c)
-            {
-                style.textColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Background",
-            style.backgroundColor,
-            [&](const QColor& c)
-            {
-                style.backgroundColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Border",
-            style.borderColor,
-            [&](const QColor& c)
-            {
-                style.borderColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Font Size",
-            style.fontSize,
-            6,
-            72,
-            [&](int v)
-            {
-                style.fontSize = v;
-                emitThemeChanged();
-            }));
-
-    parentLayout->addWidget(group);
-}
-
-void ThemeEditorDock::buildEdgeStateSection(
-    const QString& title,
+void ThemeEditorDock::buildEdgeStateProperties(
     GraphEdgeState& state,
-    QVBoxLayout* parentLayout)
+    QVBoxLayout* layout)
 {
-    QVBoxLayout* layout = nullptr;
-
-    auto* group =
-        createSection(title, layout);
-
     layout->addWidget(
         createColorEditor(
             "Line Color",
@@ -651,28 +649,6 @@ void ThemeEditorDock::buildEdgeStateSection(
             [&](const QColor& c)
             {
                 state.lineColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Line Width",
-            state.lineWidth,
-            1,
-            20,
-            [&](int v)
-            {
-                state.lineWidth = v;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createBoolEditor(
-            "Dashed",
-            state.dashed,
-            [&](bool v)
-            {
-                state.dashed = v;
                 emitThemeChanged();
             }));
 
@@ -685,45 +661,29 @@ void ThemeEditorDock::buildEdgeStateSection(
         "Label",
         state.label,
         layout);
-
-    parentLayout->addWidget(group);
 }
 
-void ThemeEditorDock::buildEdgeSection(
-    QVBoxLayout* parentLayout)
+void ThemeEditorDock::buildPortStateProperties(
+    GraphPortState& state,
+    QVBoxLayout* layout)
+{
+    layout->addWidget(
+        createColorEditor(
+            "Input",
+            state.inputColor,
+            [&](const QColor& c)
+            {
+                state.inputColor = c;
+                emitThemeChanged();
+            }));
+}
+
+void ThemeEditorDock::buildViewProperties(
+    QVBoxLayout* layout)
 {
     auto& theme =
         GraphThemeManager::instance()
             ->mutableTheme();
-
-    buildEdgeStateSection(
-        "Normal",
-        theme.edge.normal,
-        parentLayout);
-
-    buildEdgeStateSection(
-        "Hover",
-        theme.edge.hover,
-        parentLayout);
-
-    buildEdgeStateSection(
-        "Selected",
-        theme.edge.selected,
-        parentLayout);
-}
-void ThemeEditorDock::buildViewSection(
-    QVBoxLayout* parentLayout)
-{
-    auto& theme =
-        GraphThemeManager::instance()
-            ->mutableTheme();
-
-    QVBoxLayout* layout = nullptr;
-
-    auto* group =
-        createSection(
-            "View",
-            layout);
 
     layout->addWidget(
         createColorEditor(
@@ -732,27 +692,17 @@ void ThemeEditorDock::buildViewSection(
             [&](const QColor& c)
             {
                 theme.view.background = c;
-
                 emitThemeChanged();
             }));
-
-    parentLayout->addWidget(group);
 }
 
-void ThemeEditorDock::buildGridSection(
-    QVBoxLayout* parentLayout)
+void ThemeEditorDock::buildGridProperties(
+    QVBoxLayout* layout)
 {
     auto& grid =
         GraphThemeManager::instance()
             ->mutableTheme()
             .view.grid;
-
-    QVBoxLayout* layout = nullptr;
-
-    auto* group =
-        createSection(
-            "Grid",
-            layout);
 
     layout->addWidget(
         createBoolEditor(
@@ -763,168 +713,15 @@ void ThemeEditorDock::buildGridSection(
                 grid.enabled = v;
                 emitThemeChanged();
             }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Minor Color",
-            grid.minorColor,
-            [&](const QColor& c)
-            {
-                grid.minorColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Major Color",
-            grid.majorColor,
-            [&](const QColor& c)
-            {
-                grid.majorColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Spacing",
-            grid.spacing,
-            1,
-            500,
-            [&](int v)
-            {
-                grid.spacing = v;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Major Spacing",
-            grid.majorSpacing,
-            1,
-            1000,
-            [&](int v)
-            {
-                grid.majorSpacing = v;
-                emitThemeChanged();
-            }));
-
-    parentLayout->addWidget(group);
 }
 
-void ThemeEditorDock::buildPortSection(
-    QVBoxLayout* parentLayout)
-{
-    auto& theme =
-        GraphThemeManager::instance()
-            ->mutableTheme();
-
-    buildPortStateSection(
-        "Normal",
-        theme.port.normal,
-        parentLayout);
-
-    buildPortStateSection(
-        "Hover",
-        theme.port.hover,
-        parentLayout);
-
-    buildPortStateSection(
-        "Selected",
-        theme.port.selected,
-        parentLayout);
-}
-
-void ThemeEditorDock::buildPortStateSection(
-    const QString& title,
-    GraphPortState& state,
-    QVBoxLayout* parentLayout)
-{
-    QVBoxLayout* layout = nullptr;
-
-    auto* group =
-        createSection(title, layout);
-
-    layout->addWidget(
-        createColorEditor(
-            "Input Color",
-            state.inputColor,
-            [&](const QColor& c)
-            {
-                state.inputColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Output Color",
-            state.outputColor,
-            [&](const QColor& c)
-            {
-                state.outputColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Hover Color",
-            state.hoverColor,
-            [&](const QColor& c)
-            {
-                state.hoverColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Border Color",
-            state.borderColor,
-            [&](const QColor& c)
-            {
-                state.borderColor = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Radius",
-            state.radius,
-            1,
-            50,
-            [&](int v)
-            {
-                state.radius = v;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Border Width",
-            state.borderWidth,
-            1,
-            20,
-            [&](int v)
-            {
-                state.borderWidth = v;
-                emitThemeChanged();
-            }));
-
-    parentLayout->addWidget(group);
-}
-
-void ThemeEditorDock::buildSelectionSection(
-    QVBoxLayout* parentLayout)
+void ThemeEditorDock::buildSelectionProperties(
+    QVBoxLayout* layout)
 {
     auto& selection =
         GraphThemeManager::instance()
             ->mutableTheme()
             .selection;
-
-    QVBoxLayout* layout = nullptr;
-
-    auto* group =
-        createSection(
-            "Selection",
-            layout);
 
     layout->addWidget(
         createColorEditor(
@@ -935,46 +732,15 @@ void ThemeEditorDock::buildSelectionSection(
                 selection.outline = c;
                 emitThemeChanged();
             }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Fill",
-            selection.fill,
-            [&](const QColor& c)
-            {
-                selection.fill = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Border Width",
-            selection.borderWidth,
-            1,
-            20,
-            [&](int v)
-            {
-                selection.borderWidth = v;
-                emitThemeChanged();
-            }));
-
-    parentLayout->addWidget(group);
 }
 
-void ThemeEditorDock::buildInteractionSection(
-    QVBoxLayout* parentLayout)
+void ThemeEditorDock::buildInteractionProperties(
+    QVBoxLayout* layout)
 {
     auto& interaction =
         GraphThemeManager::instance()
             ->mutableTheme()
             .interaction;
-
-    QVBoxLayout* layout = nullptr;
-
-    auto* group =
-        createSection(
-            "Interaction",
-            layout);
 
     layout->addWidget(
         createColorEditor(
@@ -985,48 +751,10 @@ void ThemeEditorDock::buildInteractionSection(
                 interaction.hoverOutline = c;
                 emitThemeChanged();
             }));
+}
 
-    layout->addWidget(
-        createColorEditor(
-            "Invalid Connection",
-            interaction.invalidConnection,
-            [&](const QColor& c)
-            {
-                interaction.invalidConnection = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Drop Target",
-            interaction.dropTarget,
-            [&](const QColor& c)
-            {
-                interaction.dropTarget = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createColorEditor(
-            "Snap Guide",
-            interaction.snapGuide,
-            [&](const QColor& c)
-            {
-                interaction.snapGuide = c;
-                emitThemeChanged();
-            }));
-
-    layout->addWidget(
-        createIntEditor(
-            "Snap Guide Width",
-            interaction.snapGuideWidth,
-            1,
-            20,
-            [&](int v)
-            {
-                interaction.snapGuideWidth = v;
-                emitThemeChanged();
-            }));
-
-    parentLayout->addWidget(group);
+void ThemeEditorDock::emitThemeChanged()
+{
+    GraphThemeManager::instance()
+        ->notifyThemeChanged();
 }

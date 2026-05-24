@@ -4,7 +4,8 @@ project(OpenArch LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g")
+set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
 # ------------------------------------------------------------
 # Qt (REQUIRED for GUI)
 # ------------------------------------------------------------
@@ -12,7 +13,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt5 REQUIRED COMPONENTS Widgets)
+find_package(Qt5 REQUIRED COMPONENTS Widgets Svg)
 
 # ------------------------------------------------------------
 # Dependencies
@@ -93,4 +94,5 @@ add_executable(openarch-gui
 target_link_libraries(openarch-gui PRIVATE
     openarch_core
     Qt5::Widgets
+    Qt5::Svg
 )
