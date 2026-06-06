@@ -120,7 +120,7 @@ QRectF GraphNodeItem::calculateNodeRect() const
     const int padding =
         State->padding;
 
-    const int spacing = 6;
+    const int spacing = 0;
 
     /*
      * NODE SIZE
@@ -244,7 +244,7 @@ void GraphNodeItem::paint(
     const int padding =
         State->padding;
 
-    const int spacing = 6;
+    const int spacing = 0;
 
     QRectF contentRect =
         rect.adjusted(
@@ -351,7 +351,7 @@ void GraphNodeItem::paint(
 
     painter->drawText(
         titleRect,
-        State->title.alignment |
+        State->title.align |
         Qt::TextWordWrap,
         displayTitle());
 
@@ -367,20 +367,29 @@ void GraphNodeItem::paint(
 
     painter->drawText(
         bodyRect,
-        State->body.alignment |
+        State->body.align |
         Qt::TextWordWrap,
         displayType());
 }
+
 
 QVariant GraphNodeItem::itemChange(
     QGraphicsItem::GraphicsItemChange change,
     const QVariant& value)
 {
+    qDebug() << change;
     if (change == QGraphicsItem::ItemPositionHasChanged)
     {
         for (auto* e : edges_)
-            e->updateEndpoints();
+        {
+            if (!e)
+                continue;
+
+            if (e->scene())
+                e->updateEndpoints();
+        }
     }
+    qDebug() << "change exit\n";
 
     return QGraphicsObject::itemChange(change, value);
 }
@@ -439,7 +448,7 @@ void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
     
     if (view && view->mode() == GraphView::Mode::View)
     {
-        event->ignore();  // 🔥 allow pan, block selection
+        event->ignore();
         return;
     }
 

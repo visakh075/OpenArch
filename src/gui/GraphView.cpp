@@ -295,34 +295,29 @@ void GraphView::keyReleaseEvent(QKeyEvent* event)
 
     QGraphicsView::keyReleaseEvent(event);
 }
+
 void GraphView::drawBackground(
     QPainter* painter,
     const QRectF& rect)
 {
-    Q_UNUSED(rect);
+    const auto& theme =
+        GraphThemeManager::instance()->theme();
 
     //
     // background
     //
-
-    const auto& theme =
-        GraphThemeManager::instance()->theme();
-
     painter->fillRect(
-        sceneRect(),
+        rect,
         theme.view.background);
 
-
-
     //
-    // grid pen
+    // grid
     //
     if(theme.view.grid.enabled)
     {
         const int gridSize = 20;
 
         QPen pen(theme.view.grid.majorColor);
-        
         pen.setWidth(1);
 
         painter->setPen(pen);
@@ -352,20 +347,18 @@ void GraphView::drawBackground(
 
         QVector<QLineF> lines;
 
-        for (int x = left; x < right; x += gridSize)
+        for(int x = left; x < right; x += gridSize)
         {
             lines.append(QLineF(x, top, x, bottom));
         }
 
-        for (int y = top; y < bottom; y += gridSize)
+        for(int y = top; y < bottom; y += gridSize)
         {
             lines.append(QLineF(left, y, right, y));
         }
 
         painter->drawLines(lines);
-
     }
-    
 }
 
 void GraphView::moveSelectionTo(

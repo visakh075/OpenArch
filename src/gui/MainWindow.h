@@ -36,6 +36,8 @@ public:
     explicit MainWindow(
         QWidget* parent = nullptr);
 
+    void setDb(std::string);
+
     ~MainWindow();
 
 private:

@@ -796,3 +796,21 @@ void MainWindow::alignVertical()
 
     statusBar()->showMessage("Aligned vertically", 2000);
 }
+
+void MainWindow::setDb(std::string db_path)
+{
+    if(!db_path.empty())
+    {
+        db_.close();
+        db_.open(db_path);
+        if(model_ !=nullptr)
+        {
+            delete model_;
+        }
+        
+        model_ = new ArchitectureModel(db_);
+
+        populateNavigator();
+        renderGraph(model_->extractGraph(std::nullopt));
+    }
+}

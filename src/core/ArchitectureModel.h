@@ -1,89 +1,152 @@
 #pragma once
 
-#include <vector>
-#include <string>
-
-#include "Types.h"
-
-
-#include <optional>
+#include "DbManager.h"
 #include "db/DbManager.h"
 #include "core/DomainObjects.h"
 #include "core/GraphSnapshot.h"
-/*
- * ArchitectureModel
- *
- * This is the SINGLE place where:
- *  - checksums are computed
- *  - status transitions are enforced
- *  - reviewers are invalidated or applied
- *
- * CLI must talk ONLY to this layer.
- * DB implementations must remain dumb storage.
- */
-class ArchitectureModel {
+#include <optional>
+#include <vector>
+
+class ArchitectureModel
+{
 public:
     explicit ArchitectureModel(DbManager& db);
 
-    /* ========================================================
+    void reloadCache();
+
+    /* ============================================================
        Nodes
-       ======================================================== */
-    Result addNode(NodeData& node, NodeId& outId);
-    Result updateNode(NodeData& node);
+       ============================================================ */
+
+    Result addNode(
+        NodeData& n,
+        NodeId& outId);
+
+    Result updateNode(NodeData& n);
+
     Result deleteNode(NodeId id);
-    std::vector<NodeData> nodes() const;
 
-    Result setNodeMetadata(NodeId id, const std::string& metadata);
-    Result setNodeAttributes(NodeId id, const std::string& attributes);
-    Result reviewNode(NodeId id, const std::string& reviewer);
+    const std::vector<NodeData>&
+    nodes() const;
 
-    /* ========================================================
+    Result setNodeMetadata(
+        NodeId id,
+        const std::string& metadata);
+
+    Result setNodeAttributes(
+        NodeId id,
+        const std::string& attributes);
+
+    Result reviewNode(
+        NodeId id,
+        const std::string& reviewer);
+
+    /* ============================================================
        Layers
-       ======================================================== */
-    Result addLayer(LayerData& layer, LayerId& outId);
-    Result updateLayer(LayerData& layer);
+       ============================================================ */
+
+    Result addLayer(
+        LayerData& l,
+        LayerId& outId);
+
+    Result updateLayer(LayerData& l);
+
     Result deleteLayer(LayerId id);
-    std::vector<LayerData> layers() const;
 
-    Result setLayerMetadata(LayerId id, const std::string& metadata);
-    Result setLayerAttributes(LayerId id, const std::string& attributes);
-    Result reviewLayer(LayerId id, const std::string& reviewer);
+    const std::vector<LayerData>&
+    layers() const;
 
-    /* ========================================================
-       Node–Layer relationship
-       ======================================================== */
-    Result addNodeToLayer(NodeId nodeId, LayerId layerId);
-    Result removeNodeFromLayer(NodeId nodeId, LayerId layerId);
-    std::vector<NodeLayer> nodesInLayer(LayerId layerId) const;
+    Result setLayerMetadata(
+        LayerId id,
+        const std::string& metadata);
 
-    /* ========================================================
-       Edges (layer-aware)
-       ======================================================== */
-    Result addEdge(EdgeData& edge, EdgeId& outId);
-    Result updateEdge(EdgeData& edge);
+    Result setLayerAttributes(
+        LayerId id,
+        const std::string& attributes);
+
+    Result reviewLayer(
+        LayerId id,
+        const std::string& reviewer);
+
+    /* ============================================================
+       Node-Layer relationship
+       ============================================================ */
+
+    Result addNodeToLayer(
+        NodeId nodeId,
+        LayerId layerId);
+
+    Result removeNodeFromLayer(
+        NodeId nodeId,
+        LayerId layerId);
+
+    std::vector<NodeLayer>
+    nodesInLayer(LayerId layerId) const;
+
+    std::vector<NodeLayer>
+    layersForNode(NodeId nodeId) const;
+
+    /* ============================================================
+       Edges
+       ============================================================ */
+
+    Result addEdge(
+        EdgeData& e,
+        EdgeId& outId);
+
+    Result updateEdge(EdgeData& e);
+
     Result deleteEdge(EdgeId id);
-    std::vector<EdgeData> edges() const;
 
-    Result setEdgeMetadata(EdgeId id, const std::string& metadata);
-    Result setEdgeAttributes(EdgeId id, const std::string& attributes);
-    Result reviewEdge(EdgeId id, const std::string& reviewer);
+    const std::vector<EdgeData>&
+    edges() const;
+
+    Result setEdgeMetadata(
+        EdgeId id,
+        const std::string& metadata);
+
+    Result setEdgeAttributes(
+        EdgeId id,
+        const std::string& attributes);
+
+    Result reviewEdge(
+        EdgeId id,
+        const std::string& reviewer);
+
+    /* ============================================================
+       Graph extraction
+       ============================================================ */
 
     GraphSnapshot extractGraph(
-        std::optional<LayerId> layerId = std::nullopt
-    ) const;
-    
-    std::optional<NodeData>  getNodeById(NodeId id) const;
-    std::optional<LayerData> getLayerById(LayerId id) const;
-    std::optional<EdgeData> getEdgeById(EdgeId id) const;
-    std::vector<NodeLayer> layersForNode(NodeId nodeId) const;
+        std::optional<LayerId> layerId) const;
+
+    /* ============================================================
+       Lookup helpers
+       ============================================================ */
+
+    std::optional<NodeData>
+    getNodeById(NodeId id) const;
+
+    std::optional<LayerData>
+    getLayerById(LayerId id) const;
+
+    std::optional<EdgeData>
+    getEdgeById(EdgeId id) const;
+
+private:
+    uint32_t computeNodeChecksum(
+        const NodeData& n) const;
+
+    uint32_t computeLayerChecksum(
+        const LayerData& l) const;
+
+    uint32_t computeEdgeChecksum(
+        const EdgeData& e) const;
 
 private:
     DbManager& db_;
 
-    /* ========================================================
-       Internal helpers (defined in .cpp)
-       ======================================================== */
-    uint32_t computeNodeChecksum(const NodeData& node) const;
-    uint32_t computeLayerChecksum(const LayerData& layer) const;
-    uint32_t computeEdgeChecksum(const EdgeData& edge) const;
+    std::vector<NodeData>  m_nodes;
+    std::vector<LayerData> m_layers;
+    std::vector<EdgeData>  m_edges;
 };

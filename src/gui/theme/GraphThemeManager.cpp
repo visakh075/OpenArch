@@ -47,6 +47,41 @@ bool loadBool(
         .toBool(fallback);
 }
 
+static Qt::Alignment loadAlign(
+    const QJsonObject& obj,
+    const QString& key,
+    Qt::Alignment fallback)
+{
+    if (!obj.contains(key) || !obj.value(key).isString())
+        return fallback;
+
+    const QString value =
+        obj.value(key).toString().trimmed().toLower();
+
+    if (value == "left")
+        return Qt::AlignLeft;
+
+    if (value == "right")
+        return Qt::AlignRight;
+
+    if (value == "center")
+        return Qt::AlignHCenter;
+
+    if (value == "justify")
+        return Qt::AlignJustify;
+
+    if (value == "top")
+        return Qt::AlignTop;
+
+    if (value == "bottom")
+        return Qt::AlignBottom;
+
+    if (value == "vcenter")
+        return Qt::AlignVCenter;
+
+    return fallback;
+}
+
 /*
  * ---------------------------------------------------------
  * TEXT STYLE
@@ -82,6 +117,31 @@ GraphTextStyle loadTextStyle(
             "italic",
             false);
 
+    style.pX = loadInt(
+        obj,
+        "pX",
+        5);
+
+    style.pY = loadInt(
+        obj,
+        "pY",
+        5);
+
+    style.mX = loadInt(
+        obj,
+        "mX",
+        5);
+
+    style.mY = loadInt(
+        obj,
+        "mY",
+        5);
+
+    style.align = loadAlign(
+        obj,
+        "align",
+        Qt::AlignCenter);
+    
     return style;
 }
 

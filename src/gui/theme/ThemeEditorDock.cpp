@@ -89,6 +89,7 @@ void ThemeEditorDock::populateTree()
 
     auto addPage =
         [&](QTreeWidgetItem* item,
+            
             auto builder)
         {
             auto page =

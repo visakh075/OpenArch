@@ -48,13 +48,23 @@ void EdgeEditorDialog::loadEdge()
 
 void EdgeEditorDialog::saveEdge()
 {
-    for (auto& e : model_->edges()) {
-        if (e.id == edgeId_) {
+    for (const auto& edge : model_->edges())
+    {
+        if (edge.id == edgeId_)
+        {
+            //
+            // create editable copy
+            //
+            EdgeData e = edge;
+
             e.edgeType =
                 typeEdit_->text().toStdString();
+
             e.metadata =
                 metadataEdit_->toPlainText().toStdString();
+
             model_->updateEdge(e);
+
             break;
         }
     }

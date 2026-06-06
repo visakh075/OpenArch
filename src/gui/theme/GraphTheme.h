@@ -21,7 +21,15 @@ struct GraphTextStyle
 
     bool italic = false;
 
-    Qt::Alignment alignment = Qt::AlignCenter;
+    int pX = 5;
+
+    int pY = 5;
+
+    int mX = 5;
+
+    int mY = 5;
+    
+    Qt::Alignment align = Qt::AlignCenter;
 };
 
 /*
