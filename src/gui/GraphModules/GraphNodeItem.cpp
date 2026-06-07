@@ -28,6 +28,7 @@ GraphNodeItem::GraphNodeItem(ArchitectureModel *m, NodeId id, QGraphicsItem *p)
              ItemSendsGeometryChanges);
 
     setZValue(1);
+    cachedRect_ = calculateNodeRect();
 }
 
 QRectF GraphNodeItem::calculateNodeRect() const
@@ -161,7 +162,6 @@ QRectF GraphNodeItem::calculateNodeRect() const
 
 QRectF GraphNodeItem::boundingRect() const
 {
-    cachedRect_ = calculateNodeRect();
     return cachedRect_;
 }
 
@@ -214,7 +214,7 @@ void GraphNodeItem::paint(
      */
 
     QRectF rect =
-        calculateNodeRect();
+        cachedRect_;
 
     /*
      * BACKGROUND

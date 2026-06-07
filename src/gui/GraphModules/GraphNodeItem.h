@@ -41,7 +41,6 @@ private:
     QRectF calculateNodeRect() const;
     bool hovered_ = false;
     bool isPrimary_ = false;
-    // QList<GraphEdgeItem*> edges_;
     std::unordered_set<GraphEdgeItem*> edges_;
 
 };

@@ -36,10 +36,11 @@ public:
     QPainterPath shape() const override;
 
     void updateEndpoints();
-
+    void refreshPath();
 private:
+    QPainterPath cachedPath_;
     QPainterPath buildPath() const;
-
+    
     QPointF portScenePosition(GraphNodeItem* node,
                               Port port) const;
 

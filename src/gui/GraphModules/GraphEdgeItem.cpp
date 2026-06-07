@@ -28,10 +28,10 @@ GraphEdgeItem::GraphEdgeItem(
     setFlag(QGraphicsItem::ItemIsSelectable, true);
     setZValue(-1);
     e_id = id;
-    // edge_= model->getEdgeById(id);
 
     normalPen_ = QPen(Qt::darkGray, 2);
     highlightPen_ = QPen(Qt::blue, 3);
+    cachedPath_ = buildPath();
 }
 
 QPointF GraphEdgeItem::portScenePosition(GraphNodeItem* node,
@@ -237,12 +237,17 @@ QPainterPath GraphEdgeItem::buildPath() const
 
 QRectF GraphEdgeItem::boundingRect() const
 {
-    QPainterPath path = buildPath();
-    QRectF rect = path.boundingRect();
-    rect.adjust(-20, -20, 20, 20);
+    QRectF rect =
+        cachedPath_.boundingRect();
+
+    rect.adjust(
+        -20,
+        -20,
+        20,
+        20);
+
     return rect;
 }
-
 void GraphEdgeItem::paint(QPainter* painter,
                           const QStyleOptionGraphicsItem*,
                           QWidget*)
@@ -252,7 +257,6 @@ void GraphEdgeItem::paint(QPainter* painter,
 
     const auto& theme =
         GraphThemeManager::instance()->theme();
-        // GraphThemeManager::theme();
 
     /*
      * EDGE STYLE
@@ -284,7 +288,7 @@ void GraphEdgeItem::paint(QPainter* painter,
      */
 
     QPainterPath fullPath =
-        buildPath();
+        cachedPath_;
 
     if (fullPath.elementCount() < 2)
         return;
@@ -677,8 +681,7 @@ QPainterPath GraphEdgeItem::shape() const
 
 void GraphEdgeItem::updateEndpoints()
 {
-    prepareGeometryChange();
-    update();
+    refreshPath();
 }
 
 void GraphEdgeItem::hoverEnterEvent(
@@ -728,4 +731,14 @@ void GraphEdgeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
     dlg.exec();
 
     QGraphicsObject::mouseDoubleClickEvent(event);
+}
+
+void GraphEdgeItem::refreshPath()
+{
+    prepareGeometryChange();
+
+    cachedPath_ =
+        buildPath();
+
+    update();
 }
