@@ -4,6 +4,7 @@
 #include <QGraphicsObject>
 #include <QPen>
 #include <QPainterPath>
+#include <QPointer>
 
 #include "ArchitectureModel.h"
 
@@ -22,12 +23,16 @@ public:
         Right
     };
 
+    /* Added to identify the type of object when qgraphicsitem_cast is used */
+    enum { Type = UserType + 2 };
+    int type() const override { return Type; }
+
     GraphEdgeItem(ArchitectureModel* model,
                 const EdgeId id,
                 GraphNodeItem* src,
                 GraphNodeItem* dst,
                 QGraphicsItem* parent = nullptr);
-
+    ~GraphEdgeItem();
     QRectF boundingRect() const override;
     void paint(QPainter* painter,
                const QStyleOptionGraphicsItem*,
@@ -35,10 +40,17 @@ public:
 
     QPainterPath shape() const override;
 
+    void refreshLayout();
     void updateEndpoints();
     void refreshPath();
+
 private:
     QPainterPath cachedPath_;
+    QString cachedTitle_;
+    QRect cachedTitleRect_;
+    QRectF cachedBounds_;
+
+    // QRectF cachedBounds_;
     QPainterPath buildPath() const;
     
     QPointF portScenePosition(GraphNodeItem* node,
@@ -47,18 +59,14 @@ private:
     void autoSelectPorts(Port& srcPort,
                          Port& dstPort) const;
 
-protected:
-    void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override;
-    void hoverLeaveEvent(QGraphicsSceneHoverEvent* event) override;
-    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
-
-private:
     ArchitectureModel* model_;
     
     EdgeId e_id;
 
-    GraphNodeItem* src_;
-    GraphNodeItem* dst_;
+    // GraphNodeItem* src_;
+    // GraphNodeItem* dst_;
+    QPointer<GraphNodeItem> src_;
+    QPointer<GraphNodeItem> dst_;
 
     mutable Port srcPort_;
     mutable Port dstPort_;
@@ -67,6 +75,12 @@ private:
     QPen highlightPen_;
 
     bool hovered_ = false;
+
+protected:
+    void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override;
+    void hoverLeaveEvent(QGraphicsSceneHoverEvent* event) override;
+    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+
 };
 
 #endif

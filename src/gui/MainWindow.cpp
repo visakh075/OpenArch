@@ -701,57 +701,142 @@ void MainWindow::setGraphMode(GraphView::Mode mode)
     }
     statusBar()->showMessage(text);
 }
+
+/*
 void MainWindow::onSelectionChanged()
 {
+    if (!scene_)
+        return;
 
-    if (!scene_ || scene_->items().isEmpty())
-    return;
+    const auto selected = scene_->selectedItems();
 
-    auto selected = scene_->selectedItems();
-
-    // --- No selection ---
+    // 1. If nothing is selected, clear and return
     if (selected.isEmpty())
     {
         primaryNode_ = nullptr;
-        statusBar()->showMessage("No selection");
+        if (statusBar())
+            statusBar()->showMessage("No selection");
+        return;
     }
-    else if (!primaryNode_ || !scene_->items().contains(primaryNode_) || !selected.contains(primaryNode_))
-    {
-        // pick FIRST selected node
-        primaryNode_ = nullptr;
 
-        for (auto* item : selected)
+    // 2. Safely find if a real GraphNodeItem is selected using C++ dynamic_cast
+    GraphNodeItem* newPrimary = nullptr;
+    for (QGraphicsItem* item : selected)
+    {
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
         {
-            if (auto* node = qgraphicsitem_cast<GraphNodeItem*>(item))
+            if (node == primaryNode_.data())
             {
-                primaryNode_ = node;
+                newPrimary = node;
                 break;
+            }
+            if (!newPrimary)
+            {
+                newPrimary = node;
             }
         }
     }
 
-    // --- Update ALL nodes ---
-    for (auto* item : scene_->items())
+    primaryNode_ = newPrimary;
+
+    // 3. Update primary highlight across nodes
+    for (QGraphicsItem* item : scene_->items())
     {
-        if (auto* node = qgraphicsitem_cast<GraphNodeItem*>(item))
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
         {
-            node->setPrimary(node == primaryNode_);
+            node->setPrimary(primaryNode_ && (node == primaryNode_.data()));
         }
     }
 
-    // --- Status bar ---
-    if (primaryNode_)
+    // 4. Update status bar only if a valid node was selected
+    if (statusBar())
     {
-        QString text = primaryNode_->displayTitle();
-        text.replace("\n", " | ");
+        if (primaryNode_)
+        {
+            QString text = primaryNode_->displayTitle();
+            text.replace("\n", " | ");
 
-        QString msg = QString("Primary: %1 | Selected: %2")
-                          .arg(text)
-                          .arg(selected.size());
+            QString msg = QString("Primary: %1 | Selected: %2")
+                              .arg(text)
+                              .arg(selected.size());
 
-        statusBar()->showMessage(msg);
+            statusBar()->showMessage(msg);
+        }
+        else
+        {
+            // An edge or non-node item is selected
+            statusBar()->showMessage(QString("Selected item count: %1").arg(selected.size()));
+        }
     }
 }
+*/
+
+void MainWindow::onSelectionChanged()
+{
+    if (!scene_)
+        return;
+
+    const auto selected = scene_->selectedItems();
+
+    // 1. If nothing is selected, clear and return
+    if (selected.isEmpty())
+    {
+        primaryNode_ = nullptr;
+        if (statusBar())
+            statusBar()->showMessage("No selection");
+        return;
+    }
+
+    // 2. Identify the primary node using dynamic_cast
+    GraphNodeItem* newPrimary = nullptr;
+    for (QGraphicsItem* item : selected)
+    {
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+        {
+            if (node == primaryNode_)
+            {
+                newPrimary = node;
+                break;
+            }
+            if (!newPrimary)
+            {
+                newPrimary = node;
+            }
+        }
+    }
+
+    primaryNode_ = newPrimary;
+
+    // 3. Update primary state across nodes
+    for (QGraphicsItem* item : scene_->items())
+    {
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+        {
+            node->setPrimary(primaryNode_ && (node == primaryNode_));
+        }
+    }
+
+    // 4. Update status bar
+    if (statusBar())
+    {
+        if (primaryNode_)
+        {
+            QString text = primaryNode_->displayTitle();
+            text.replace("\n", " | ");
+
+            QString msg = QString("Primary: %1 | Selected: %2")
+                              .arg(text)
+                              .arg(selected.size());
+
+            statusBar()->showMessage(msg);
+        }
+        else
+        {
+            statusBar()->showMessage(QString("Selected items: %1").arg(selected.size()));
+        }
+    }
+}
+
 void MainWindow::alignHorizontal()
 {
     if (!primaryNode_)
@@ -801,13 +886,18 @@ void MainWindow::setDb(std::string db_path)
 {
     if(!db_path.empty())
     {
+        // close current database
         db_.close();
+        // open as new database
         db_.open(db_path);
+
+        // delete model
         if(model_ !=nullptr)
         {
             delete model_;
         }
         
+        // create Model
         model_ = new ArchitectureModel(db_);
 
         populateNavigator();

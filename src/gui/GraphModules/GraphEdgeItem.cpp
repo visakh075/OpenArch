@@ -10,6 +10,7 @@
 #include <QtMath>
 #include "GraphThemeManager.h"
 #include <QDebug>
+#include <qobject.h>
 
 GraphEdgeItem::GraphEdgeItem(
     ArchitectureModel* model,
@@ -29,11 +30,31 @@ GraphEdgeItem::GraphEdgeItem(
     setZValue(-1);
     e_id = id;
 
+    // Register this edge with both nodes
+    if (src_)
+        src_->addEdge(this);
+    if (dst_)
+        dst_->addEdge(this);
+
     normalPen_ = QPen(Qt::darkGray, 2);
     highlightPen_ = QPen(Qt::blue, 3);
     cachedPath_ = buildPath();
+
+    refreshLayout();
 }
 
+GraphEdgeItem::~GraphEdgeItem()
+{
+    if(src_)
+    {
+        src_->removeEdge(this);
+    }
+    if(dst_)
+    {
+        dst_->removeEdge(this);
+    }
+}
+//
 QPointF GraphEdgeItem::portScenePosition(GraphNodeItem* node,
                                          Port port) const
 {
@@ -447,11 +468,15 @@ void GraphEdgeItem::paint(QPainter* painter,
      * LABEL
      */
 
-    auto edge_ = model_->getEdgeById(e_id);
-    QString title =
-        QString::fromStdString(
-            edge_->edgeType);
+    // auto edge_ = model_->getEdgeById(e_id);
 
+    // if(!edge_)
+        // return ;
+    // QString title =
+        // QString::fromStdString(
+            // edge_->edgeType);
+    
+    QString title = cachedTitle_;
     /*
         * FONT
         */
@@ -468,8 +493,10 @@ void GraphEdgeItem::paint(QPainter* painter,
 
     QFontMetrics fm(font);
 
-    QRect textRect =
-        fm.boundingRect(title);
+    // QRect textRect =
+        // fm.boundingRect(title);
+
+    QRect textRect = cachedTitleRect_;
 
     /*
         * MIDPOINT
@@ -569,6 +596,31 @@ void GraphEdgeItem::paint(QPainter* painter,
     painter->restore();
 
 }
+void GraphEdgeItem::refreshLayout()
+{
+    auto edge =
+        model_->getEdgeById(e_id);
+
+    if (!edge)
+        return;
+
+    cachedTitle_ =
+        QString::fromStdString(
+            edge->edgeType);
+
+    QFont font;
+
+    font.setPointSize(
+        10);
+
+    QFontMetrics fm(font);
+
+    cachedTitleRect_ =
+        fm.boundingRect(
+            cachedTitle_);
+
+    refreshPath();
+}
 
 QPainterPath GraphEdgeItem::shape() const
 {
@@ -584,17 +636,14 @@ QPainterPath GraphEdgeItem::shape() const
 
     result.addPath(
         stroker.createStroke(
-            buildPath()));
+            cachedPath_));
 
     /*
      * LABEL HIT AREA
      */
     
-    auto edge_ = model_->getEdgeById(e_id);
-    QString title =
-        QString::fromStdString(
-            edge_->edgeType);
 
+    QString title = cachedTitle_;
     if (!title.isEmpty())
     {
         const auto& theme =
@@ -633,14 +682,15 @@ QPainterPath GraphEdgeItem::shape() const
         QFontMetrics fm(font);
 
         QRect textRect =
-            fm.boundingRect(title);
+            // fm.boundingRect(title);
+            cachedTitleRect_;
 
         /*
          * PATH MIDPOINT
          */
 
         QPainterPath path =
-            buildPath();
+            cachedPath_;
 
         QPointF p =
             path.pointAtPercent(0.5);
@@ -727,10 +777,13 @@ void GraphEdgeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
     if (!model_)
         return;
 
-    EdgeEditorDialog dlg(model_, e_id);
-    dlg.exec();
+    event->accept();
 
-    QGraphicsObject::mouseDoubleClickEvent(event);
+    EdgeEditorDialog dlg(model_, e_id);
+    if (dlg.exec() == QDialog::Accepted)
+    {
+        refreshLayout();
+    }
 }
 
 void GraphEdgeItem::refreshPath()
@@ -739,6 +792,15 @@ void GraphEdgeItem::refreshPath()
 
     cachedPath_ =
         buildPath();
+
+    cachedBounds_ =
+        cachedPath_.boundingRect();
+
+    cachedBounds_.adjust(
+        -20,
+        -20,
+        20,
+        20);
 
     update();
 }

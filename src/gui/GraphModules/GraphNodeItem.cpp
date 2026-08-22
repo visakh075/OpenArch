@@ -9,7 +9,7 @@
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QGraphicsSceneMouseEvent>
-
+#include <algorithm>
 #include "GraphThemeManager.h"
 #include <QDebug>
 
@@ -29,6 +29,16 @@ GraphNodeItem::GraphNodeItem(ArchitectureModel *m, NodeId id, QGraphicsItem *p)
 
     setZValue(1);
     cachedRect_ = calculateNodeRect();
+}
+GraphNodeItem::~GraphNodeItem()
+{
+    for (const auto& edge : edges_)
+    {
+        if (edge && edge->scene())
+        {
+            edge->updateEndpoints();
+        }
+    }
 }
 
 QRectF GraphNodeItem::calculateNodeRect() const
@@ -378,14 +388,14 @@ QVariant GraphNodeItem::itemChange(
     const QVariant& value)
 {
     qDebug() << change;
-    if (change == QGraphicsItem::ItemPositionHasChanged)
+    // if (change == QGraphicsItem::ItemPositionHasChanged)
+    if (change == QGraphicsItem::ItemPositionChange || 
+        change == QGraphicsItem::ItemPositionHasChanged ||
+        change == QGraphicsItem::ItemScenePositionHasChanged)
     {
-        for (auto* e : edges_)
+        for (const auto& e : edges_)
         {
-            if (!e)
-                continue;
-
-            if (e->scene())
+            if (e && e->scene())
                 e->updateEndpoints();
         }
     }
@@ -398,14 +408,16 @@ void GraphNodeItem::hoverEnterEvent(QGraphicsSceneHoverEvent *)
 {
     hovered_ = true;
     setCursor(Qt::PointingHandCursor);
-    update();
+    refreshGeometry();
+    // update();
 }
 
 void GraphNodeItem::hoverLeaveEvent(QGraphicsSceneHoverEvent *)
 {
     hovered_ = false;
     unsetCursor();
-    update();
+    // update();
+    refreshGeometry();
 }
 
 QPointF GraphNodeItem::currentPosition() const
@@ -444,6 +456,9 @@ void GraphNodeItem::setEditable(bool enabled)
 
 void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
+    if (!scene() || scene()->views().isEmpty())
+    return;
+
     auto* view = dynamic_cast<GraphView*>(scene()->views().first());
     
     if (view && view->mode() == GraphView::Mode::View)
@@ -457,6 +472,9 @@ void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
 
 void GraphNodeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
 {
+    if (!scene() || scene()->views().isEmpty())
+    return;
+
     auto* view = dynamic_cast<GraphView*>(scene()->views().first());
 
     if (view && view->mode() == GraphView::Mode::View)
@@ -466,4 +484,37 @@ void GraphNodeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
     }
 
     QGraphicsItem::mouseDoubleClickEvent(event);
+}
+void GraphNodeItem::addEdge(GraphEdgeItem* edge)
+{
+    if (!edge)
+        return;
+
+    for (const auto& e : edges_)
+    {
+        if (e == edge)
+            return;
+    }
+    edges_.push_back(edge);
+}
+void GraphNodeItem::removeEdge(GraphEdgeItem* edge)
+{
+    edges_.erase(
+        std::remove(edges_.begin(), edges_.end(), edge),
+        edges_.end());
+}
+
+void GraphNodeItem::refreshGeometry()
+{
+    prepareGeometryChange();
+
+    cachedRect_ = calculateNodeRect();
+
+    update();
+
+    for (const auto& e : edges_)
+    {
+        if (e)
+            e->refreshPath();
+    }
 }
