@@ -96,23 +96,6 @@ void GraphView::mousePressEvent(QMouseEvent* event)
     QGraphicsView::mousePressEvent(event);
 }
 
-// void GraphView::mouseMoveEvent(QMouseEvent* event)
-// {
-//     if (isPanning_)
-//     {
-//         QPoint delta = event->pos() - lastPanPoint_;
-//         lastPanPoint_ = event->pos();
-
-//         horizontalScrollBar()->setValue(horizontalScrollBar()->value() - delta.x());
-//         verticalScrollBar()->setValue(verticalScrollBar()->value() - delta.y());
-
-//         event->accept();
-//         return;
-//     }
-
-//     QGraphicsView::mouseMoveEvent(event);
-// }
-
 void GraphView::mouseMoveEvent(QMouseEvent* event)
 {
     if (isPanning_)
