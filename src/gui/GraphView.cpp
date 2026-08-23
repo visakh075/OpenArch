@@ -282,6 +282,16 @@ void GraphView::keyPressEvent(QKeyEvent* event)
         setCursor(Qt::OpenHandCursor);
     }
 
+    if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace)
+    {
+        if (mode() != Mode::Layout) // Only permit delete when not in read-only mode[cite: 4]
+        {
+            emit deleteRequested(); // Or call mainWindow->deleteSelected()
+            event->accept();
+            return;
+        }
+    }
+
     QGraphicsView::keyPressEvent(event);
 }
 

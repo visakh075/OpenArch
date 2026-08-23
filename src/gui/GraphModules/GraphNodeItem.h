@@ -56,8 +56,7 @@ private:
     
     bool hovered_ = false;
     bool isPrimary_ = false;
-    // std::unordered_set<GraphEdgeItem*> edges_;
-    // std::unordered_set<QPointer<GraphEdgeItem>> edges_;
+    
     std::vector<QPointer<GraphEdgeItem>> edges_;
 
 };

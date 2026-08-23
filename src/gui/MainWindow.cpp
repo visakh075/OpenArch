@@ -7,7 +7,9 @@
 #include <QStatusBar>
 #include <QJsonDocument>
 #include <QJsonObject>
-
+#include <QKeyEvent>
+#include <QMessageBox>
+#include <QShortcut>
 #include "NodeEditorDialog.h"
 #include "LayerEditorDialog.h"
 #include "GraphNodeItem.h"
@@ -313,6 +315,14 @@ void MainWindow::setupConnections()
     {
         scene_->update();
     });
+
+    // Connect standard Delete shortcut
+    auto* deleteShortcut = new QShortcut(QKeySequence::Delete, this);
+    connect(deleteShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
+
+    // Support Backspace as well (common on macOS)
+    auto* backspaceShortcut = new QShortcut(QKeySequence(Qt::Key_Backspace), this);
+    connect(backspaceShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
     }
 
 void MainWindow::openDatabase()
@@ -659,6 +669,87 @@ void MainWindow::handleConnectNodes(qulonglong srcId,
         return;
 
     renderGraph(model_->extractGraph(layerId));
+}
+void MainWindow::deleteSelected()
+{
+    if (!scene_ || !model_)
+        return;
+
+    const auto selected = scene_->selectedItems();
+    if (selected.isEmpty())
+        return;
+
+    // Confirm deletion with the user
+    auto reply = QMessageBox::question(
+        this,
+        "Confirm Delete",
+        QString("Are you sure you want to delete %1 selected item(s)?").arg(selected.size()),
+        QMessageBox::Yes | QMessageBox::No);
+
+    if (reply != QMessageBox::Yes)
+        return;
+
+    // 1. Separate selected nodes and edges
+    std::vector<GraphNodeItem*> nodesToDelete;
+    std::vector<GraphEdgeItem*> edgesToDelete;
+
+    for (QGraphicsItem* item : selected)
+    {
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+            nodesToDelete.push_back(node);
+        else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+            edgesToDelete.push_back(edge);
+    }
+
+    // 2. Delete selected Edges first (standalone edge selection)
+    for (auto* edge : edgesToDelete)
+    {
+        if (!edge)
+            continue;
+
+        EdgeId eId = edge->edgeId();
+        model_->deleteEdge(eId); // Delete from model & DB[cite: 11]
+
+        scene_->removeItem(edge);
+        delete edge; // Destructor unlinks from src_ and dst_[cite: 1, 2]
+    }
+
+    // 3. Delete selected Nodes (and cascade to connected edges)
+    for (auto* node : nodesToDelete)
+    {
+        if (!node)
+            continue;
+
+        NodeId nId = node->nodeId();
+
+        // Remove all edges in the scene connected to this node
+        const auto allItems = scene_->items();
+        for (QGraphicsItem* item : allItems)
+        {
+            if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+            {
+                auto edgeData = model_->getEdgeById(edge->edgeId());
+                if (edgeData && (edgeData->srcNode == nId || edgeData->dstNode == nId))
+                {
+                    model_->deleteEdge(edge->edgeId()); //[cite: 11]
+                    scene_->removeItem(edge);
+                    delete edge;
+                }
+            }
+        }
+
+        // Delete the node from the model and scene
+        model_->deleteNode(nId); //[cite: 11]
+        
+        if (primaryNode_ == node)
+            primaryNode_ = nullptr;
+
+        scene_->removeItem(node);
+        delete node;
+    }
+
+    // 4. Refresh selection state
+    onSelectionChanged();
 }
 
 void MainWindow::setGraphMode(GraphView::Mode mode)

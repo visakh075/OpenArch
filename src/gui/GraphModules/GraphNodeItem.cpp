@@ -1,6 +1,7 @@
 #include "GraphView.h"
 #include "GraphNodeItem.h"
 #include "GraphEdgeItem.h"
+#include "NodeEditorDialog.h"
 
 #include <QPainter>
 #include <QCursor>
@@ -481,6 +482,13 @@ void GraphNodeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
     {
         event->ignore();
         return;
+    }
+
+    // Open node editor dialog
+    NodeEditorDialog dlg(model_, nodeId_);
+    if (dlg.exec() == QDialog::Accepted)
+    {
+        refreshGeometry(); // Recalculates bounding rect, updates text, and recalculates edge paths
     }
 
     QGraphicsItem::mouseDoubleClickEvent(event);

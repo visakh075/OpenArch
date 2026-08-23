@@ -27,6 +27,8 @@ public:
     enum { Type = UserType + 2 };
     int type() const override { return Type; }
 
+    // In GraphEdgeItem.h
+    EdgeId edgeId() const { return e_id; }
     GraphEdgeItem(ArchitectureModel* model,
                 const EdgeId id,
                 GraphNodeItem* src,

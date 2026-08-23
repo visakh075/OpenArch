@@ -34,6 +34,7 @@ public:
 signals:
     void requestAddNode(QPointF scenePos);
     void requestConnectNodes(qulonglong srcId, qulonglong dstId);
+    void deleteRequested();
 
 protected:
     void drawBackground(
@@ -45,8 +46,6 @@ protected:
     void keyReleaseEvent(QKeyEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
-
-
 
 private:
     bool isPanning_ = false;

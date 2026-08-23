@@ -136,4 +136,7 @@ private:
     DbManagerSQLite db_;
 
     ArchitectureModel* model_{nullptr};
+
+    private slots:
+    void deleteSelected();
 };
