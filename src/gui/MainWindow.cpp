@@ -17,6 +17,9 @@
 #include "GraphThemeManager.h"
 #include "ThemeEditorDock.h"
 #include <QInputDialog>
+#include <unordered_set>
+#include <QScrollBar>
+
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
@@ -296,39 +299,6 @@ void MainWindow::setupMenu()
         editMenu->addAction(moveAction);
 }
 
-// void MainWindow::setupConnections()
-// {
-//     connect(navigator_, &QTreeView::doubleClicked,
-//             this, &MainWindow::onTreeItemDoubleClicked);
-
-//     connect(navigator_, &QTreeView::clicked,
-//             this, &MainWindow::onTreeItemClicked);
-
-//     connect(graphView_, &GraphView::requestAddNode,
-//             this, &MainWindow::handleAddNodeAtPosition);
-
-//     connect(graphView_, &GraphView::requestConnectNodes,
-//             this, &MainWindow::handleConnectNodes);
-//     connect(scene_, &QGraphicsScene::selectionChanged,
-//             this, &MainWindow::onSelectionChanged);
-//     connect(
-//     GraphThemeManager::instance(),
-//     &GraphThemeManager::themeChanged,
-//     scene_,
-//     [this]()
-//     {
-//         scene_->update();
-//     });
-
-//     // Connect standard Delete shortcut
-//     auto* deleteShortcut = new QShortcut(QKeySequence::Delete, this);
-//     connect(deleteShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
-
-//     // Support Backspace as well (common on macOS)
-//     auto* backspaceShortcut = new QShortcut(QKeySequence(Qt::Key_Backspace), this);
-//     connect(backspaceShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
-// }
-
 void MainWindow::setupConnections()
 {
     connect(navigator_, &QTreeView::doubleClicked,
@@ -512,82 +482,139 @@ void MainWindow::createNewLayer()
 
 void MainWindow::renderGraph(const GraphSnapshot& snap)
 {
-    if (!model_) {
-        qWarning() << "renderGraph called with null model";
+    if (!model_ || !scene_ || !graphView_)
         return;
-    }
+
+    // 1. Record EXACT scrollbar positions (no coordinate mapping drift)
+    int hVal = graphView_->horizontalScrollBar()->value();
+    int vVal = graphView_->verticalScrollBar()->value();
+
     isRendering_ = true;
-    scene_->clear();
+    scene_->blockSignals(true);
+    graphView_->setUpdatesEnabled(false);
 
-    primaryNode_ = nullptr;
+    // 2. Index existing scene items
+    std::unordered_map<NodeId, GraphNodeItem*> existingNodes;
+    std::unordered_map<EdgeId, GraphEdgeItem*> existingEdges;
 
-    std::unordered_map<NodeId, GraphNodeItem*> nodeItems;
+    for (QGraphicsItem* item : scene_->items())
+    {
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+            existingNodes[node->nodeId()] = node;
+        else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+            existingEdges[edge->edgeId()] = edge;
+    }
+
+    // 3. Reconcile Nodes
+    std::unordered_set<NodeId> snapshotNodeIds;
+    std::unordered_map<NodeId, GraphNodeItem*> currentNodes;
 
     int i = 0;
-    for (const auto& n : snap.nodes) {
-        auto* nodeItem = new GraphNodeItem(model_, n.id);
+    for (const auto& n : snap.nodes)
+    {
+        snapshotNodeIds.insert(n.id);
+        GraphNodeItem* nodeItem = nullptr;
 
+        auto it = existingNodes.find(n.id);
+        if (it != existingNodes.end())
+        {
+            nodeItem = it->second;
+            existingNodes.erase(it);
+        }
+        else
+        {
+            nodeItem = new GraphNodeItem(model_, n.id);
 
-        auto mode = graphView_->mode();
+            auto mode = graphView_->mode();
+            bool selectable = (mode == GraphView::Mode::Edit || mode == GraphView::Mode::Arch);
+            bool movable    = (mode == GraphView::Mode::Edit);
 
-        bool selectable = (mode == GraphView::Mode::Edit || mode == GraphView::Mode::Arch);
-        bool movable    = (mode == GraphView::Mode::Edit);
+            nodeItem->setFlag(QGraphicsItem::ItemIsSelectable, selectable);
+            nodeItem->setFlag(QGraphicsItem::ItemIsMovable, movable);
+            nodeItem->setAcceptHoverEvents(true);
 
-        nodeItem->setFlag(QGraphicsItem::ItemIsSelectable, selectable);
-        nodeItem->setFlag(QGraphicsItem::ItemIsMovable, movable);
+            auto nodeOpt = model_->getNodeById(n.id);
+            bool restored = false;
 
-        nodeItem->setAcceptHoverEvents(true);
-        
-        auto nodeOpt = model_->getNodeById(n.id);
-        bool restored = false;
-
-        if (nodeOpt && !nodeOpt->metadata.empty()) {
-            QJsonDocument doc =
-                QJsonDocument::fromJson(
+            if (nodeOpt && !nodeOpt->metadata.empty())
+            {
+                QJsonDocument doc = QJsonDocument::fromJson(
                     QString::fromStdString(nodeOpt->metadata).toUtf8());
 
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("x") && obj.contains("y")) {
-                    nodeItem->setPos(obj["x"].toDouble(),
-                                    obj["y"].toDouble());
-                    restored = true;
+                if (doc.isObject())
+                {
+                    QJsonObject obj = doc.object();
+                    if (obj.contains("x") && obj.contains("y"))
+                    {
+                        nodeItem->setPos(obj["x"].toDouble(), obj["y"].toDouble());
+                        restored = true;
+                    }
                 }
             }
+
+            if (!restored)
+                nodeItem->setPos((i % 5) * 180, (i / 5) * 120);
+
+            scene_->addItem(nodeItem);
         }
 
-        if (!restored)
-            nodeItem->setPos((i % 5) * 180,
-                            (i / 5) * 120);
-
-        scene_->addItem(nodeItem);
-
-        nodeItems[n.id] = nodeItem;
+        currentNodes[n.id] = nodeItem;
         ++i;
     }
 
-    for (const auto& e : snap.edges) {
-        auto srcIt = nodeItems.find(e.srcNode);
-        auto dstIt = nodeItems.find(e.dstNode);
+    // 4. Reconcile Edges
+    std::unordered_set<EdgeId> snapshotEdgeIds;
+    for (const auto& e : snap.edges)
+    {
+        snapshotEdgeIds.insert(e.id);
 
-        if (srcIt == nodeItems.end() || dstIt == nodeItems.end())
-            continue;
+        auto it = existingEdges.find(e.id);
+        if (it != existingEdges.end())
+        {
+            it->second->updateEndpoints();
+            existingEdges.erase(it);
+        }
+        else
+        {
+            auto srcIt = currentNodes.find(e.srcNode);
+            auto dstIt = currentNodes.find(e.dstNode);
 
-        auto* edgeItem = new GraphEdgeItem(
-            model_,
-            e.id,
-            srcIt->second,
-            dstIt->second
-        );
+            if (srcIt != currentNodes.end() && dstIt != currentNodes.end())
+            {
+                auto* edgeItem = new GraphEdgeItem(
+                    model_,
+                    e.id,
+                    srcIt->second,
+                    dstIt->second);
 
-        scene_->addItem(edgeItem);
+                scene_->addItem(edgeItem);
+            }
+        }
     }
 
-    graphView_->fitInView(
-        scene_->itemsBoundingRect(),
-        Qt::KeepAspectRatio
-    );
+    // 5. Remove unused items
+    for (auto& pair : existingEdges)
+    {
+        scene_->removeItem(pair.second);
+        delete pair.second;
+    }
+
+    for (auto& pair : existingNodes)
+    {
+        if (primaryNode_ == pair.second)
+            primaryNode_ = nullptr;
+
+        scene_->removeItem(pair.second);
+        delete pair.second;
+    }
+
+    scene_->blockSignals(false);
+    graphView_->setUpdatesEnabled(true);
     isRendering_ = false;
+
+    // 6. Restore identical scrollbar values
+    graphView_->horizontalScrollBar()->setValue(hVal);
+    graphView_->verticalScrollBar()->setValue(vVal);
 }
 
 void MainWindow::saveLayout()
