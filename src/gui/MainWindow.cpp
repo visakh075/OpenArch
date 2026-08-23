@@ -332,10 +332,33 @@ void MainWindow::setupConnections()
     connect(backspaceShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
 }
 
+// void MainWindow::openDatabase()
+// {
+//     QString file = QFileDialog::getOpenFileName(
+//         this, "Open DB", "", "SQLite DB (*.db)");
+
+//     if (file.isEmpty())
+//         return;
+
+//     db_.close();
+//     auto r = db_.open(file.toStdString());
+//     if (!r.ok) {
+//         QMessageBox::critical(this, "Error",
+//                               QString::fromStdString(r.message));
+//         return;
+//     }
+
+//     delete model_;
+//     model_ = new ArchitectureModel(db_);
+
+//     populateNavigator();
+//     renderGraph(model_->extractGraph(std::nullopt));
+
+// }
 void MainWindow::openDatabase()
 {
     QString file = QFileDialog::getOpenFileName(
-        this, "Open DB", "", "SQLite DB (*.db)");
+        this, "Open Architecture File", "", "Architecture JSON (*.json);;All Files (*.*)");
 
     if (file.isEmpty())
         return;
@@ -343,8 +366,7 @@ void MainWindow::openDatabase()
     db_.close();
     auto r = db_.open(file.toStdString());
     if (!r.ok) {
-        QMessageBox::critical(this, "Error",
-                              QString::fromStdString(r.message));
+        QMessageBox::critical(this, "Error", QString::fromStdString(r.message));
         return;
     }
 
@@ -353,7 +375,6 @@ void MainWindow::openDatabase()
 
     populateNavigator();
     renderGraph(model_->extractGraph(std::nullopt));
-
 }
 
 void MainWindow::populateNavigator()

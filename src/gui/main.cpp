@@ -56,10 +56,10 @@ int main(int argc, char *argv[])
 
     MainWindow w;
 
-    // Open database
-    if (!dbPath.isEmpty())
-    {
+    if (!dbPath.isEmpty()) {
         w.setDb(dbPath.toStdString());
+    } else {
+        w.setDb("architecture.json");
     }
 
     w.show();

@@ -9,7 +9,8 @@
 #include <QDockWidget>
 
 #include "ArchitectureModel.h"
-#include "DbManagerSQLite.h"
+// #include "DbManagerSQLite.h"
+#include "DbManagerJson.h"
 #include "GraphView.h"
 
 class GraphNodeItem;
@@ -133,7 +134,8 @@ private:
      * DATA
      */
 
-    DbManagerSQLite db_;
+    // DbManagerSQLite db_;
+    DbManagerJson db_;
 
     ArchitectureModel* model_{nullptr};
 
