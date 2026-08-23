@@ -5,6 +5,7 @@
 #include <QPen>
 #include <QPainterPath>
 #include <QPointer>
+#include <QGraphicsSceneContextMenuEvent>
 
 #include "ArchitectureModel.h"
 
@@ -23,18 +24,17 @@ public:
         Right
     };
 
-    /* Added to identify the type of object when qgraphicsitem_cast is used */
     enum { Type = UserType + 2 };
     int type() const override { return Type; }
 
-    // In GraphEdgeItem.h
     EdgeId edgeId() const { return e_id; }
     GraphEdgeItem(ArchitectureModel* model,
-                const EdgeId id,
-                GraphNodeItem* src,
-                GraphNodeItem* dst,
-                QGraphicsItem* parent = nullptr);
-    ~GraphEdgeItem();
+                  const EdgeId id,
+                  GraphNodeItem* src,
+                  GraphNodeItem* dst,
+                  QGraphicsItem* parent = nullptr);
+    ~GraphEdgeItem() override;
+
     QRectF boundingRect() const override;
     void paint(QPainter* painter,
                const QStyleOptionGraphicsItem*,
@@ -47,26 +47,18 @@ public:
     void refreshPath();
 
 private:
+    ArchitectureModel* model_;
+    EdgeId e_id;
+    
     QPainterPath cachedPath_;
     QString cachedTitle_;
     QRect cachedTitleRect_;
     QRectF cachedBounds_;
 
-    // QRectF cachedBounds_;
     QPainterPath buildPath() const;
-    
-    QPointF portScenePosition(GraphNodeItem* node,
-                              Port port) const;
+    QPointF portScenePosition(GraphNodeItem* node, Port port) const;
+    void autoSelectPorts(Port& srcPort, Port& dstPort) const;
 
-    void autoSelectPorts(Port& srcPort,
-                         Port& dstPort) const;
-
-    ArchitectureModel* model_;
-    
-    EdgeId e_id;
-
-    // GraphNodeItem* src_;
-    // GraphNodeItem* dst_;
     QPointer<GraphNodeItem> src_;
     QPointer<GraphNodeItem> dst_;
 
@@ -82,7 +74,8 @@ protected:
     void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override;
     void hoverLeaveEvent(QGraphicsSceneHoverEvent* event) override;
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
-
+    void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
 };
 
 #endif

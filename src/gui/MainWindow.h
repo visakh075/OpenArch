@@ -127,7 +127,7 @@ private:
 
     QAction* actionConn_{nullptr};
 
-    QAction* actionLayout_{nullptr};
+    QAction* actionEdit_{nullptr};
 
     /*
      * DATA

@@ -1,16 +1,17 @@
 #include "GraphEdgeItem.h"
 #include "GraphNodeItem.h"
+#include "GraphView.h"
 #include "EdgeEditorDialog.h"
+#include "GraphThemeManager.h"
 
 #include <QPainter>
 #include <QString>
+#include <QMenu>
+#include <QGraphicsScene>
 #include <QGraphicsSceneHoverEvent>
 #include <QGraphicsSceneMouseEvent>
 #include <QPainterPathStroker>
 #include <QtMath>
-#include "GraphThemeManager.h"
-#include <QDebug>
-#include <qobject.h>
 
 GraphEdgeItem::GraphEdgeItem(
     ArchitectureModel* model,
@@ -27,10 +28,10 @@ GraphEdgeItem::GraphEdgeItem(
 {
     setAcceptHoverEvents(true);
     setFlag(QGraphicsItem::ItemIsSelectable, true);
+    setFlag(QGraphicsItem::ItemIsMovable, false);
     setZValue(-1);
     e_id = id;
 
-    // Register this edge with both nodes
     if (src_)
         src_->addEdge(this);
     if (dst_)
@@ -45,18 +46,13 @@ GraphEdgeItem::GraphEdgeItem(
 
 GraphEdgeItem::~GraphEdgeItem()
 {
-    if(src_)
-    {
+    if (src_)
         src_->removeEdge(this);
-    }
-    if(dst_)
-    {
+    if (dst_)
         dst_->removeEdge(this);
-    }
 }
-//
-QPointF GraphEdgeItem::portScenePosition(GraphNodeItem* node,
-                                         Port port) const
+
+QPointF GraphEdgeItem::portScenePosition(GraphNodeItem* node, Port port) const
 {
     QRectF rect = node->mapToScene(node->boundingRect()).boundingRect();
     QPointF c = rect.center();
@@ -68,12 +64,10 @@ QPointF GraphEdgeItem::portScenePosition(GraphNodeItem* node,
         case Port::Left:   return QPointF(rect.left(), c.y());
         case Port::Right:  return QPointF(rect.right(), c.y());
     }
-
     return QPointF();
 }
 
-void GraphEdgeItem::autoSelectPorts(Port& srcPort,
-                                    Port& dstPort) const
+void GraphEdgeItem::autoSelectPorts(Port& srcPort, Port& dstPort) const
 {
     QRectF srcRect = src_->mapToScene(src_->boundingRect()).boundingRect();
     QRectF dstRect = dst_->mapToScene(dst_->boundingRect()).boundingRect();
@@ -86,56 +80,35 @@ void GraphEdgeItem::autoSelectPorts(Port& srcPort,
 
     if (std::abs(dx) > std::abs(dy))
     {
-        if (dx > 0)
-        {
-            srcPort = Port::Right;
-            dstPort = Port::Left;
-        }
-        else
-        {
-            srcPort = Port::Left;
-            dstPort = Port::Right;
-        }
+        srcPort = (dx > 0) ? Port::Right : Port::Left;
+        dstPort = (dx > 0) ? Port::Left  : Port::Right;
     }
     else
     {
-        if (dy > 0)
-        {
-            srcPort = Port::Bottom;
-            dstPort = Port::Top;
-        }
-        else
-        {
-            srcPort = Port::Top;
-            dstPort = Port::Bottom;
-        }
+        srcPort = (dy > 0) ? Port::Bottom : Port::Top;
+        dstPort = (dy > 0) ? Port::Top    : Port::Bottom;
     }
 }
 
 QPainterPath GraphEdgeItem::buildPath() const
 {
     QPainterPath path;
-
     if (!src_ || !dst_)
         return path;
 
-    // --- Scene rectangles ---
     QRectF srcRect = src_->mapToScene(src_->boundingRect()).boundingRect();
     QRectF dstRect = dst_->mapToScene(dst_->boundingRect()).boundingRect();
 
     QPointF srcCenter = srcRect.center();
     QPointF dstCenter = dstRect.center();
 
-    // --- Compute gaps ---
     double gapRight  = dstRect.left()  - srcRect.right();
     double gapLeft   = srcRect.left()  - dstRect.right();
     double gapBottom = dstRect.top()   - srcRect.bottom();
     double gapTop    = srcRect.top()   - dstRect.bottom();
 
-    // --- Choose anchor points (side midpoints) ---
     QPointF SrcPoint, EndPoint;
-    // QPointF p1,p2;
-    // Horizontal separation
+
     if (gapRight > 0)
     {
         SrcPoint = QPointF(srcRect.right(), srcCenter.y());
@@ -146,7 +119,6 @@ QPainterPath GraphEdgeItem::buildPath() const
         SrcPoint = QPointF(srcRect.left(),  srcCenter.y());
         EndPoint = QPointF(dstRect.right(), dstCenter.y());
     }
-    // Vertical separation
     else if (gapBottom > 0)
     {
         SrcPoint = QPointF(srcCenter.x(), srcRect.bottom());
@@ -157,7 +129,6 @@ QPainterPath GraphEdgeItem::buildPath() const
         SrcPoint = QPointF(srcCenter.x(), srcRect.top());
         EndPoint = QPointF(dstCenter.x(), dstRect.bottom());
     }
-    // Overlapping case
     else
     {
         double dx = dstCenter.x() - srcCenter.x();
@@ -165,61 +136,37 @@ QPainterPath GraphEdgeItem::buildPath() const
 
         if (std::abs(dx) > std::abs(dy))
         {
-            if (dx > 0)
-            {
-                SrcPoint = QPointF(srcRect.right(), srcCenter.y());
-                EndPoint = QPointF(dstRect.left(),  dstCenter.y());
-            }
-            else
-            {
-                SrcPoint = QPointF(srcRect.left(),  srcCenter.y());
-                EndPoint = QPointF(dstRect.right(), dstCenter.y());
-            }
+            SrcPoint = (dx > 0) ? QPointF(srcRect.right(), srcCenter.y()) : QPointF(srcRect.left(), srcCenter.y());
+            EndPoint = (dx > 0) ? QPointF(dstRect.left(), dstCenter.y())  : QPointF(dstRect.right(), dstCenter.y());
         }
         else
         {
-            if (dy > 0)
-            {
-                SrcPoint = QPointF(srcCenter.x(), srcRect.bottom());
-                EndPoint = QPointF(dstCenter.x(), dstRect.top());
-            }
-            else
-            {
-                SrcPoint = QPointF(srcCenter.x(), srcRect.top());
-                EndPoint = QPointF(dstCenter.x(), dstRect.bottom());
-            }
+            SrcPoint = (dy > 0) ? QPointF(srcCenter.x(), srcRect.bottom()) : QPointF(srcCenter.x(), srcRect.top());
+            EndPoint = (dy > 0) ? QPointF(dstCenter.x(), dstRect.top())    : QPointF(dstCenter.x(), dstRect.bottom());
         }
     }
 
-    // Convert scene → local
     SrcPoint = mapFromScene(SrcPoint);
     EndPoint = mapFromScene(EndPoint);
 
-    // SrcPoint = p1;
-    // EndPoint = p2;
-
     path.moveTo(SrcPoint);
 
-    // --- Midpoints for routing ---
     double midX = (SrcPoint.x() + EndPoint.x()) / 2.0;
     double midY = (SrcPoint.y() + EndPoint.y()) / 2.0;
 
     bool overlapX = (gapRight <= 0 && gapLeft <= 0);
     bool overlapY = (gapBottom <= 0 && gapTop <= 0);
 
-    // Case 1: Horizontal overlap → vertical main axis
     if (overlapX && !overlapY)
     {
         path.lineTo(SrcPoint.x(), midY);
         path.lineTo(EndPoint.x(), midY);
     }
-    // Case 2: Vertical overlap → horizontal main axis
     else if (overlapY && !overlapX)
     {
         path.lineTo(midX, SrcPoint.y());
         path.lineTo(midX, EndPoint.y());
     }
-    // Case 3: Overlap both axes
     else if (overlapX && overlapY)
     {
         double dx = std::abs(EndPoint.x() - SrcPoint.x());
@@ -236,7 +183,6 @@ QPainterPath GraphEdgeItem::buildPath() const
             path.lineTo(EndPoint.x(), midY);
         }
     }
-    // Case 4: Fully separated
     else
     {
         if (gapRight > 0 || gapLeft > 0)
@@ -252,372 +198,138 @@ QPainterPath GraphEdgeItem::buildPath() const
     }
 
     path.lineTo(EndPoint);
-
     return path;
 }
 
 QRectF GraphEdgeItem::boundingRect() const
 {
-    QRectF rect =
-        cachedPath_.boundingRect();
-
-    rect.adjust(
-        -20,
-        -20,
-        20,
-        20);
-
+    QRectF rect = cachedPath_.boundingRect();
+    rect.adjust(-20, -20, 20, 20);
     return rect;
 }
-void GraphEdgeItem::paint(QPainter* painter,
-                          const QStyleOptionGraphicsItem*,
-                          QWidget*)
+
+void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
 {
     if (!src_ || !dst_)
         return;
 
-    const auto& theme =
-        GraphThemeManager::instance()->theme();
+    const auto& theme = GraphThemeManager::instance()->theme();
+    const GraphEdgeState* State = isSelected() ? &theme.edge.selected : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
 
-    /*
-     * EDGE STYLE
-     */
+    const auto& arrow = State->arrow;
+    const auto& label = State->label;
 
-    const GraphEdgeState* State =
-        &theme.edge.normal;
+    painter->setRenderHint(QPainter::Antialiasing);
 
-    if (isSelected())
-    {
-        State = &theme.edge.selected;
-    }
-    else if (hovered_)
-    {
-        State = &theme.edge.hover;
-    }
-
-    const auto& arrow =
-        State->arrow;
-
-    const auto& label =
-        State->label;
-
-    painter->setRenderHint(
-        QPainter::Antialiasing);
-
-    /*
-     * FULL PATH
-     */
-
-    QPainterPath fullPath =
-        cachedPath_;
-
+    QPainterPath fullPath = cachedPath_;
     if (fullPath.elementCount() < 2)
         return;
 
-    /*
-     * LAST SEGMENT
-     */
-
-    QPainterPath::Element e1 =
-        fullPath.elementAt(
-            fullPath.elementCount() - 1);
-
-    QPainterPath::Element e2 =
-        fullPath.elementAt(
-            fullPath.elementCount() - 2);
+    QPainterPath::Element e1 = fullPath.elementAt(fullPath.elementCount() - 1);
+    QPainterPath::Element e2 = fullPath.elementAt(fullPath.elementCount() - 2);
 
     QPointF last(e1.x, e1.y);
     QPointF prev(e2.x, e2.y);
-
-    /*
-     * LINE
-     */
-
     QLineF line(prev, last);
 
-    /*
-     * ARROW TIP
-     */
+    QPointF arrowTip = line.p2();
+    double angle = std::atan2(-line.dy(), line.dx());
 
-    QPointF arrowTip =
-        line.p2();
+    double arrowWidth = arrow.width;
+    double arrowHeight = arrow.height;
 
-    double angle =
-        std::atan2(
-            -line.dy(),
-            line.dx());
+    QPointF arrowP1 = arrowTip - QPointF(
+        std::cos(angle) * arrowWidth - std::sin(angle) * arrowHeight / 2,
+        -std::sin(angle) * arrowWidth - std::cos(angle) * arrowHeight / 2);
 
-    double arrowWidth =
-        arrow.width;
+    QPointF arrowP2 = arrowTip - QPointF(
+        std::cos(angle) * arrowWidth + std::sin(angle) * arrowHeight / 2,
+        -std::sin(angle) * arrowWidth + std::cos(angle) * arrowHeight / 2);
 
-    double arrowHeight =
-        arrow.height;
-
-    /*
-     * ARROW GEOMETRY
-     */
-
-    QPointF arrowP1 =
-        arrowTip - QPointF(
-            std::cos(angle) * arrowWidth -
-            std::sin(angle) * arrowHeight / 2,
-
-            -std::sin(angle) * arrowWidth -
-            std::cos(angle) * arrowHeight / 2);
-
-    QPointF arrowP2 =
-        arrowTip - QPointF(
-            std::cos(angle) * arrowWidth +
-            std::sin(angle) * arrowHeight / 2,
-
-            -std::sin(angle) * arrowWidth +
-            std::cos(angle) * arrowHeight / 2);
-
-    /*
-     * LINE ENDS AT
-     * ARROW BASE CENTER
-     */
-
-    QPointF arrowBaseCenter =
-        (arrowP1 + arrowP2) / 2.0;
-
-    /*
-     * SHORTENED PATH
-     */
+    QPointF arrowBaseCenter = (arrowP1 + arrowP2) / 2.0;
 
     QPainterPath shortenedPath;
-
-    for (int i = 0;
-         i < fullPath.elementCount();
-         ++i)
+    for (int i = 0; i < fullPath.elementCount(); ++i)
     {
-        auto e =
-            fullPath.elementAt(i);
-
+        auto e = fullPath.elementAt(i);
         QPointF p(e.x, e.y);
 
         if (i == 0)
-        {
             shortenedPath.moveTo(p);
-        }
-        else if (i ==
-                 fullPath.elementCount() - 1)
-        {
-            shortenedPath.lineTo(
-                arrowBaseCenter);
-        }
+        else if (i == fullPath.elementCount() - 1)
+            shortenedPath.lineTo(arrowBaseCenter);
         else
-        {
             shortenedPath.lineTo(p);
-        }
     }
 
-    /*
-     * EDGE LINE
-     */
-
-    QPen edgePen(
-        State->lineColor);
-
-    edgePen.setWidth(
-        State->lineWidth);
-
-    edgePen.setJoinStyle(
-        Qt::RoundJoin);
-
-    edgePen.setCapStyle(
-        Qt::RoundCap);
+    QPen edgePen(State->lineColor);
+    edgePen.setWidth(State->lineWidth);
+    edgePen.setJoinStyle(Qt::RoundJoin);
+    edgePen.setCapStyle(Qt::RoundCap);
 
     painter->setPen(edgePen);
-
-    painter->setBrush(
-        Qt::NoBrush);
-
-    painter->drawPath(
-        shortenedPath);
-
-    /*
-     * ARROW
-     */
+    painter->setBrush(Qt::NoBrush);
+    painter->drawPath(shortenedPath);
 
     QPolygonF arrowHead;
+    arrowHead << arrowTip << arrowP1 << arrowP2;
 
-    arrowHead << arrowTip
-              << arrowP1
-              << arrowP2;
+    QPen arrowPen(arrow.lineColor);
+    arrowPen.setWidth(arrow.lineWidth);
+    arrowPen.setJoinStyle(Qt::RoundJoin);
 
-    QPen arrowPen(
-        arrow.lineColor);
+    painter->setPen(arrowPen);
+    painter->setBrush(arrow.fillColor);
+    painter->drawPolygon(arrowHead);
 
-    arrowPen.setWidth(
-        arrow.lineWidth);
-
-    arrowPen.setJoinStyle(
-        Qt::RoundJoin);
-
-    painter->setPen(
-        arrowPen);
-
-    painter->setBrush(
-        arrow.fillColor);
-
-    painter->drawPolygon(
-        arrowHead);
-
-    /*
-     * LABEL
-     */
-
-    // auto edge_ = model_->getEdgeById(e_id);
-
-    // if(!edge_)
-        // return ;
-    // QString title =
-        // QString::fromStdString(
-            // edge_->edgeType);
-    
     QString title = cachedTitle_;
-    /*
-        * FONT
-        */
-
     QFont font;
-
-    font.setPointSize(
-        label.fontSize);
-
-    font.setBold(
-        label.bold);
-
+    font.setPointSize(label.fontSize);
+    font.setBold(label.bold);
     painter->setFont(font);
 
-    QFontMetrics fm(font);
-
-    // QRect textRect =
-        // fm.boundingRect(title);
-
     QRect textRect = cachedTitleRect_;
-
-    /*
-        * MIDPOINT
-        */
-
     qreal t = 0.5;
+    QPointF p1 = fullPath.pointAtPercent(t);
+    QPointF p2 = fullPath.pointAtPercent(t + 0.01);
 
-    QPointF p1 =
-        fullPath.pointAtPercent(t);
+    double textAngle = std::atan2(p2.y() - p1.y(), p2.x() - p1.x());
+    double degrees = textAngle * 180.0 / M_PI;
 
-    QPointF p2 =
-        fullPath.pointAtPercent(t + 0.01);
-
-    /*
-        * TEXT ANGLE
-        */
-
-    double textAngle =
-        std::atan2(
-            p2.y() - p1.y(),
-            p2.x() - p1.x());
-
-    double degrees =
-        textAngle * 180.0 / M_PI;
-
-    /*
-        * KEEP TEXT UPRIGHT
-        */
-
-    if (degrees > 90 ||
-        degrees < -90)
-    {
+    if (degrees > 90 || degrees < -90)
         degrees += 180;
-    }
 
     painter->save();
-
     painter->translate(p1);
-
     painter->rotate(degrees);
 
-    /*
-        * LABEL POSITION
-        */
+    QPointF textPos(-textRect.width() / 2, -label.offset);
+    QRect bgRect = textRect.adjusted(-label.paddingX, -label.paddingY, label.paddingX, label.paddingY);
+    bgRect.moveCenter(QPoint(0, -label.offset));
 
-    QPointF textPos(
-        -textRect.width() / 2,
-        -label.offset);
+    QPen bgPen(label.borderColor);
+    bgPen.setWidth(label.borderWidth);
 
-    /*
-        * BACKGROUND RECT
-        */
+    painter->setPen(bgPen);
+    painter->setBrush(label.backgroundColor);
+    painter->drawRoundedRect(bgRect, label.radius, label.radius);
 
-    QRect bgRect =
-        textRect.adjusted(
-            -label.paddingX,
-            -label.paddingY,
-            label.paddingX,
-            label.paddingY);
-
-    bgRect.moveCenter(
-        QPoint(0,
-                -label.offset));
-
-    /*
-        * LABEL BACKGROUND
-        */
-
-    QPen bgPen(
-        label.borderColor);
-
-    bgPen.setWidth(
-        label.borderWidth);
-
-    painter->setPen(
-        bgPen);
-
-    painter->setBrush(
-        label.backgroundColor);
-
-    painter->drawRoundedRect(
-        bgRect,
-        label.radius,
-        label.radius);
-
-    /*
-        * LABEL TEXT
-        */
-
-    painter->setPen(
-        label.textColor);
-
-    painter->drawText(
-        textPos,
-        title);
-
+    painter->setPen(label.textColor);
+    painter->drawText(textPos, title);
     painter->restore();
-
 }
+
 void GraphEdgeItem::refreshLayout()
 {
-    auto edge =
-        model_->getEdgeById(e_id);
-
+    auto edge = model_->getEdgeById(e_id);
     if (!edge)
         return;
 
-    cachedTitle_ =
-        QString::fromStdString(
-            edge->edgeType);
-
+    cachedTitle_ = QString::fromStdString(edge->edgeType);
     QFont font;
-
-    font.setPointSize(
-        10);
-
+    font.setPointSize(10);
     QFontMetrics fm(font);
-
-    cachedTitleRect_ =
-        fm.boundingRect(
-            cachedTitle_);
+    cachedTitleRect_ = fm.boundingRect(cachedTitle_);
 
     refreshPath();
 }
@@ -625,105 +337,31 @@ void GraphEdgeItem::refreshLayout()
 QPainterPath GraphEdgeItem::shape() const
 {
     QPainterPath result;
-
-    /*
-     * EDGE HIT AREA
-     */
-
     QPainterPathStroker stroker;
-
     stroker.setWidth(12);
-
-    result.addPath(
-        stroker.createStroke(
-            cachedPath_));
-
-    /*
-     * LABEL HIT AREA
-     */
-    
+    result.addPath(stroker.createStroke(cachedPath_));
 
     QString title = cachedTitle_;
     if (!title.isEmpty())
     {
-        const auto& theme =
-            GraphThemeManager::instance()
-                ->theme();
-
-        const GraphEdgeState* State =
-            &theme.edge.normal;
-
-        if (isSelected())
-        {
-            State =
-                &theme.edge.selected;
-        }
-        else if (hovered_)
-        {
-            State =
-                &theme.edge.hover;
-        }
-
-        const auto& label =
-            State->label;
-
-        /*
-         * FONT
-         */
+        const auto& theme = GraphThemeManager::instance()->theme();
+        const GraphEdgeState* State = isSelected() ? &theme.edge.selected : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
+        const auto& label = State->label;
 
         QFont font;
+        font.setPointSize(label.fontSize);
+        font.setBold(label.bold);
 
-        font.setPointSize(
-            label.fontSize);
+        QRect textRect = cachedTitleRect_;
+        QPainterPath path = cachedPath_;
+        QPointF p = path.pointAtPercent(0.5);
 
-        font.setBold(
-            label.bold);
-
-        QFontMetrics fm(font);
-
-        QRect textRect =
-            // fm.boundingRect(title);
-            cachedTitleRect_;
-
-        /*
-         * PATH MIDPOINT
-         */
-
-        QPainterPath path =
-            cachedPath_;
-
-        QPointF p =
-            path.pointAtPercent(0.5);
-
-        /*
-         * LABEL RECT
-         */
-
-        QRectF bgRect =
-            textRect.adjusted(
-                -label.paddingX,
-                -label.paddingY,
-                label.paddingX,
-                label.paddingY);
-
-        bgRect.moveCenter(
-            QPointF(
-                p.x(),
-                p.y() - label.offset));
-
-        /*
-         * ADD LABEL AREA
-         */
+        QRectF bgRect = textRect.adjusted(-label.paddingX, -label.paddingY, label.paddingX, label.paddingY);
+        bgRect.moveCenter(QPointF(p.x(), p.y() - label.offset));
 
         QPainterPath labelPath;
-
-        labelPath.addRoundedRect(
-            bgRect,
-            label.radius,
-            label.radius);
-
-        result.addPath(
-            labelPath);
+        labelPath.addRoundedRect(bgRect, label.radius, label.radius);
+        result.addPath(labelPath);
     }
 
     return result;
@@ -734,41 +372,19 @@ void GraphEdgeItem::updateEndpoints()
     refreshPath();
 }
 
-void GraphEdgeItem::hoverEnterEvent(
-    QGraphicsSceneHoverEvent* event)
+void GraphEdgeItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
 {
     hovered_ = true;
-
-    if (isSelected())
-    {
-        setZValue(20);
-    }
-    else
-    {
-        setZValue(10);
-    }
-
+    setZValue(isSelected() ? 20 : 10);
     update();
-
     QGraphicsObject::hoverEnterEvent(event);
 }
 
-void GraphEdgeItem::hoverLeaveEvent(
-    QGraphicsSceneHoverEvent* event)
+void GraphEdgeItem::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
 {
     hovered_ = false;
-
-    if (isSelected())
-    {
-        setZValue(20);
-    }
-    else
-    {
-        setZValue(-1);
-    }
-
+    setZValue(isSelected() ? 20 : -1);
     update();
-
     QGraphicsObject::hoverLeaveEvent(event);
 }
 
@@ -778,7 +394,6 @@ void GraphEdgeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
         return;
 
     event->accept();
-
     EdgeEditorDialog dlg(model_, e_id);
     if (dlg.exec() == QDialog::Accepted)
     {
@@ -786,21 +401,41 @@ void GraphEdgeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
     }
 }
 
+void GraphEdgeItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
+{
+    event->ignore();
+}
+
+void GraphEdgeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
+{
+    setSelected(true);
+
+    QMenu menu;
+    QAction* editAct = menu.addAction("Edit");
+    QAction* delAct = menu.addAction("Delete");
+
+    QAction* selected = menu.exec(event->screenPos());
+    if (selected == editAct)
+    {
+        EdgeEditorDialog dlg(model_, e_id);
+        if (dlg.exec() == QDialog::Accepted)
+            refreshLayout();
+    }
+    else if (selected == delAct)
+    {
+        if (!scene()->views().isEmpty())
+        {
+            if (auto* view = dynamic_cast<GraphView*>(scene()->views().first()))
+                emit view->deleteRequested();
+        }
+    }
+}
+
 void GraphEdgeItem::refreshPath()
 {
     prepareGeometryChange();
-
-    cachedPath_ =
-        buildPath();
-
-    cachedBounds_ =
-        cachedPath_.boundingRect();
-
-    cachedBounds_.adjust(
-        -20,
-        -20,
-        20,
-        20);
-
+    cachedPath_ = buildPath();
+    cachedBounds_ = cachedPath_.boundingRect();
+    cachedBounds_.adjust(-20, -20, 20, 20);
     update();
 }

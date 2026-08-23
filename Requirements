@@ -1,0 +1,69 @@
+**OPENARCH GUI - ACTION LIST & KEYBOARD/MOUSE CONTROLS**
+
+---
+
+**1. SELECTION & INSPECTION (LEFT-CLICK)**
+
+* **Node (Single Click):** Clears previous selection, selects current node, sets it as Primary Node.
+* **Node + Ctrl:** Toggles selection on the node (adds/removes from multi-selection group).
+* **Edge (Single Click):** Clears previous selection, selects current edge, resets Primary Node.
+* **Edge + Ctrl:** Toggles selection on the edge (adds/removes from multi-selection group).
+* **Canvas (Single Click):** Clears all selected objects and resets Primary Node.
+
+---
+
+**2. DRAGGING & CONNECTION (LEFT-CLICK + DRAG)**
+
+* **Node + Drag:** Moves the selected node; connected edges dynamically update paths in real time.
+* **Node + Shift + Drag:** Suppresses movement and draws an orthogonal connection guide; snaps and connects to target node on release.
+* **Edge + Drag:** Ignored (edges cannot be moved independently).
+* **Canvas + Drag:** Draws a rubber-band selection box to select multiple items.
+
+---
+
+**3. CANVAS NAVIGATION & ZOOM**
+
+* **Space + Left-Click + Drag:** Pans the canvas viewport.
+
+
+* **Middle-Click + Drag:** Pans the canvas viewport directly.
+
+
+* **Mouse Wheel (Default):** Zooms in/out centered on the viewport.
+
+
+* **Space + Mouse Wheel:** Zooms in/out anchored to the mouse cursor position.
+
+
+
+---
+
+**4. CONTEXT MENUS (RIGHT-CLICK)**
+
+* **Node (Right-Click):** Opens context menu with options to Edit or Delete (cascades to attached edges).
+
+
+* **Edge (Right-Click):** Opens context menu with options to Edit or Delete.
+* **Canvas (Right-Click):** Opens context menu with options to Add Node (at clicked position) or Add Layer.
+
+
+
+---
+
+**5. EDITING & SHORTCUTS**
+
+* **Double-Click Node:** Opens Node Editor Dialog; updates layout upon saving.
+
+
+* **Double-Click Edge:** Opens Edge Editor Dialog; updates label/type upon saving.
+* **Delete / Backspace:** Prompts confirmation and deletes all currently selected nodes and edges.
+* **V Key:** Switches to View mode.
+
+
+* **L Key:** Switches to Edit/Layout mode.
+
+
+* **Ctrl + H:** Horizontally aligns selected nodes with the Primary Node.
+
+
+* **Ctrl + V:** Vertically aligns selected nodes with the Primary Node.

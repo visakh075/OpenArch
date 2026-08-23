@@ -30,6 +30,10 @@ MainWindow::MainWindow(QWidget* parent)
 
 MainWindow::~MainWindow()
 {
+    // Disconnect scene signals before teardown so selection changes don't fire during item destruction
+    if (scene_)
+        scene_->disconnect(this);
+
     delete model_;
 }
 
@@ -145,46 +149,46 @@ void MainWindow::setupToolbar()
     graphToolBar_ = addToolBar("Graph Modes");
 
     actionView_ = graphToolBar_->addAction("View (V)");
-    actionLayout_ = graphToolBar_->addAction("Layout (L)");    
-    actionAdd_  = graphToolBar_->addAction("Add (A)");
-    actionArch_ = graphToolBar_->addAction("Arch (R)");
-    actionConn_ = graphToolBar_->addAction("Connect (C)");
+    actionEdit_ = graphToolBar_->addAction("Edit (E)");    
+    // actionAdd_  = graphToolBar_->addAction("Add (A)");
+    // actionArch_ = graphToolBar_->addAction("Arch (R)");
+    // actionConn_ = graphToolBar_->addAction("Connect (C)");
 
     actionView_->setCheckable(true);
-    actionAdd_->setCheckable(true);
-    actionArch_->setCheckable(true);
-    actionConn_->setCheckable(true);
-    actionLayout_->setCheckable(true); 
+    // actionAdd_->setCheckable(true);
+    // actionArch_->setCheckable(true);
+    // actionConn_->setCheckable(true);
+    actionEdit_->setCheckable(true); 
 
     QActionGroup* group = new QActionGroup(this);
     group->addAction(actionView_);
-    group->addAction(actionAdd_);
-    group->addAction(actionArch_);
-    group->addAction(actionConn_);
-    group->addAction(actionLayout_);
+    // group->addAction(actionAdd_);
+    // group->addAction(actionArch_);
+    // group->addAction(actionConn_);
+    group->addAction(actionEdit_);
 
     actionView_->setChecked(true);
 
     connect(actionView_, &QAction::triggered,
             this, [this]() { setGraphMode(GraphView::Mode::View); });
 
-    connect(actionAdd_, &QAction::triggered,
-            this, [this]() { setGraphMode(GraphView::Mode::Add); });
+    connect(actionEdit_, &QAction::triggered,
+        this, [this]() { setGraphMode(GraphView::Mode::Edit); });
+    // connect(actionAdd_, &QAction::triggered,
+    //         this, [this]() { setGraphMode(GraphView::Mode::Add); });
 
-    connect(actionArch_, &QAction::triggered,
-            this, [this]() { setGraphMode(GraphView::Mode::Arch); });
+    // connect(actionArch_, &QAction::triggered,
+    //         this, [this]() { setGraphMode(GraphView::Mode::Arch); });
 
-    connect(actionConn_, &QAction::triggered,
-            this, [this]() { setGraphMode(GraphView::Mode::Connect); });
+    // connect(actionConn_, &QAction::triggered,
+            // this, [this]() { setGraphMode(GraphView::Mode::Connect); });
     
-    connect(actionLayout_, &QAction::triggered,
-        this, [this]() { setGraphMode(GraphView::Mode::Layout); });
 
-    actionLayout_->setShortcut(Qt::Key_L);
     actionView_->setShortcut(Qt::Key_V);
-    actionAdd_->setShortcut(Qt::Key_A);
-    actionArch_->setShortcut(Qt::Key_R);
-    actionConn_->setShortcut(Qt::Key_C);
+    actionEdit_->setShortcut(Qt::Key_L);
+    // actionAdd_->setShortcut(Qt::Key_A);
+    // actionArch_->setShortcut(Qt::Key_R);
+    // actionConn_->setShortcut(Qt::Key_C);
 }
 
 void MainWindow::setupMenu()
@@ -292,6 +296,39 @@ void MainWindow::setupMenu()
         editMenu->addAction(moveAction);
 }
 
+// void MainWindow::setupConnections()
+// {
+//     connect(navigator_, &QTreeView::doubleClicked,
+//             this, &MainWindow::onTreeItemDoubleClicked);
+
+//     connect(navigator_, &QTreeView::clicked,
+//             this, &MainWindow::onTreeItemClicked);
+
+//     connect(graphView_, &GraphView::requestAddNode,
+//             this, &MainWindow::handleAddNodeAtPosition);
+
+//     connect(graphView_, &GraphView::requestConnectNodes,
+//             this, &MainWindow::handleConnectNodes);
+//     connect(scene_, &QGraphicsScene::selectionChanged,
+//             this, &MainWindow::onSelectionChanged);
+//     connect(
+//     GraphThemeManager::instance(),
+//     &GraphThemeManager::themeChanged,
+//     scene_,
+//     [this]()
+//     {
+//         scene_->update();
+//     });
+
+//     // Connect standard Delete shortcut
+//     auto* deleteShortcut = new QShortcut(QKeySequence::Delete, this);
+//     connect(deleteShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
+
+//     // Support Backspace as well (common on macOS)
+//     auto* backspaceShortcut = new QShortcut(QKeySequence(Qt::Key_Backspace), this);
+//     connect(backspaceShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
+// }
+
 void MainWindow::setupConnections()
 {
     connect(navigator_, &QTreeView::doubleClicked,
@@ -303,27 +340,29 @@ void MainWindow::setupConnections()
     connect(graphView_, &GraphView::requestAddNode,
             this, &MainWindow::handleAddNodeAtPosition);
 
+    connect(graphView_, &GraphView::requestAddLayer,
+            this, &MainWindow::createNewLayer);
+
     connect(graphView_, &GraphView::requestConnectNodes,
             this, &MainWindow::handleConnectNodes);
+
+    connect(graphView_, &GraphView::deleteRequested,
+            this, &MainWindow::deleteSelected);
+
     connect(scene_, &QGraphicsScene::selectionChanged,
             this, &MainWindow::onSelectionChanged);
-    connect(
-    GraphThemeManager::instance(),
-    &GraphThemeManager::themeChanged,
-    scene_,
-    [this]()
-    {
-        scene_->update();
-    });
 
-    // Connect standard Delete shortcut
+    connect(GraphThemeManager::instance(),
+            &GraphThemeManager::themeChanged,
+            scene_,
+            [this]() { scene_->update(); });
+
     auto* deleteShortcut = new QShortcut(QKeySequence::Delete, this);
     connect(deleteShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
 
-    // Support Backspace as well (common on macOS)
     auto* backspaceShortcut = new QShortcut(QKeySequence(Qt::Key_Backspace), this);
     connect(backspaceShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
-    }
+}
 
 void MainWindow::openDatabase()
 {
@@ -491,8 +530,8 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
 
         auto mode = graphView_->mode();
 
-        bool selectable = (mode == GraphView::Mode::Layout || mode == GraphView::Mode::Arch);
-        bool movable    = (mode == GraphView::Mode::Layout);
+        bool selectable = (mode == GraphView::Mode::Edit || mode == GraphView::Mode::Arch);
+        bool movable    = (mode == GraphView::Mode::Edit);
 
         nodeItem->setFlag(QGraphicsItem::ItemIsSelectable, selectable);
         nodeItem->setFlag(QGraphicsItem::ItemIsMovable, movable);
@@ -765,7 +804,7 @@ void MainWindow::setGraphMode(GraphView::Mode mode)
     case GraphView::Mode::View:
         text = "Mode: View";
         break;
-    case GraphView::Mode::Layout:
+    case GraphView::Mode::Edit:
         text = "Mode: Layout";
         break;
     case GraphView::Mode::Add:
@@ -783,8 +822,8 @@ void MainWindow::setGraphMode(GraphView::Mode mode)
     {
         if (auto* node = qgraphicsitem_cast<GraphNodeItem*>(item))
         {
-            bool selectable = (mode == GraphView::Mode::Layout || mode == GraphView::Mode::Arch);
-            bool movable    = (mode == GraphView::Mode::Layout);
+            bool selectable = (mode == GraphView::Mode::Edit || mode == GraphView::Mode::Arch);
+            bool movable    = (mode == GraphView::Mode::Edit);
 
             node->setFlag(QGraphicsItem::ItemIsSelectable, selectable);
             node->setFlag(QGraphicsItem::ItemIsMovable, movable);
@@ -862,9 +901,80 @@ void MainWindow::onSelectionChanged()
 }
 */
 
+// void MainWindow::onSelectionChanged()
+// {
+//     if (!scene_)
+//         return;
+
+//     const auto selected = scene_->selectedItems();
+
+//     // 1. If nothing is selected, clear and return
+//     if (selected.isEmpty())
+//     {
+//         primaryNode_ = nullptr;
+//         if (statusBar())
+//             statusBar()->showMessage("No selection");
+//         return;
+//     }
+
+//     // 2. Identify the primary node using dynamic_cast
+//     GraphNodeItem* newPrimary = nullptr;
+//     for (QGraphicsItem* item : selected)
+//     {
+//         if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+//         {
+//             if (node == primaryNode_)
+//             {
+//                 newPrimary = node;
+//                 break;
+//             }
+//             if (!newPrimary)
+//             {
+//                 newPrimary = node;
+//             }
+//         }
+//     }
+
+//     primaryNode_ = newPrimary;
+
+//     // 3. Update primary state across nodes
+//     for (QGraphicsItem* item : scene_->items())
+//     {
+//         if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+//         {
+//             node->setPrimary(primaryNode_ && (node == primaryNode_));
+//         }
+//     }
+
+//     // 4. Update status bar
+//     if (statusBar())
+//     {
+//         if (primaryNode_)
+//         {
+//             QString text = primaryNode_->displayTitle();
+//             text.replace("\n", " | ");
+
+//             QString msg = QString("Primary: %1 | Selected: %2")
+//                               .arg(text)
+//                               .arg(selected.size());
+
+//             statusBar()->showMessage(msg);
+//         }
+//         else
+//         {
+//             statusBar()->showMessage(QString("Selected items: %1").arg(selected.size()));
+//         }
+//     }
+// }
+
 void MainWindow::onSelectionChanged()
 {
-    if (!scene_)
+    if (isRendering_ || !scene_)
+        return;
+
+    // Guard against running when MainWindow is tearing down
+    auto* bar = statusBar();
+    if (!bar)
         return;
 
     const auto selected = scene_->selectedItems();
@@ -873,12 +983,11 @@ void MainWindow::onSelectionChanged()
     if (selected.isEmpty())
     {
         primaryNode_ = nullptr;
-        if (statusBar())
-            statusBar()->showMessage("No selection");
+        bar->showMessage("No selection");
         return;
     }
 
-    // 2. Identify the primary node using dynamic_cast
+    // 2. Identify the primary node safely using dynamic_cast
     GraphNodeItem* newPrimary = nullptr;
     for (QGraphicsItem* item : selected)
     {
@@ -898,7 +1007,7 @@ void MainWindow::onSelectionChanged()
 
     primaryNode_ = newPrimary;
 
-    // 3. Update primary state across nodes
+    // 3. Update primary highlight across nodes
     for (QGraphicsItem* item : scene_->items())
     {
         if (auto* node = dynamic_cast<GraphNodeItem*>(item))
@@ -907,24 +1016,21 @@ void MainWindow::onSelectionChanged()
         }
     }
 
-    // 4. Update status bar
-    if (statusBar())
+    // 4. Update status bar safely
+    if (primaryNode_)
     {
-        if (primaryNode_)
-        {
-            QString text = primaryNode_->displayTitle();
-            text.replace("\n", " | ");
+        QString text = primaryNode_->displayTitle();
+        text.replace("\n", " | ");
 
-            QString msg = QString("Primary: %1 | Selected: %2")
-                              .arg(text)
-                              .arg(selected.size());
+        QString msg = QString("Primary: %1 | Selected: %2")
+                          .arg(text)
+                          .arg(selected.size());
 
-            statusBar()->showMessage(msg);
-        }
-        else
-        {
-            statusBar()->showMessage(QString("Selected items: %1").arg(selected.size()));
-        }
+        bar->showMessage(msg);
+    }
+    else
+    {
+        bar->showMessage(QString("Selected items: %1").arg(selected.size()));
     }
 }
 

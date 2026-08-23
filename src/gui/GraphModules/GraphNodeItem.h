@@ -1,24 +1,26 @@
 #pragma once
 #include <QGraphicsObject>
 #include <QPointer>
-#include <qpaintdevice.h>
 #include <vector>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsSceneHoverEvent>
+#include <QGraphicsSceneContextMenuEvent>
+#include <QGraphicsLineItem>
+#include <QGraphicsPathItem>
 
 class GraphView;
-
 #include "ArchitectureModel.h"
+
 class GraphEdgeItem;
+
 class GraphNodeItem : public QGraphicsObject {
     Q_OBJECT
 public:
-    /* Added to identify the type of object when qgraphicsitem_cast is used */
-    enum { Type = UserType + 2 };
+    enum { Type = UserType + 1 };
     int type() const override { return Type; }
 
-    GraphNodeItem(ArchitectureModel* model, NodeId nodeId, QGraphicsItem* parent=nullptr);
-    ~GraphNodeItem();
+    GraphNodeItem(ArchitectureModel* model, NodeId nodeId, QGraphicsItem* parent = nullptr);
+    ~GraphNodeItem() override;
 
     QRectF boundingRect() const override;
     void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override;
@@ -35,13 +37,15 @@ public:
     
     void setEditable(bool enabled);
 
-
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
     void hoverEnterEvent(QGraphicsSceneHoverEvent*) override;
     void hoverLeaveEvent(QGraphicsSceneHoverEvent*) override;
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
+    void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
     
 private:
     ArchitectureModel* model_;
@@ -56,7 +60,11 @@ private:
     
     bool hovered_ = false;
     bool isPrimary_ = false;
-    
-    std::vector<QPointer<GraphEdgeItem>> edges_;
+    bool isConnecting_ = false;
 
+    QGraphicsPathItem* tempPathItem_ = nullptr;
+    QPainterPath buildPreviewPath(const QPointF& targetScenePos, GraphNodeItem* targetNode = nullptr) const;
+
+    QGraphicsLineItem* tempLine_ = nullptr;
+    std::vector<QPointer<GraphEdgeItem>> edges_;
 };
