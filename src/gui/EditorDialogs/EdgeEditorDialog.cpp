@@ -1,72 +1,67 @@
 #include "EdgeEditorDialog.h"
-#include "ArchitectureModel.h"
 
+#include <QFormLayout>
 #include <QVBoxLayout>
-#include <QLineEdit>
-#include <QTextEdit>
-#include <QPushButton>
+#include <QDialogButtonBox>
+#include <QMessageBox>
 
-EdgeEditorDialog::EdgeEditorDialog(
-    ArchitectureModel* model,
-    unsigned long long edgeId,
-    QWidget* parent)
+EdgeEditorDialog::EdgeEditorDialog(ArchitectureModel* model,
+                                   EdgeId edgeId,
+                                   QWidget* parent)
     : QDialog(parent),
       model_(model),
       edgeId_(edgeId)
 {
-    setWindowTitle("Edit Edge");
+    setWindowTitle(edgeId_ == 0 ? "New Edge" : "Edit Edge");
 
-    auto* layout = new QVBoxLayout(this);
-
-    typeEdit_ = new QLineEdit(this);
-    metadataEdit_ = new QTextEdit(this);
-
-    auto* saveBtn = new QPushButton("Save", this);
-
-    layout->addWidget(typeEdit_);
-    layout->addWidget(metadataEdit_);
-    layout->addWidget(saveBtn);
-
-    connect(saveBtn, &QPushButton::clicked,
-            this, &EdgeEditorDialog::saveEdge);
-
-    loadEdge();
-}
-
-void EdgeEditorDialog::loadEdge()
-{
-    for (auto& e : model_->edges()) {
-        if (e.id == edgeId_) {
-            typeEdit_->setText(
-                QString::fromStdString(e.edgeType));
-            metadataEdit_->setText(
-                QString::fromStdString(e.metadata));
-            break;
+    EdgeData edge{};
+    if (edgeId_ != 0) {
+        auto opt = model_->getEdgeById(edgeId_);
+        if (!opt) {
+            QMessageBox::critical(this, "Error", "Edge not found");
+            reject();
+            return;
         }
+        edge = *opt;
     }
+
+    typeEdit_ = new QLineEdit(QString::fromStdString(edge.edgeType));
+    metadataEdit_ = new QPlainTextEdit(QString::fromStdString(edge.metadata));
+    attributesEdit_ = new QPlainTextEdit(QString::fromStdString(edge.attributes));
+
+    auto* form = new QFormLayout;
+    form->addRow("Type", typeEdit_);
+    form->addRow("Metadata", metadataEdit_);
+    form->addRow("Attributes", attributesEdit_);
+
+    auto* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Save | QDialogButtonBox::Cancel);
+
+    connect(buttons, &QDialogButtonBox::accepted, this, &EdgeEditorDialog::onSave);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    auto* main = new QVBoxLayout(this);
+    main->addLayout(form);
+    main->addWidget(buttons);
 }
 
-void EdgeEditorDialog::saveEdge()
+void EdgeEditorDialog::onSave()
 {
-    for (const auto& edge : model_->edges())
-    {
-        if (edge.id == edgeId_)
-        {
-            //
-            // create editable copy
-            //
-            EdgeData e = edge;
+    auto opt = model_->getEdgeById(edgeId_);
+    if (!opt) {
+        QMessageBox::critical(this, "Error", "Edge not found");
+        return;
+    }
 
-            e.edgeType =
-                typeEdit_->text().toStdString();
+    EdgeData edge = *opt;
+    edge.edgeType = typeEdit_->text().toStdString();
+    edge.metadata = metadataEdit_->toPlainText().toStdString();
+    edge.attributes = attributesEdit_->toPlainText().toStdString();
 
-            e.metadata =
-                metadataEdit_->toPlainText().toStdString();
-
-            model_->updateEdge(e);
-
-            break;
-        }
+    Result r = model_->updateEdge(edge);
+    if (!r.ok) {
+        QMessageBox::critical(this, "Error", QString::fromStdString(r.message));
+        return;
     }
 
     accept();

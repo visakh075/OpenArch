@@ -4,6 +4,7 @@
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QListWidget>
+#include <unordered_set>
 
 #include "ArchitectureModel.h"
 
@@ -17,10 +18,11 @@ public:
 private slots:
     void onAddLayer();
     void onRemoveLayer();
+    void onFilterChanged(const QString& text);
     void onSave();
 
 private:
-    void loadMembership();
+    void populateMembershipUI();
 
     ArchitectureModel* model_;
     NodeId nodeId_;
@@ -30,6 +32,10 @@ private:
     QPlainTextEdit* metadataEdit_;
     QPlainTextEdit* attributesEdit_;
 
+    QLineEdit* filterEdit_;
     QListWidget* availableLayers_;
     QListWidget* currentLayers_;
+
+    std::unordered_set<LayerId> stagedLayers_;
+    std::unordered_set<LayerId> originalLayers_;
 };

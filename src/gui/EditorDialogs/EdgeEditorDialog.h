@@ -1,10 +1,10 @@
 #pragma once
 
 #include <QDialog>
+#include <QLineEdit>
+#include <QPlainTextEdit>
 
-class QLineEdit;
-class QTextEdit;
-class ArchitectureModel;
+#include "ArchitectureModel.h"
 
 class EdgeEditorDialog : public QDialog
 {
@@ -12,16 +12,17 @@ class EdgeEditorDialog : public QDialog
 
 public:
     EdgeEditorDialog(ArchitectureModel* model,
-                     unsigned long long edgeId,
+                     EdgeId edgeId,
                      QWidget* parent = nullptr);
 
-private:
-    void loadEdge();
-    void saveEdge();
+private slots:
+    void onSave();
 
+private:
     ArchitectureModel* model_;
-    unsigned long long edgeId_;
+    EdgeId edgeId_;
 
     QLineEdit* typeEdit_;
-    QTextEdit* metadataEdit_;
+    QPlainTextEdit* metadataEdit_;
+    QPlainTextEdit* attributesEdit_;
 };

@@ -27,8 +27,6 @@ MainWindow::MainWindow(QWidget* parent)
     setupMenu();
     setupToolbar();
     setupConnections();
-
-    
 }
 
 MainWindow::~MainWindow()

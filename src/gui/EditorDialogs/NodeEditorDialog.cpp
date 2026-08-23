@@ -6,7 +6,7 @@
 #include <QDialogButtonBox>
 #include <QPushButton>
 #include <QMessageBox>
-#include <unordered_set>
+
 NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
                                    NodeId nodeId,
                                    QWidget* parent)
@@ -25,6 +25,11 @@ NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
             return;
         }
         node = *opt;
+
+        for (const auto& nl : model_->layersForNode(nodeId_)) {
+            stagedLayers_.insert(nl.layerId);
+        }
+        originalLayers_ = stagedLayers_;
     }
 
     nameEdit_ = new QLineEdit(QString::fromStdString(node.name));
@@ -32,25 +37,35 @@ NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
     metadataEdit_ = new QPlainTextEdit(QString::fromStdString(node.metadata));
     attributesEdit_ = new QPlainTextEdit(QString::fromStdString(node.attributes));
 
+    filterEdit_ = new QLineEdit;
+    filterEdit_->setPlaceholderText("Filter available layers...");
+
     availableLayers_ = new QListWidget;
     currentLayers_ = new QListWidget;
 
-    loadMembership();
+    populateMembershipUI();
 
     auto* addBtn = new QPushButton(">>");
     auto* rmBtn  = new QPushButton("<<");
 
     connect(addBtn, &QPushButton::clicked, this, &NodeEditorDialog::onAddLayer);
     connect(rmBtn,  &QPushButton::clicked, this, &NodeEditorDialog::onRemoveLayer);
+    connect(availableLayers_, &QListWidget::itemDoubleClicked, this, &NodeEditorDialog::onAddLayer);
+    connect(currentLayers_, &QListWidget::itemDoubleClicked, this, &NodeEditorDialog::onRemoveLayer);
+    connect(filterEdit_, &QLineEdit::textChanged, this, &NodeEditorDialog::onFilterChanged);
 
-    auto* listLayout = new QHBoxLayout;
-    listLayout->addWidget(availableLayers_);
+    auto* leftBox = new QVBoxLayout;
+    leftBox->addWidget(filterEdit_);
+    leftBox->addWidget(availableLayers_);
 
     auto* mid = new QVBoxLayout;
+    mid->addStretch();
     mid->addWidget(addBtn);
     mid->addWidget(rmBtn);
     mid->addStretch();
 
+    auto* listLayout = new QHBoxLayout;
+    listLayout->addLayout(leftBox);
     listLayout->addLayout(mid);
     listLayout->addWidget(currentLayers_);
 
@@ -64,64 +79,58 @@ NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
     auto* buttons = new QDialogButtonBox(
         QDialogButtonBox::Save | QDialogButtonBox::Cancel);
 
-    connect(buttons, &QDialogButtonBox::accepted,
-            this, &NodeEditorDialog::onSave);
-    connect(buttons, &QDialogButtonBox::rejected,
-            this, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, this, &NodeEditorDialog::onSave);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     auto* main = new QVBoxLayout(this);
     main->addLayout(form);
     main->addWidget(buttons);
 }
 
-void NodeEditorDialog::loadMembership()
+void NodeEditorDialog::populateMembershipUI()
 {
     availableLayers_->clear();
     currentLayers_->clear();
 
-    std::unordered_set<LayerId> memberLayerIds;
-
-    if (nodeId_ != 0) {
-        for (const auto& nl : model_->layersForNode(nodeId_)) {
-            memberLayerIds.insert(nl.layerId);
-        }
-    }
+    const QString filterText = filterEdit_ ? filterEdit_->text().trimmed().toLower() : QString();
 
     for (const auto& l : model_->layers()) {
-        auto* item = new QListWidgetItem(
-            QString::fromStdString(l.name));
-        item->setData(Qt::UserRole,
-                      static_cast<qulonglong>(l.id));
+        auto* item = new QListWidgetItem(QString::fromStdString(l.name));
+        item->setData(Qt::UserRole, static_cast<qulonglong>(l.id));
 
-        if (memberLayerIds.count(l.id)) {
+        if (stagedLayers_.count(l.id)) {
             currentLayers_->addItem(item);
         } else {
-            availableLayers_->addItem(item);
+            if (filterText.isEmpty() || item->text().toLower().contains(filterText)) {
+                availableLayers_->addItem(item);
+            }
         }
     }
 }
 
+void NodeEditorDialog::onFilterChanged(const QString&)
+{
+    populateMembershipUI();
+}
 
 void NodeEditorDialog::onAddLayer()
 {
-    if (!nodeId_) return;
     auto* item = availableLayers_->currentItem();
     if (!item) return;
 
     LayerId id = item->data(Qt::UserRole).toULongLong();
-    model_->addNodeToLayer(nodeId_, id);
-    loadMembership();
+    stagedLayers_.insert(id);
+    populateMembershipUI();
 }
 
 void NodeEditorDialog::onRemoveLayer()
 {
-    if (!nodeId_) return;
     auto* item = currentLayers_->currentItem();
     if (!item) return;
 
     LayerId id = item->data(Qt::UserRole).toULongLong();
-    model_->removeNodeFromLayer(nodeId_, id);
-    loadMembership();
+    stagedLayers_.erase(id);
+    populateMembershipUI();
 }
 
 void NodeEditorDialog::onSave()
@@ -143,9 +152,21 @@ void NodeEditorDialog::onSave()
     }
 
     if (!r.ok) {
-        QMessageBox::critical(this, "Error",
-                              QString::fromStdString(r.message));
+        QMessageBox::critical(this, "Error", QString::fromStdString(r.message));
         return;
     }
+
+    // Commit staged layer memberships
+    for (LayerId lid : stagedLayers_) {
+        if (!originalLayers_.count(lid)) {
+            model_->addNodeToLayer(nodeId_, lid);
+        }
+    }
+    for (LayerId lid : originalLayers_) {
+        if (!stagedLayers_.count(lid)) {
+            model_->removeNodeFromLayer(nodeId_, lid);
+        }
+    }
+
     accept();
 }
