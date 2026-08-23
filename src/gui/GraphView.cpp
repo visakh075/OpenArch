@@ -96,6 +96,23 @@ void GraphView::mousePressEvent(QMouseEvent* event)
     QGraphicsView::mousePressEvent(event);
 }
 
+// void GraphView::mouseMoveEvent(QMouseEvent* event)
+// {
+//     if (isPanning_)
+//     {
+//         QPoint delta = event->pos() - lastPanPoint_;
+//         lastPanPoint_ = event->pos();
+
+//         horizontalScrollBar()->setValue(horizontalScrollBar()->value() - delta.x());
+//         verticalScrollBar()->setValue(verticalScrollBar()->value() - delta.y());
+
+//         event->accept();
+//         return;
+//     }
+
+//     QGraphicsView::mouseMoveEvent(event);
+// }
+
 void GraphView::mouseMoveEvent(QMouseEvent* event)
 {
     if (isPanning_)
@@ -103,8 +120,22 @@ void GraphView::mouseMoveEvent(QMouseEvent* event)
         QPoint delta = event->pos() - lastPanPoint_;
         lastPanPoint_ = event->pos();
 
-        horizontalScrollBar()->setValue(horizontalScrollBar()->value() - delta.x());
-        verticalScrollBar()->setValue(verticalScrollBar()->value() - delta.y());
+        auto* hBar = horizontalScrollBar();
+        auto* vBar = verticalScrollBar();
+
+        int oldH = hBar->value();
+        int oldV = vBar->value();
+
+        hBar->setValue(oldH - delta.x());
+        vBar->setValue(oldV - delta.y());
+
+        // If scrollbars are clamped because the scene is smaller than viewport (fully zoomed out)
+        if (hBar->value() == oldH || vBar->value() == oldV)
+        {
+            // Convert delta in viewport pixels to scene delta units
+            QPointF sceneDelta = mapToScene(delta) - mapToScene(QPoint(0, 0));
+            setSceneRect(sceneRect().translated(-sceneDelta.x(), -sceneDelta.y()));
+        }
 
         event->accept();
         return;
