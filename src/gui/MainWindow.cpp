@@ -369,6 +369,12 @@ void MainWindow::openDatabase()
         QMessageBox::critical(this, "Error", QString::fromStdString(r.message));
         return;
     }
+    
+    // Clear old scene items BEFORE deleting model_ to prevent dangling pointers
+    if (scene_) {
+        scene_->clear();
+    }
+    primaryNode_ = nullptr;
 
     delete model_;
     model_ = new ArchitectureModel(db_);
@@ -945,6 +951,51 @@ void MainWindow::onSelectionChanged()
     }
 }
 
+// void MainWindow::alignHorizontal()
+// {
+//     if (!primaryNode_)
+//         return;
+
+//     auto selected = scene_->selectedItems();
+//     if (selected.size() < 2)
+//         return;
+
+//     qreal y = primaryNode_->pos().y();
+
+//     for (auto* item : selected)
+//     {
+//         auto* node = qgraphicsitem_cast<GraphNodeItem*>(item);
+//         if (!node || node == primaryNode_)
+//             continue;
+
+//         node->setPos(node->pos().x(), y);
+//     }
+
+//     statusBar()->showMessage("Aligned horizontally", 2000);
+// }
+// void MainWindow::alignVertical()
+// {
+//     if (!primaryNode_)
+//         return;
+
+//     auto selected = scene_->selectedItems();
+//     if (selected.size() < 2)
+//         return;
+
+//     qreal x = primaryNode_->pos().x();
+
+//     for (auto* item : selected)
+//     {
+//         auto* node = qgraphicsitem_cast<GraphNodeItem*>(item);
+//         if (!node || node == primaryNode_)
+//             continue;
+
+//         node->setPos(x, node->pos().y());
+//     }
+
+//     statusBar()->showMessage("Aligned vertically", 2000);
+// }
+
 void MainWindow::alignHorizontal()
 {
     if (!primaryNode_)
@@ -954,7 +1005,8 @@ void MainWindow::alignHorizontal()
     if (selected.size() < 2)
         return;
 
-    qreal y = primaryNode_->pos().y();
+    // Center Y coordinate of the primary node in scene space
+    qreal targetCenterY = primaryNode_->mapToScene(primaryNode_->boundingRect().center()).y();
 
     for (auto* item : selected)
     {
@@ -962,11 +1014,14 @@ void MainWindow::alignHorizontal()
         if (!node || node == primaryNode_)
             continue;
 
-        node->setPos(node->pos().x(), y);
+        // Half-height offset of the current node's bounding rect
+        qreal nodeHalfHeight = node->boundingRect().height() / 2.0;
+        node->setPos(node->pos().x(), targetCenterY - nodeHalfHeight - node->boundingRect().top());
     }
 
-    statusBar()->showMessage("Aligned horizontally", 2000);
+    statusBar()->showMessage("Aligned horizontally (center)", 2000);
 }
+
 void MainWindow::alignVertical()
 {
     if (!primaryNode_)
@@ -976,7 +1031,8 @@ void MainWindow::alignVertical()
     if (selected.size() < 2)
         return;
 
-    qreal x = primaryNode_->pos().x();
+    // Center X coordinate of the primary node in scene space
+    qreal targetCenterX = primaryNode_->mapToScene(primaryNode_->boundingRect().center()).x();
 
     for (auto* item : selected)
     {
@@ -984,10 +1040,12 @@ void MainWindow::alignVertical()
         if (!node || node == primaryNode_)
             continue;
 
-        node->setPos(x, node->pos().y());
+        // Half-width offset of the current node's bounding rect
+        qreal nodeHalfWidth = node->boundingRect().width() / 2.0;
+        node->setPos(targetCenterX - nodeHalfWidth - node->boundingRect().left(), node->pos().y());
     }
 
-    statusBar()->showMessage("Aligned vertically", 2000);
+    statusBar()->showMessage("Aligned vertically (center)", 2000);
 }
 
 void MainWindow::setDb(std::string db_path)

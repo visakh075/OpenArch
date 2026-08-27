@@ -6,7 +6,7 @@
 #include <cctype>
 
 /* ============================================================
-   Lightweight JSON Parsing / Serialization Helpers
+   Robust Lightweight JSON Parsing & Serialization Helpers
    ============================================================ */
 
 static std::string escapeJson(const std::string& s) {
@@ -149,23 +149,20 @@ static std::vector<std::string> extractObjectList(const std::string& json, const
     return objects;
 }
 
-static std::unordered_map<std::string, std::string> extractDictionary(const std::string& json, const std::string& dictName) {
-    std::unordered_map<std::string, std::string> dict;
-    std::string searchKey = "\"" + dictName + "\"";
+static std::string extractLayoutBlock(const std::string& json) {
+    std::string searchKey = "\"layout\"";
     size_t pos = json.find(searchKey);
-    if (pos == std::string::npos) return dict;
+    if (pos == std::string::npos) return "";
 
     pos = json.find('{', pos);
-    if (pos == std::string::npos) return dict;
+    if (pos == std::string::npos) return "";
 
     int depth = 0;
-    std::string currentKey;
-    size_t valStart = std::string::npos;
+    size_t start = pos;
     bool inString = false;
     bool escaped = false;
-    bool expectingKey = true;
 
-    for (size_t i = pos + 1; i < json.size(); ++i) {
+    for (size_t i = pos; i < json.size(); ++i) {
         char c = json[i];
         if (escaped) {
             escaped = false;
@@ -176,35 +173,100 @@ static std::unordered_map<std::string, std::string> extractDictionary(const std:
             continue;
         }
         if (c == '"') {
-            if (!inString && expectingKey && depth == 0) {
-                size_t kStart = i + 1;
-                size_t kEnd = json.find('"', kStart);
-                if (kEnd != std::string::npos) {
-                    currentKey = json.substr(kStart, kEnd - kStart);
-                    i = kEnd;
-                    expectingKey = false;
-                }
-            }
             inString = !inString;
             continue;
         }
         if (inString) continue;
 
         if (c == '{') {
-            if (depth == 0) valStart = i;
             depth++;
         } else if (c == '}') {
             depth--;
-            if (depth == 0 && valStart != std::string::npos && !currentKey.empty()) {
-                dict[currentKey] = trim(json.substr(valStart, i - valStart + 1));
-                valStart = std::string::npos;
-                currentKey.clear();
-                expectingKey = true;
-            } else if (depth < 0) {
-                break;
+            if (depth == 0) {
+                return json.substr(start, i - start + 1);
             }
         }
     }
+    return "";
+}
+
+static std::unordered_map<std::string, std::string> extractLayoutSection(const std::string& layoutBlock, const std::string& sectionName) {
+    std::unordered_map<std::string, std::string> dict;
+    if (layoutBlock.empty()) return dict;
+
+    std::string searchKey = "\"" + sectionName + "\"";
+    size_t pos = layoutBlock.find(searchKey);
+    if (pos == std::string::npos) return dict;
+
+    pos = layoutBlock.find('{', pos);
+    if (pos == std::string::npos) return dict;
+
+    size_t i = pos + 1;
+    while (i < layoutBlock.size()) {
+        // Skip whitespace
+        while (i < layoutBlock.size() && std::isspace(static_cast<unsigned char>(layoutBlock[i]))) {
+            ++i;
+        }
+        if (i >= layoutBlock.size() || layoutBlock[i] == '}') break;
+
+        // 1. Read string key
+        if (layoutBlock[i] != '"') {
+            ++i;
+            continue;
+        }
+        ++i; // skip open quote
+        size_t kStart = i;
+        while (i < layoutBlock.size() && layoutBlock[i] != '"') {
+            if (layoutBlock[i] == '\\' && i + 1 < layoutBlock.size()) i += 2;
+            else ++i;
+        }
+        std::string key = layoutBlock.substr(kStart, i - kStart);
+        if (i < layoutBlock.size()) ++i; // skip close quote
+
+        // 2. Find ':'
+        while (i < layoutBlock.size() && layoutBlock[i] != ':') ++i;
+        if (i < layoutBlock.size()) ++i; // skip ':'
+
+        // 3. Find value start
+        while (i < layoutBlock.size() && std::isspace(static_cast<unsigned char>(layoutBlock[i]))) ++i;
+        if (i >= layoutBlock.size()) break;
+
+        // 4. Capture object value { ... }
+        if (layoutBlock[i] == '{') {
+            size_t valStart = i;
+            int depth = 0;
+            bool inStr = false;
+            bool esc = false;
+            while (i < layoutBlock.size()) {
+                char c = layoutBlock[i];
+                if (esc) { esc = false; ++i; continue; }
+                if (c == '\\') { esc = true; ++i; continue; }
+                if (c == '"') inStr = !inStr;
+                else if (!inStr) {
+                    if (c == '{') depth++;
+                    else if (c == '}') {
+                        depth--;
+                        if (depth == 0) {
+                            dict[key] = trim(layoutBlock.substr(valStart, i - valStart + 1));
+                            ++i;
+                            break;
+                        }
+                    }
+                }
+                ++i;
+            }
+        } else {
+            // Primitive or empty value until comma/closing brace
+            size_t valStart = i;
+            while (i < layoutBlock.size() && layoutBlock[i] != ',' && layoutBlock[i] != '}') ++i;
+            dict[key] = trim(layoutBlock.substr(valStart, i - valStart));
+        }
+
+        // Advance to next item
+        while (i < layoutBlock.size() && layoutBlock[i] != ',' && layoutBlock[i] != '}') ++i;
+        if (i < layoutBlock.size() && layoutBlock[i] == ',') ++i;
+    }
+
     return dict;
 }
 
@@ -264,18 +326,20 @@ Result DbManagerJson::loadFromFile() {
     maxLayerId_ = 0;
     maxEdgeId_ = 0;
 
-    // 1. Extract layout sections
-    auto rawNodeLayout = extractDictionary(content, "nodes");
+    // 1. Isolate the "layout" section
+    std::string layoutJson = extractLayoutBlock(content);
+
+    auto rawNodeLayout = extractLayoutSection(layoutJson, "nodes");
     for (const auto& pair : rawNodeLayout) {
         try { nodeLayoutMap_[std::stoull(pair.first)] = pair.second; } catch (...) {}
     }
 
-    auto rawLayerLayout = extractDictionary(content, "layers");
+    auto rawLayerLayout = extractLayoutSection(layoutJson, "layers");
     for (const auto& pair : rawLayerLayout) {
         try { layerLayoutMap_[std::stoull(pair.first)] = pair.second; } catch (...) {}
     }
 
-    auto rawEdgeLayout = extractDictionary(content, "edges");
+    auto rawEdgeLayout = extractLayoutSection(layoutJson, "edges");
     for (const auto& pair : rawEdgeLayout) {
         try { edgeLayoutMap_[std::stoull(pair.first)] = pair.second; } catch (...) {}
     }
@@ -294,7 +358,6 @@ Result DbManagerJson::loadFromFile() {
         l.status     = status_from_string(extractField(blk, "status"));
         l.reviewer   = extractField(blk, "reviewer");
 
-        // Hydrate metadata from separate layout section
         if (layerLayoutMap_.count(l.id)) {
             l.metadata = layerLayoutMap_[l.id];
         }
@@ -317,7 +380,6 @@ Result DbManagerJson::loadFromFile() {
         n.status     = status_from_string(extractField(blk, "status"));
         n.reviewer   = extractField(blk, "reviewer");
 
-        // Hydrate metadata from separate layout section
         if (nodeLayoutMap_.count(n.id)) {
             n.metadata = nodeLayoutMap_[n.id];
         }
@@ -360,7 +422,6 @@ Result DbManagerJson::loadFromFile() {
         e.status     = status_from_string(extractField(blk, "status"));
         e.reviewer   = extractField(blk, "reviewer");
 
-        // Hydrate metadata from separate layout section
         if (edgeLayoutMap_.count(e.id)) {
             e.metadata = edgeLayoutMap_[e.id];
         }
@@ -379,7 +440,7 @@ Result DbManagerJson::saveToFile() {
     std::ostringstream os;
     os << "{\n";
 
-    // 1. Layers (Clean domain fields only)
+    // 1. Layers
     os << "  \"layers\": [\n";
     for (size_t i = 0; i < layers_.size(); ++i) {
         const auto& l = layers_[i];
@@ -395,7 +456,7 @@ Result DbManagerJson::saveToFile() {
     }
     os << "  ],\n";
 
-    // 2. Nodes (Clean domain fields only)
+    // 2. Nodes
     os << "  \"nodes\": [\n";
     for (size_t i = 0; i < nodes_.size(); ++i) {
         const auto& n = nodes_[i];
@@ -422,7 +483,7 @@ Result DbManagerJson::saveToFile() {
     }
     os << "  ],\n";
 
-    // 4. Edges (Clean domain fields only)
+    // 4. Edges
     os << "  \"edges\": [\n";
     for (size_t i = 0; i < edges_.size(); ++i) {
         const auto& e = edges_[i];
@@ -441,7 +502,7 @@ Result DbManagerJson::saveToFile() {
     }
     os << "  ],\n";
 
-    // 5. Completely Separated Layout Block
+    // 5. Separated Layout Section
     os << "  \"layout\": {\n";
 
     // Layout -> Nodes
