@@ -36,6 +36,7 @@ public:
     QString displayType() const;
     
     void setEditable(bool enabled);
+    void onThemeChanged();
 
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;

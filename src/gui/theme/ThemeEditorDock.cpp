@@ -46,6 +46,14 @@ ThemeEditorDock::ThemeEditorDock(
 
     populateTree();
     connectTree();
+    
+    // Connect to the manager's change signal:
+    connect(GraphThemeManager::instance(), &GraphThemeManager::themeChanged,
+            this, &ThemeEditorDock::syncFromTheme);
+
+    // Initial populate
+    syncFromTheme();
+
 }
 
 ThemeEditorDock::InspectorPage
@@ -758,4 +766,33 @@ void ThemeEditorDock::emitThemeChanged()
 {
     GraphThemeManager::instance()
         ->notifyThemeChanged();
+}
+
+void ThemeEditorDock::syncFromTheme()
+{
+    // Block signals to avoid feedback loops
+    const bool oldState = blockSignals(true);
+
+    // Save current active page index in stack
+    int currentIndex = m_stack->currentIndex();
+
+    // Clear existing pages in stacked widget
+    while (m_stack->count() > 0)
+    {
+        QWidget* w = m_stack->widget(0);
+        m_stack->removeWidget(w);
+        delete w;
+    }
+
+    // Clear and rebuild tree items and inspector pages
+    m_tree->clear();
+    populateTree();
+
+    // Restore selected page
+    if (currentIndex >= 0 && currentIndex < m_stack->count())
+    {
+        m_stack->setCurrentIndex(currentIndex);
+    }
+
+    blockSignals(oldState);
 }

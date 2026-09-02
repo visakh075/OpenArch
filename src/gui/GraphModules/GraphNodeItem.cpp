@@ -490,3 +490,10 @@ QPainterPath GraphNodeItem::buildPreviewPath(const QPointF& targetScenePos, Grap
     path.lineTo(p2);
     return path;
 }
+
+void GraphNodeItem::onThemeChanged()
+{
+    prepareGeometryChange();
+    cachedRect_ = calculateNodeRect();
+    update();
+}

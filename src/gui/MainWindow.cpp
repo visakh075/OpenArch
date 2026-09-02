@@ -125,19 +125,41 @@ void MainWindow::setupUi()
         Qt::RightDockWidgetArea,
         themeDock);
 
-    /*
+/*
      * LIVE THEME UPDATE
      */
-
     connect(
         GraphThemeManager::instance(),
         &GraphThemeManager::themeChanged,
         this,
         [this]()
         {
-            scene_->update();
-        });
+            if (scene_)
+            {
+                // Invalidate node cached bounding geometries and edges
+                for (QGraphicsItem* item : scene_->items())
+                {
+                    if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+                    {
+                        node->onThemeChanged();
+                    }
+                    else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+                    {
+                        edge->refreshLayout();
+                    }
+                }
 
+                // Invalidate the entire canvas including background
+                scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+            }
+
+            if (graphView_)
+            {
+                graphView_->resetCachedContent();
+                graphView_->viewport()->update();
+            }
+        });
+        
     /*
      * DOCK CONFIG
      */
@@ -294,7 +316,33 @@ void MainWindow::setupMenu()
             QPointF(x, y));
     });
 
-        editMenu->addAction(moveAction);
+    editMenu->addAction(moveAction);
+
+    auto* themeMenu = menuBar()->addMenu("&Theme");
+
+    // 1. Scan and list preset themes from a "themes" folder
+    QDir themeDir("themes");
+    if (themeDir.exists()) {
+        QStringList filters;
+        filters << "*.json";
+        QFileInfoList list = themeDir.entryInfoList(filters, QDir::Files);
+
+        for (const QFileInfo& fi : list) {
+            QString path = fi.absoluteFilePath();
+            QString name = fi.baseName(); // e.g., "nord", "light", "dracula"
+            themeMenu->addAction(name, this, [this, path]() {
+                GraphThemeManager::instance()->load(path);
+            });
+        }
+        themeMenu->addSeparator();
+    }
+
+    // 2. Allow custom theme browsing at runtime
+    themeMenu->addAction("Open Theme File...", this, &MainWindow::loadThemeFromFile);
+    themeMenu->addAction("Reset to Default", this, []() {
+        GraphThemeManager::instance()->resetDefaults();
+    });
+
 }
 
 void MainWindow::setupConnections()
@@ -332,29 +380,6 @@ void MainWindow::setupConnections()
     connect(backspaceShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
 }
 
-// void MainWindow::openDatabase()
-// {
-//     QString file = QFileDialog::getOpenFileName(
-//         this, "Open DB", "", "SQLite DB (*.db)");
-
-//     if (file.isEmpty())
-//         return;
-
-//     db_.close();
-//     auto r = db_.open(file.toStdString());
-//     if (!r.ok) {
-//         QMessageBox::critical(this, "Error",
-//                               QString::fromStdString(r.message));
-//         return;
-//     }
-
-//     delete model_;
-//     model_ = new ArchitectureModel(db_);
-
-//     populateNavigator();
-//     renderGraph(model_->extractGraph(std::nullopt));
-
-// }
 void MainWindow::openDatabase()
 {
     QString file = QFileDialog::getOpenFileName(
@@ -951,51 +976,6 @@ void MainWindow::onSelectionChanged()
     }
 }
 
-// void MainWindow::alignHorizontal()
-// {
-//     if (!primaryNode_)
-//         return;
-
-//     auto selected = scene_->selectedItems();
-//     if (selected.size() < 2)
-//         return;
-
-//     qreal y = primaryNode_->pos().y();
-
-//     for (auto* item : selected)
-//     {
-//         auto* node = qgraphicsitem_cast<GraphNodeItem*>(item);
-//         if (!node || node == primaryNode_)
-//             continue;
-
-//         node->setPos(node->pos().x(), y);
-//     }
-
-//     statusBar()->showMessage("Aligned horizontally", 2000);
-// }
-// void MainWindow::alignVertical()
-// {
-//     if (!primaryNode_)
-//         return;
-
-//     auto selected = scene_->selectedItems();
-//     if (selected.size() < 2)
-//         return;
-
-//     qreal x = primaryNode_->pos().x();
-
-//     for (auto* item : selected)
-//     {
-//         auto* node = qgraphicsitem_cast<GraphNodeItem*>(item);
-//         if (!node || node == primaryNode_)
-//             continue;
-
-//         node->setPos(x, node->pos().y());
-//     }
-
-//     statusBar()->showMessage("Aligned vertically", 2000);
-// }
-
 void MainWindow::alignHorizontal()
 {
     if (!primaryNode_)
@@ -1068,5 +1048,24 @@ void MainWindow::setDb(std::string db_path)
 
         populateNavigator();
         renderGraph(model_->extractGraph(std::nullopt));
+    }
+}
+
+void MainWindow::loadThemeFromFile()
+{
+    QString file = QFileDialog::getOpenFileName(
+        this, "Select Theme File", "", "Theme JSON (*.json);;All Files (*.*)");
+
+    if (file.isEmpty())
+        return;
+
+    if (!GraphThemeManager::instance()->load(file)) {
+        QMessageBox::critical(this, "Error", "Failed to load theme configuration.");
+    }
+}
+void MainWindow::switchThemePreset(const QString& path)
+{
+    if (!GraphThemeManager::instance()->load(path)) {
+        QMessageBox::critical(this, "Error", "Failed to load theme configuration: " + path);
     }
 }

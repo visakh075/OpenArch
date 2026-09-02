@@ -1,0 +1,125 @@
+{
+    "name": "OpenArch Blueprint",
+    "view": {
+        "background": "#0b2545",
+        "grid": {
+            "enabled": true,
+            "minorColor": "#13315c",
+            "majorColor": "#134074",
+            "spacing": 20,
+            "majorSpacing": 100
+        }
+    },
+    "node": {
+        "normal": {
+            "background": "#13315cdd",
+            "border": "#8da9c4",
+            "borderWidth": 2,
+            "radius": 4,
+            "title": { "color": "#eef4f8", "size": 14, "bold": true },
+            "body": { "color": "#8da9c4", "size": 11, "bold": false }
+        },
+        "hover": {
+            "background": "#134074",
+            "border": "#eef4f8",
+            "borderWidth": 3,
+            "radius": 4,
+            "title": { "color": "#ffffff", "size": 14, "bold": true },
+            "body": { "color": "#ffffff", "size": 11, "bold": false }
+        },
+        "selected": {
+            "background": "#134074",
+            "border": "#00f0ff",
+            "borderWidth": 4,
+            "radius": 4,
+            "title": { "color": "#00f0ff", "size": 14, "bold": true },
+            "body": { "color": "#eef4f8", "size": 11, "bold": false }
+        }
+    },
+    "edge": {
+        "normal": {
+            "lineColor": "#8da9c4",
+            "lineWidth": 2,
+            "arrow": {
+                "lineColor": "#8da9c4",
+                "fillColor": "#8da9c4aa",
+                "width": 14,
+                "height": 10,
+                "lineWidth": 2
+            },
+            "label": {
+                "textColor": "#eef4f8",
+                "backgroundColor": "#0b254500",
+                "borderColor": "#134074",
+                "borderWidth": 1,
+                "fontSize": 11,
+                "bold": false,
+                "paddingX": 0,
+                "paddingY": 0,
+                "radius": 2,
+                "offset": 8
+            }
+        },
+        "hover": {
+            "lineColor": "#eef4f8",
+            "lineWidth": 3,
+            "arrow": {
+                "lineColor": "#eef4f8",
+                "fillColor": "#eef4f8",
+                "width": 16,
+                "height": 12,
+                "lineWidth": 2
+            },
+            "label": {
+                "textColor": "#ffffff",
+                "backgroundColor": "#13315c",
+                "borderColor": "#eef4f8",
+                "borderWidth": 1,
+                "fontSize": 11,
+                "bold": true,
+                "paddingX": 6,
+                "paddingY": 3,
+                "radius": 2,
+                "offset": 8
+            }
+        },
+        "selected": {
+            "lineColor": "#00f0ff",
+            "lineWidth": 4,
+            "arrow": {
+                "lineColor": "#00f0ff",
+                "fillColor": "#00f0ff",
+                "width": 18,
+                "height": 14,
+                "lineWidth": 3
+            },
+            "label": {
+                "textColor": "#00f0ff",
+                "backgroundColor": "#0b2545",
+                "borderColor": "#00f0ff",
+                "borderWidth": 2,
+                "fontSize": 11,
+                "bold": true,
+                "paddingX": 6,
+                "paddingY": 3,
+                "radius": 2,
+                "offset": 8
+            }
+        }
+    },
+    "port": {
+        "inputColor": "#00f0ff",
+        "outputColor": "#8da9c4",
+        "hoverColor": "#ffffff",
+        "radius": 5
+    },
+    "selection": {
+        "outline": "#00f0ff",
+        "fill": "#00f0ff22"
+    },
+    "interaction": {
+        "hoverOutline": "#ffffff",
+        "invalidConnection": "#ff4d6d",
+        "dropTarget": "#00f0ff"
+    }
+}

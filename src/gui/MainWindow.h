@@ -141,4 +141,6 @@ private:
 
     private slots:
     void deleteSelected();
+    void loadThemeFromFile();
+    void switchThemePreset(const QString& path);
 };

@@ -19,6 +19,8 @@
 GraphView::GraphView(QWidget* parent)
     : QGraphicsView(parent)
 {
+    // Ensure view doesn't hold an old cached background pixmap
+    setCacheMode(QGraphicsView::CacheNone);
     setTransformationAnchor(QGraphicsView::AnchorViewCenter);
     setDragMode(QGraphicsView::RubberBandDrag);
     setFocusPolicy(Qt::StrongFocus);
