@@ -4,7 +4,9 @@
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QListWidget>
+#include <QComboBox>
 #include <unordered_set>
+#include <optional>
 
 #include "ArchitectureModel.h"
 
@@ -23,12 +25,15 @@ private slots:
 
 private:
     void populateMembershipUI();
+    void populateParentContainerUI(std::optional<NodeId> currentParentId);
 
     ArchitectureModel* model_;
     NodeId nodeId_;
+    std::optional<NodeId> initialParentId_{std::nullopt};
 
     QLineEdit* nameEdit_;
     QLineEdit* typeEdit_;
+    QComboBox* parentContainerCombo_;
     QPlainTextEdit* metadataEdit_;
     QPlainTextEdit* attributesEdit_;
 

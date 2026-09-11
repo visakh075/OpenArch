@@ -37,7 +37,9 @@ uint32_t ArchitectureModel::computeNodeChecksum(
 {
     std::ostringstream os;
 
-    os << n.name << "|" << n.type;
+    os << n.name << "|" 
+       << n.type << "|" 
+       << (n.parentId ? *n.parentId : 0);
 
     return crc32(os.str());
 }
@@ -551,6 +553,24 @@ GraphSnapshot ArchitectureModel::extractGraph(
         {
             visibleNodes.insert(nl.nodeId);
         }
+
+        // Draw containers in a non-connected layer if any submodule is in the layer
+        bool addedAny = true;
+        while (addedAny)
+        {
+            addedAny = false;
+            for (const auto& n : nodes())
+            {
+                if (visibleNodes.count(n.id) && n.parentId.has_value())
+                {
+                    if (visibleNodes.find(*n.parentId) == visibleNodes.end())
+                    {
+                        visibleNodes.insert(*n.parentId);
+                        addedAny = true;
+                    }
+                }
+            }
+        }
     }
     else
     {
@@ -565,7 +585,7 @@ GraphSnapshot ArchitectureModel::extractGraph(
     //
     for (const auto& n : nodes())
     {
-        if (!layerId || visibleNodes.count(n.id))
+        if (visibleNodes.count(n.id))
         {
             snap.nodes.push_back(n);
         }

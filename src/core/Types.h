@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <optional>
 
 /* ============================================================
    Strong IDs
@@ -39,11 +40,11 @@ inline std::string to_string(Status s) {
 
 inline Status status_from_string(const std::string& s) {
     if (s == "new")      return Status::New;
-    if (s == "changed") return Status::Changed;
-    if (s == "reviewed")return Status::Reviewed;
-    if (s == "approved")return Status::Approved;
-    if (s == "invalid") return Status::Invalid;
-    if (s == "deleted") return Status::Deleted;
+    if (s == "changed")  return Status::Changed;
+    if (s == "reviewed") return Status::Reviewed;
+    if (s == "approved") return Status::Approved;
+    if (s == "invalid")  return Status::Invalid;
+    if (s == "deleted")  return Status::Deleted;
     return Status::Invalid;
 }
 
@@ -56,7 +57,8 @@ struct NodeData {
 
     // Core (checksum-relevant)
     std::string name;
-    std::string type;
+    std::string type; // "container", "service", "db", etc.
+    std::optional<NodeId> parentId{std::nullopt};
 
     // Non-checksum
     std::string metadata;    // JSON (UI / drawing hints)

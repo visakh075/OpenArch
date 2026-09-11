@@ -25,6 +25,7 @@ NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
             return;
         }
         node = *opt;
+        initialParentId_ = node.parentId;
 
         for (const auto& nl : model_->layersForNode(nodeId_)) {
             stagedLayers_.insert(nl.layerId);
@@ -34,6 +35,9 @@ NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
 
     nameEdit_ = new QLineEdit(QString::fromStdString(node.name));
     typeEdit_ = new QLineEdit(QString::fromStdString(node.type));
+    parentContainerCombo_ = new QComboBox();
+    populateParentContainerUI(node.parentId);
+
     metadataEdit_ = new QPlainTextEdit(QString::fromStdString(node.metadata));
     attributesEdit_ = new QPlainTextEdit(QString::fromStdString(node.attributes));
 
@@ -72,6 +76,7 @@ NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
     auto* form = new QFormLayout;
     form->addRow("Name", nameEdit_);
     form->addRow("Type", typeEdit_);
+    form->addRow("Parent Container", parentContainerCombo_);
     form->addRow("Metadata", metadataEdit_);
     form->addRow("Attributes", attributesEdit_);
     form->addRow("Layers", listLayout);
@@ -85,6 +90,38 @@ NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
     auto* main = new QVBoxLayout(this);
     main->addLayout(form);
     main->addWidget(buttons);
+}
+
+void NodeEditorDialog::populateParentContainerUI(std::optional<NodeId> currentParentId)
+{
+    parentContainerCombo_->clear();
+    parentContainerCombo_->addItem("None (Root Canvas)", QVariant::fromValue<qulonglong>(0));
+
+    int selectedIdx = 0;
+
+    for (const auto& n : model_->nodes()) {
+        // A node cannot be its own parent
+        if (nodeId_ != 0 && n.id == nodeId_)
+            continue;
+
+        QString nameStr = QString::fromStdString(n.name).trimmed();
+        QString typeStr = QString::fromStdString(n.type).trimmed();
+        
+        QString label;
+        if (!nameStr.isEmpty()) {
+            label = QString("%1 [%2] (#%3)").arg(nameStr, typeStr.isEmpty() ? "Node" : typeStr).arg(n.id);
+        } else {
+            label = QString("Node #%1 [%2]").arg(n.id).arg(typeStr.isEmpty() ? "Node" : typeStr);
+        }
+
+        parentContainerCombo_->addItem(label, QVariant::fromValue<qulonglong>(n.id));
+
+        if (currentParentId && *currentParentId == n.id) {
+            selectedIdx = parentContainerCombo_->count() - 1;
+        }
+    }
+
+    parentContainerCombo_->setCurrentIndex(selectedIdx);
 }
 
 void NodeEditorDialog::populateMembershipUI()
@@ -141,6 +178,14 @@ void NodeEditorDialog::onSave()
     node.type = typeEdit_->text().toStdString();
     node.metadata = metadataEdit_->toPlainText().toStdString();
     node.attributes = attributesEdit_->toPlainText().toStdString();
+
+    // Extract selected parent container
+    qulonglong selId = parentContainerCombo_->currentData().toULongLong();
+    if (selId == 0) {
+        node.parentId = std::nullopt;
+    } else {
+        node.parentId = static_cast<NodeId>(selId);
+    }
 
     Result r;
     if (!nodeId_) {

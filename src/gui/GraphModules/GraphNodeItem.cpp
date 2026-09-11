@@ -1,15 +1,18 @@
 #include "GraphNodeItem.h"
 #include "GraphEdgeItem.h"
-#include "GraphView.h"
-#include "NodeEditorDialog.h"
-#include "GraphThemeManager.h"
+#include "gui/GraphView.h"
+#include "gui/EditorDialogs/NodeEditorDialog.h"
+#include "gui/theme/GraphThemeManager.h"
 
 #include <QPainter>
 #include <QCursor>
 #include <QMenu>
 #include <QGraphicsScene>
 #include <QGraphicsView>
+#include <QGraphicsSceneMouseEvent>
+#include <QGraphicsSceneContextMenuEvent>
 #include <algorithm>
+#include <cmath>
 
 GraphNodeItem::GraphNodeItem(ArchitectureModel *m, NodeId id, QGraphicsItem *p)
     : QGraphicsObject(p),
@@ -22,18 +25,18 @@ GraphNodeItem::GraphNodeItem(ArchitectureModel *m, NodeId id, QGraphicsItem *p)
              ItemSendsGeometryChanges |
              ItemSendsScenePositionChanges);
 
-    setZValue(1);
-    cachedRect_ = calculateNodeRect();
+    setZValue(p != nullptr ? (p->zValue() + 1) : 1);
+    refreshGeometry();
 }
 
 GraphNodeItem::~GraphNodeItem()
 {
-    if (tempLine_)
+    if (tempPathItem_)
     {
         if (scene())
-            scene()->removeItem(tempLine_);
-        delete tempLine_;
-        tempLine_ = nullptr;
+            scene()->removeItem(tempPathItem_);
+        delete tempPathItem_;
+        tempPathItem_ = nullptr;
     }
 
     for (const auto& edge : edges_)
@@ -45,29 +48,125 @@ GraphNodeItem::~GraphNodeItem()
     }
 }
 
-QRectF GraphNodeItem::calculateNodeRect() const
+bool GraphNodeItem::isContainer() const
+{
+    for (auto* item : childItems())
+    {
+        if (dynamic_cast<GraphNodeItem*>(item))
+            return true;
+    }
+
+    if (!model_) return false;
+    auto n = model_->getNodeById(nodeId_);
+    return n && (n->type == "container" || n->type == "Container");
+}
+
+void GraphNodeItem::setContainerSizing(ContainerSizing mode)
+{
+    if (sizingMode_ != mode)
+    {
+        sizingMode_ = mode;
+        refreshGeometry();
+    }
+}
+
+void GraphNodeItem::setManualContainerSize(qreal w, qreal h)
+{
+    manualWidth_ = w;
+    manualHeight_ = h;
+    if (sizingMode_ == ContainerSizing::Manual)
+    {
+        refreshGeometry();
+    }
+}
+
+void GraphNodeItem::adoptChild(GraphNodeItem* child)
+{
+    if (!child || child == this || child->parentItem() == this)
+        return;
+
+    // Prevent circular parenting
+    QGraphicsItem* p = this->parentItem();
+    while (p)
+    {
+        if (p == child) return;
+        p = p->parentItem();
+    }
+
+    QPointF originalScenePos = child->scenePos();
+
+    child->setParentItem(this);
+
+    // Initial position inside the parent container body (below header)
+    QPointF localPos = mapFromScene(originalScenePos);
+    qreal minY = cachedHeaderRect_.height() + 10.0;
+    qreal minX = 10.0;
+
+    localPos.setX(std::max(minX, localPos.x()));
+    localPos.setY(std::max(minY, localPos.y()));
+    child->setPos(localPos);
+
+    child->setZValue(this->zValue() + 1);
+
+    if (model_)
+    {
+        auto n = model_->getNodeById(child->nodeId());
+        if (n)
+        {
+            n->parentId = nodeId_;
+            model_->updateNode(*n);
+        }
+    }
+
+    refreshGeometry();
+}
+
+void GraphNodeItem::releaseChild(GraphNodeItem* child)
+{
+    if (!child || child->parentItem() != this)
+        return;
+
+    QPointF scenePos = child->scenePos();
+    child->setParentItem(nullptr);
+    child->setPos(scenePos);
+    child->setZValue(1);
+
+    if (model_)
+    {
+        auto n = model_->getNodeById(child->nodeId());
+        if (n)
+        {
+            n->parentId = std::nullopt;
+            model_->updateNode(*n);
+        }
+    }
+
+    refreshGeometry();
+}
+
+QRectF GraphNodeItem::calculateNodeRect()
 {
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphNodeState* State = isSelected() ? &theme.node.selected : (hovered_ ? &theme.node.hover : &theme.node.normal);
+    const GraphNodeState* state = isSelected() ? &theme.node.selected : (hovered_ ? &theme.node.hover : &theme.node.normal);
 
-    QFont titleFont;
-    titleFont.setPointSize(State->title.size);
-    titleFont.setBold(State->title.bold);
-    titleFont.setItalic(State->title.italic);
+    cachedTitleFont_ = QFont();
+    cachedTitleFont_.setPointSize(state->title.size);
+    cachedTitleFont_.setBold(state->title.bold);
+    cachedTitleFont_.setItalic(state->title.italic);
 
-    QFont bodyFont;
-    bodyFont.setPointSize(State->body.size);
-    bodyFont.setBold(State->body.bold);
-    bodyFont.setItalic(State->body.italic);
+    cachedBodyFont_ = QFont();
+    cachedBodyFont_.setPointSize(state->body.size);
+    cachedBodyFont_.setBold(state->body.bold);
+    cachedBodyFont_.setItalic(state->body.italic);
 
-    QFontMetrics titleFm(titleFont);
-    QFontMetrics bodyFm(bodyFont);
+    QFontMetrics titleFm(cachedTitleFont_);
+    QFontMetrics bodyFm(cachedBodyFont_);
 
     const int maxTextWidth = 320;
     QRect titleBounds = titleFm.boundingRect(QRect(0, 0, maxTextWidth, 2000), Qt::TextWordWrap, displayTitle());
     QRect bodyBounds = bodyFm.boundingRect(QRect(0, 0, maxTextWidth, 2000), Qt::TextWordWrap, displayType());
 
-    const int padding = State->padding;
+    const int padding = state->padding;
     const int spacing = 0;
 
     qreal width = std::max(titleBounds.width(), bodyBounds.width()) + (padding * 2);
@@ -76,27 +175,100 @@ QRectF GraphNodeItem::calculateNodeRect() const
     width = std::max<qreal>(width, 120);
     height = std::max<qreal>(height, 50);
 
-    return QRectF(0, 0, width, height);
+    cachedRect_ = QRectF(0, 0, width, height);
+    QRectF contentRect = cachedRect_.adjusted(padding, padding, -padding, -padding);
+
+    cachedTitleRect_ = QRectF(contentRect.left(), contentRect.top(), contentRect.width(), titleBounds.height());
+    cachedBodyRect_  = QRectF(contentRect.left(), cachedTitleRect_.bottom() + spacing, contentRect.width(), bodyBounds.height());
+
+    return cachedRect_;
+}
+
+QRectF GraphNodeItem::calculateContainerRect()
+{
+    const auto& theme = GraphThemeManager::instance()->theme();
+    const GraphNodeState* state = isSelected() ? &theme.node.selected : (hovered_ ? &theme.node.hover : &theme.node.normal);
+
+    cachedTitleFont_ = QFont();
+    cachedTitleFont_.setPointSize(state->title.size);
+    cachedTitleFont_.setBold(true);
+
+    QFontMetrics fm(cachedTitleFont_);
+    qreal headerHeight = fm.height() + (state->padding * 2);
+
+    QRectF childrenUnion;
+    bool hasChildren = false;
+
+    for (QGraphicsItem* item : childItems())
+    {
+        if (!item->isVisible())
+            continue;
+
+        childrenUnion = childrenUnion.united(item->mapRectToParent(item->boundingRect()));
+        hasChildren = true;
+    }
+
+    const qreal padding = 20.0;
+    const qreal minW = 220.0;
+    const qreal minH = 140.0;
+
+    qreal computedWidth = 0.0;
+    qreal computedHeight = 0.0;
+
+    if (sizingMode_ == ContainerSizing::AutoFit)
+    {
+        if (hasChildren)
+        {
+            computedWidth  = std::max(minW, childrenUnion.right() + padding);
+            computedHeight = std::max(minH, childrenUnion.bottom() + padding);
+        }
+        else
+        {
+            computedWidth  = minW;
+            computedHeight = minH;
+        }
+    }
+    else
+    {
+        computedWidth  = manualWidth_;
+        computedHeight = manualHeight_;
+
+        if (hasChildren)
+        {
+            computedWidth  = std::max(computedWidth, childrenUnion.right() + padding);
+            computedHeight = std::max(computedHeight, childrenUnion.bottom() + padding);
+        }
+    }
+
+    computedHeight = std::max(computedHeight, headerHeight + minH);
+
+    cachedHeaderRect_ = QRectF(0, 0, computedWidth, headerHeight);
+    cachedRect_       = QRectF(0, 0, computedWidth, computedHeight);
+
+    return cachedRect_;
 }
 
 QRectF GraphNodeItem::boundingRect() const
 {
-    return cachedRect_;
+    const auto& theme = GraphThemeManager::instance()->theme();
+    qreal penWidth = theme.node.normal.borderWidth;
+    qreal pad = (penWidth / 2.0) + 1.0;
+    return cachedRect_.adjusted(-pad, -pad, pad, pad);
 }
 
 QString GraphNodeItem::displayTitle() const
 {
+    if (!model_) return "<deleted>";
     auto n = model_->getNodeById(nodeId_);
-    if (!n)
-        return "<deleted>";
+    if (!n) return "<deleted>";
     return QString::fromStdString(n->name);
 }
 
 QString GraphNodeItem::displayType() const
 {
+    if (!model_) return "<deleted>";
     auto n = model_->getNodeById(nodeId_);
-    if (!n)
-        return "<deleted>";
+    if (!n) return "<deleted>";
     return QString::fromStdString(n->type);
 }
 
@@ -105,53 +277,82 @@ void GraphNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     painter->setRenderHint(QPainter::Antialiasing);
 
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphNodeState* State = isSelected() ? &theme.node.selected : (hovered_ ? &theme.node.hover : &theme.node.normal);
+    const GraphNodeState* state = isSelected() ? &theme.node.selected : (hovered_ ? &theme.node.hover : &theme.node.normal);
 
-    QRectF rect = cachedRect_;
-    QPainterPath path;
-    path.addRoundedRect(rect, State->radius, State->radius);
+    if (isContainer())
+    {
+        QPainterPath bodyPath;
+        bodyPath.addRoundedRect(cachedRect_, state->radius, state->radius);
 
-    painter->setPen(QPen(State->border, State->borderWidth));
-    painter->setBrush(State->background);
-    painter->drawPath(path);
+        QColor bodyBg = state->background;
+        bodyBg.setAlpha(45);
+        painter->setPen(QPen(state->border, state->borderWidth, Qt::DashLine));
+        painter->setBrush(bodyBg);
+        painter->drawPath(bodyPath);
 
-    const int padding = State->padding;
-    const int spacing = 0;
+        QPainterPath headerPath;
+        headerPath.addRoundedRect(cachedHeaderRect_, state->radius, state->radius);
+        QColor headerBg = state->border;
+        headerBg.setAlpha(35);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(headerBg);
+        painter->drawPath(headerPath);
 
-    QRectF contentRect = rect.adjusted(padding, padding, -padding, -padding);
+        painter->setFont(cachedTitleFont_);
+        painter->setPen(state->title.color);
+        painter->drawText(cachedHeaderRect_.adjusted(10, 0, -10, 0), Qt::AlignVCenter | Qt::AlignLeft, displayTitle());
+    }
+    else
+    {
+        QPainterPath path;
+        path.addRoundedRect(cachedRect_, state->radius, state->radius);
 
-    QFont titleFont;
-    titleFont.setPointSize(State->title.size);
-    titleFont.setBold(State->title.bold);
-    titleFont.setItalic(State->title.italic);
+        painter->setPen(QPen(state->border, state->borderWidth));
+        painter->setBrush(state->background);
+        painter->drawPath(path);
 
-    QFont bodyFont;
-    bodyFont.setPointSize(State->body.size);
-    bodyFont.setBold(State->body.bold);
-    bodyFont.setItalic(State->body.italic);
+        painter->setFont(cachedTitleFont_);
+        painter->setPen(state->title.color);
+        painter->drawText(cachedTitleRect_, state->title.align | Qt::TextWordWrap, displayTitle());
 
-    QFontMetrics titleFm(titleFont);
-    QFontMetrics bodyFm(bodyFont);
-
-    QRect titleBounds = titleFm.boundingRect(QRect(0, 0, static_cast<int>(contentRect.width()), 2000), Qt::TextWordWrap, displayTitle());
-    QRect bodyBounds = bodyFm.boundingRect(QRect(0, 0, static_cast<int>(contentRect.width()), 2000), Qt::TextWordWrap, displayType());
-
-    QRectF titleRect(contentRect.left(), contentRect.top(), contentRect.width(), titleBounds.height());
-    QRectF bodyRect(contentRect.left(), titleRect.bottom() + spacing, contentRect.width(), bodyBounds.height());
-
-    painter->setFont(titleFont);
-    painter->setPen(State->title.color);
-    painter->drawText(titleRect, State->title.align | Qt::TextWordWrap, displayTitle());
-
-    painter->setFont(bodyFont);
-    painter->setPen(State->body.color);
-    painter->drawText(bodyRect, State->body.align | Qt::TextWordWrap, displayType());
+        painter->setFont(cachedBodyFont_);
+        painter->setPen(state->body.color);
+        painter->drawText(cachedBodyRect_, state->body.align | Qt::TextWordWrap, displayType());
+    }
 }
 
 QVariant GraphNodeItem::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant& value)
 {
-    if (change == QGraphicsItem::ItemPositionChange || 
-        change == QGraphicsItem::ItemPositionHasChanged ||
+    // 1. Constrain movement inside the parent container boundary
+    if (change == QGraphicsItem::ItemPositionChange && scene())
+    {
+        if (auto* parentNode = dynamic_cast<GraphNodeItem*>(parentItem()))
+        {
+            QPointF newPos = value.toPointF();
+            QRectF myBounds = boundingRect();
+
+            qreal minX = 10.0;
+            qreal minY = parentNode->cachedHeaderRect_.height() + 10.0;
+
+            // Prevent crossing the top header bar or left edge
+            newPos.setX(std::max(minX, newPos.x()));
+            newPos.setY(std::max(minY, newPos.y()));
+
+            // In manual mode, clamp to bottom-right bounds
+            if (parentNode->sizingMode_ == ContainerSizing::Manual)
+            {
+                qreal maxX = std::max(minX, parentNode->cachedRect_.width() - myBounds.width() - 10.0);
+                qreal maxY = std::max(minY, parentNode->cachedRect_.height() - myBounds.height() - 10.0);
+                newPos.setX(std::min(newPos.x(), maxX));
+                newPos.setY(std::min(newPos.y(), maxY));
+            }
+
+            return newPos;
+        }
+    }
+
+    // 2. Refresh edges and container size when actual position changes
+    if (change == QGraphicsItem::ItemPositionHasChanged ||
         change == QGraphicsItem::ItemScenePositionHasChanged)
     {
         for (const auto& e : edges_)
@@ -159,6 +360,27 @@ QVariant GraphNodeItem::itemChange(QGraphicsItem::GraphicsItemChange change, con
             if (e && e->scene())
                 e->updateEndpoints();
         }
+
+        if (auto* parentContainer = dynamic_cast<GraphNodeItem*>(parentItem()))
+        {
+            parentContainer->refreshGeometry();
+        }
+
+        for (auto* child : childItems())
+        {
+            if (auto* nodeChild = dynamic_cast<GraphNodeItem*>(child))
+            {
+                for (const auto& ce : nodeChild->edges_)
+                {
+                    if (ce && ce->scene())
+                        ce->updateEndpoints();
+                }
+            }
+        }
+    }
+    else if (change == QGraphicsItem::ItemSelectedHasChanged)
+    {
+        refreshGeometry();
     }
 
     return QGraphicsObject::itemChange(change, value);
@@ -227,7 +449,6 @@ void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
         return;
     }
 
-    // Shift + Left-Click: Start Connection
     if (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ShiftModifier))
     {
         isConnecting_ = true;
@@ -240,7 +461,7 @@ void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
         scene()->addItem(tempPathItem_);
 
         event->accept();
-        return; // Suppress base QGraphicsObject::mousePressEvent so the node is NOT dragged
+        return;
     }
 
     QGraphicsObject::mousePressEvent(event);
@@ -250,7 +471,6 @@ void GraphNodeItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 {
     if (isConnecting_ && tempPathItem_)
     {
-        // Detect hovering over a potential target node for snapping
         GraphNodeItem* targetNode = nullptr;
         for (QGraphicsItem* item : scene()->items(event->scenePos()))
         {
@@ -266,7 +486,7 @@ void GraphNodeItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 
         tempPathItem_->setPath(buildPreviewPath(event->scenePos(), targetNode));
         event->accept();
-        return; // Suppress base QGraphicsObject::mouseMoveEvent
+        return;
     }
 
     QGraphicsObject::mouseMoveEvent(event);
@@ -285,7 +505,6 @@ void GraphNodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
             tempPathItem_ = nullptr;
         }
 
-        // Find drop target node
         for (QGraphicsItem* item : scene()->items(event->scenePos()))
         {
             if (auto* target = dynamic_cast<GraphNodeItem*>(item))
@@ -305,10 +524,19 @@ void GraphNodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
         }
 
         event->accept();
-        return; // Suppress base QGraphicsObject::mouseReleaseEvent
+        return;
     }
 
     QGraphicsObject::mouseReleaseEvent(event);
+
+    if (model_)
+    {
+        auto n = model_->getNodeById(nodeId_);
+        if (n)
+        {
+            model_->updateNode(*n);
+        }
+    }
 }
 
 void GraphNodeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
@@ -344,7 +572,9 @@ void GraphNodeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     {
         NodeEditorDialog dlg(model_, nodeId_);
         if (dlg.exec() == QDialog::Accepted)
+        {
             refreshGeometry();
+        }
     }
     else if (selected == delAct)
     {
@@ -379,13 +609,23 @@ void GraphNodeItem::removeEdge(GraphEdgeItem* edge)
 void GraphNodeItem::refreshGeometry()
 {
     prepareGeometryChange();
-    cachedRect_ = calculateNodeRect();
+
+    if (isContainer())
+        calculateContainerRect();
+    else
+        calculateNodeRect();
+
     update();
 
     for (const auto& e : edges_)
     {
         if (e)
             e->refreshPath();
+    }
+
+    if (auto* parentContainer = dynamic_cast<GraphNodeItem*>(parentItem()))
+    {
+        parentContainer->refreshGeometry();
     }
 }
 
@@ -406,7 +646,6 @@ QPainterPath GraphNodeItem::buildPreviewPath(const QPointF& targetScenePos, Grap
     }
     else
     {
-        // Treat mouse cursor as a tiny 1x1 rect
         dstRect = QRectF(targetScenePos.x() - 1, targetScenePos.y() - 1, 2, 2);
         dstCenter = targetScenePos;
     }
@@ -493,7 +732,5 @@ QPainterPath GraphNodeItem::buildPreviewPath(const QPointF& targetScenePos, Grap
 
 void GraphNodeItem::onThemeChanged()
 {
-    prepareGeometryChange();
-    cachedRect_ = calculateNodeRect();
-    update();
+    refreshGeometry();
 }

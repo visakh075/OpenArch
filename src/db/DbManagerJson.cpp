@@ -203,35 +203,30 @@ static std::unordered_map<std::string, std::string> extractLayoutSection(const s
 
     size_t i = pos + 1;
     while (i < layoutBlock.size()) {
-        // Skip whitespace
         while (i < layoutBlock.size() && std::isspace(static_cast<unsigned char>(layoutBlock[i]))) {
             ++i;
         }
         if (i >= layoutBlock.size() || layoutBlock[i] == '}') break;
 
-        // 1. Read string key
         if (layoutBlock[i] != '"') {
             ++i;
             continue;
         }
-        ++i; // skip open quote
+        ++i;
         size_t kStart = i;
         while (i < layoutBlock.size() && layoutBlock[i] != '"') {
             if (layoutBlock[i] == '\\' && i + 1 < layoutBlock.size()) i += 2;
             else ++i;
         }
         std::string key = layoutBlock.substr(kStart, i - kStart);
-        if (i < layoutBlock.size()) ++i; // skip close quote
+        if (i < layoutBlock.size()) ++i;
 
-        // 2. Find ':'
         while (i < layoutBlock.size() && layoutBlock[i] != ':') ++i;
-        if (i < layoutBlock.size()) ++i; // skip ':'
+        if (i < layoutBlock.size()) ++i;
 
-        // 3. Find value start
         while (i < layoutBlock.size() && std::isspace(static_cast<unsigned char>(layoutBlock[i]))) ++i;
         if (i >= layoutBlock.size()) break;
 
-        // 4. Capture object value { ... }
         if (layoutBlock[i] == '{') {
             size_t valStart = i;
             int depth = 0;
@@ -256,13 +251,11 @@ static std::unordered_map<std::string, std::string> extractLayoutSection(const s
                 ++i;
             }
         } else {
-            // Primitive or empty value until comma/closing brace
             size_t valStart = i;
             while (i < layoutBlock.size() && layoutBlock[i] != ',' && layoutBlock[i] != '}') ++i;
             dict[key] = trim(layoutBlock.substr(valStart, i - valStart));
         }
 
-        // Advance to next item
         while (i < layoutBlock.size() && layoutBlock[i] != ',' && layoutBlock[i] != '}') ++i;
         if (i < layoutBlock.size() && layoutBlock[i] == ',') ++i;
     }
@@ -366,7 +359,7 @@ Result DbManagerJson::loadFromFile() {
         maxLayerId_ = std::max(maxLayerId_, l.id);
     }
 
-    // 3. Load Nodes
+    // 3. Load Nodes (with parent_id)
     auto nodeBlocks = extractObjectList(content, "nodes");
     for (const auto& blk : nodeBlocks) {
         NodeData n;
@@ -374,6 +367,18 @@ Result DbManagerJson::loadFromFile() {
         if (!idStr.empty()) n.id = static_cast<NodeId>(std::stoull(idStr));
         n.name       = extractField(blk, "name");
         n.type       = extractField(blk, "type");
+
+        std::string pIdStr = extractField(blk, "parent_id");
+        if (!pIdStr.empty() && pIdStr != "null" && pIdStr != "0") {
+            try {
+                n.parentId = static_cast<NodeId>(std::stoull(pIdStr));
+            } catch (...) {
+                n.parentId = std::nullopt;
+            }
+        } else {
+            n.parentId = std::nullopt;
+        }
+
         n.attributes = extractField(blk, "attributes");
         std::string csStr = extractField(blk, "checksum");
         if (!csStr.empty()) n.checksum = static_cast<uint32_t>(std::stoul(csStr));
@@ -456,15 +461,22 @@ Result DbManagerJson::saveToFile() {
     }
     os << "  ],\n";
 
-    // 2. Nodes
+    // 2. Nodes (with parent_id serialized)
     os << "  \"nodes\": [\n";
     for (size_t i = 0; i < nodes_.size(); ++i) {
         const auto& n = nodes_[i];
         os << "    {\n"
            << "      \"id\": " << n.id << ",\n"
            << "      \"name\": \"" << escapeJson(n.name) << "\",\n"
-           << "      \"type\": \"" << escapeJson(n.type) << "\",\n"
-           << "      \"attributes\": \"" << escapeJson(n.attributes) << "\",\n"
+           << "      \"type\": \"" << escapeJson(n.type) << "\",\n";
+
+        if (n.parentId.has_value()) {
+            os << "      \"parent_id\": " << *n.parentId << ",\n";
+        } else {
+            os << "      \"parent_id\": null,\n";
+        }
+
+        os << "      \"attributes\": \"" << escapeJson(n.attributes) << "\",\n"
            << "      \"checksum\": " << n.checksum << ",\n"
            << "      \"status\": \"" << escapeJson(to_string(n.status)) << "\",\n"
            << "      \"reviewer\": \"" << escapeJson(n.reviewer) << "\"\n"
@@ -537,7 +549,7 @@ Result DbManagerJson::saveToFile() {
 
     std::ofstream file(filePath_, std::ios::trunc);
     if (!file.is_open()) {
-        return Result::failure("Unable to open file for writing: " + filePath_);
+        return Result::failure("Unable to open file for reading: " + filePath_);
     }
 
     file << os.str();
