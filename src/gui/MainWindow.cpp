@@ -8,7 +8,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
-#include <QMessageBox>
 #include <QShortcut>
 #include "NodeEditorDialog.h"
 #include "LayerEditorDialog.h"
@@ -31,7 +30,6 @@ MainWindow::MainWindow(QWidget* parent)
 
 MainWindow::~MainWindow()
 {
-    // Disconnect scene signals before teardown so selection changes don't fire during item destruction
     if (scene_)
         scene_->disconnect(this);
 
@@ -43,104 +41,80 @@ void MainWindow::setupUi()
     /*
      * NAVIGATION MODEL
      */
-
-    navModel_ =
-        new QStandardItemModel(this);
-
-    navModel_->setHorizontalHeaderLabels(
-        {"Architecture"});
+    navModel_ = new QStandardItemModel(this);
+    navModel_->setHorizontalHeaderLabels({"Architecture"});
 
     /*
      * NAVIGATOR
      */
-
-    navigator_ =
-        new QTreeView;
-
-    navigator_->setModel(
-        navModel_);
+    navigator_ = new QTreeView;
+    navigator_->setModel(navModel_);
 
     /*
      * ARCHITECTURE DOCK
      */
+    architectureDock_ = new QDockWidget("Architecture", this);
+    architectureDock_->setObjectName("ArchitectureDock");
+    architectureDock_->setWidget(navigator_);
 
-    architectureDock_ =
-        new QDockWidget(
-            "Architecture",
-            this);
-
-    architectureDock_->setObjectName(
-        "ArchitectureDock");
-
-    architectureDock_->setWidget(
-        navigator_);
-
-    addDockWidget(
-        Qt::LeftDockWidgetArea,
-        architectureDock_);
+    addDockWidget(Qt::LeftDockWidgetArea, architectureDock_);
 
     /*
      * GRAPH SCENE
      */
-
-    scene_ =
-        new QGraphicsScene(this);
+    scene_ = new QGraphicsScene(this);
 
     /*
      * GRAPH VIEW
      */
-
-    graphView_ =
-        new GraphView(this);
-
-    graphView_->setScene(
-        scene_);
-
-    graphView_->setViewportUpdateMode(
-        QGraphicsView::FullViewportUpdate);
-
-    graphView_->setRenderHint(
-        QPainter::Antialiasing);
-
+    graphView_ = new GraphView(this);
+    graphView_->setScene(scene_);
+    graphView_->setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+    graphView_->setRenderHint(QPainter::Antialiasing);
     graphView_->setInteractive(true);
 
     /*
      * CENTRAL WIDGET
      */
-
-    setCentralWidget(
-        graphView_);
+    setCentralWidget(graphView_);
 
     /*
      * THEME EDITOR
      */
-
-    ThemeEditorDock* themeDock =
-        new ThemeEditorDock(this);
-
-    themeDock->setObjectName(
-        "ThemeDock");
-
-    addDockWidget(
-        Qt::RightDockWidgetArea,
-        themeDock);
+    ThemeEditorDock* themeDock = new ThemeEditorDock(this);
+    themeDock->setObjectName("ThemeDock");
+    addDockWidget(Qt::RightDockWidgetArea, themeDock);
 
     /*
      * LIVE THEME UPDATE
      */
-
     connect(
         GraphThemeManager::instance(),
         &GraphThemeManager::themeChanged,
         this,
         [this]()
         {
-            scene_->update();
-        });
+            if (scene_)
+            {
+                for (QGraphicsItem* item : scene_->items())
+                {
+                    if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+                    {
+                        node->onThemeChanged();
+                    }
+                    else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+                    {
+                        edge->refreshPath();
+                    }
+                }
+                scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+            }
 
-    /*
-     * DOCK CONFIG
-     */
+            if (graphView_)
+            {
+                graphView_->viewport()->update();
+            }
+        });
 
     setDockNestingEnabled(true);
 }
@@ -151,21 +125,12 @@ void MainWindow::setupToolbar()
 
     actionView_ = graphToolBar_->addAction("View (V)");
     actionEdit_ = graphToolBar_->addAction("Edit (E)");    
-    // actionAdd_  = graphToolBar_->addAction("Add (A)");
-    // actionArch_ = graphToolBar_->addAction("Arch (R)");
-    // actionConn_ = graphToolBar_->addAction("Connect (C)");
 
     actionView_->setCheckable(true);
-    // actionAdd_->setCheckable(true);
-    // actionArch_->setCheckable(true);
-    // actionConn_->setCheckable(true);
     actionEdit_->setCheckable(true); 
 
     QActionGroup* group = new QActionGroup(this);
     group->addAction(actionView_);
-    // group->addAction(actionAdd_);
-    // group->addAction(actionArch_);
-    // group->addAction(actionConn_);
     group->addAction(actionEdit_);
 
     actionView_->setChecked(true);
@@ -174,22 +139,10 @@ void MainWindow::setupToolbar()
             this, [this]() { setGraphMode(GraphView::Mode::View); });
 
     connect(actionEdit_, &QAction::triggered,
-        this, [this]() { setGraphMode(GraphView::Mode::Edit); });
-    // connect(actionAdd_, &QAction::triggered,
-    //         this, [this]() { setGraphMode(GraphView::Mode::Add); });
-
-    // connect(actionArch_, &QAction::triggered,
-    //         this, [this]() { setGraphMode(GraphView::Mode::Arch); });
-
-    // connect(actionConn_, &QAction::triggered,
-            // this, [this]() { setGraphMode(GraphView::Mode::Connect); });
-    
+            this, [this]() { setGraphMode(GraphView::Mode::Edit); });
 
     actionView_->setShortcut(Qt::Key_V);
     actionEdit_->setShortcut(Qt::Key_L);
-    // actionAdd_->setShortcut(Qt::Key_A);
-    // actionArch_->setShortcut(Qt::Key_R);
-    // actionConn_->setShortcut(Qt::Key_C);
 }
 
 void MainWindow::setupMenu()
@@ -213,88 +166,60 @@ void MainWindow::setupMenu()
     auto* alignV = editMenu->addAction("Align Vertical", this, &MainWindow::alignVertical);
     alignV->setShortcut(Qt::CTRL | Qt::Key_V);
 
-    QAction* exportCurrentAction =
-    new QAction(
-        "Export Current View",
-        this);
-
-    connect(
-        exportCurrentAction,
-        &QAction::triggered,
-        this,
-        [this]()
-        {
-            graphView_->exportToSvg(
-                GraphView::ExportMode::CurrentView);
-        });
-
+    QAction* exportCurrentAction = new QAction("Export Current View", this);
+    connect(exportCurrentAction, &QAction::triggered, this, [this]() {
+        graphView_->exportToSvg(GraphView::ExportMode::CurrentView);
+    });
     fileMenu->addAction(exportCurrentAction);
 
-    QAction* exportWholeAction =
-    new QAction(
-        "Export Whole Diagram",
-        this);
-
-    connect(
-        exportWholeAction,
-        &QAction::triggered,
-        this,
-        [this]()
-        {
-            graphView_->exportToSvg(
-                GraphView::ExportMode::WholeScene);
-        });
-
+    QAction* exportWholeAction = new QAction("Export Whole Diagram", this);
+    connect(exportWholeAction, &QAction::triggered, this, [this]() {
+        graphView_->exportToSvg(GraphView::ExportMode::WholeScene);
+    });
     fileMenu->addAction(exportWholeAction);
-    
 
-    QAction* moveAction =
-    new QAction(
-        "Move Selection To...",
-        this);
-
-    connect(
-    moveAction,
-    &QAction::triggered,
-    this,
-    [this]()
-    {
+    QAction* moveAction = new QAction("Move Selection To...", this);
+    connect(moveAction, &QAction::triggered, this, [this]() {
         bool okX = false;
         bool okY = false;
 
-        double x =
-            QInputDialog::getDouble(
-                this,
-                "Move Selection",
-                "Target X:",
-                0.0,
-                -100000,
-                100000,
-                2,
-                &okX);
+        double x = QInputDialog::getDouble(this, "Move Selection", "Target X:", 0.0, -100000, 100000, 2, &okX);
+        if (!okX) return;
 
-        if (!okX)
-            return;
+        double y = QInputDialog::getDouble(this, "Move Selection", "Target Y:", 0.0, -100000, 100000, 2, &okY);
+        if (!okY) return;
 
-        double y =
-            QInputDialog::getDouble(
-                this,
-                "Move Selection",
-                "Target Y:",
-                0.0,
-                -100000,
-                100000,
-                2,
-                &okY);
+        graphView_->moveSelectionTo(QPointF(x, y));
+    });
+    editMenu->addAction(moveAction);
 
-        if (!okY)
-            return;
+    auto* themeMenu = menuBar()->addMenu("&Theme");
+    QDir themeDir("themes");
+    if (themeDir.exists()) {
+        QStringList filters;
+        filters << "*.json";
+        QFileInfoList list = themeDir.entryInfoList(filters, QDir::Files);
 
-        graphView_->moveSelectionTo(
-            QPointF(x, y));
+        for (const QFileInfo& fi : list) {
+            QString path = fi.absoluteFilePath();
+            QString name = fi.baseName();
+            themeMenu->addAction(name, this, [this, path]() {
+                GraphThemeManager::instance()->load(path);
+            });
+        }
+        themeMenu->addSeparator();
+    }
+
+    themeMenu->addAction("Open Theme File...", this, &MainWindow::loadThemeFromFile);
+    themeMenu->addAction("Reset to Default", this, []() {
+        GraphThemeManager::instance()->resetDefaults();
     });
 
-        editMenu->addAction(moveAction);
+    QAction* exportHtmlAction = new QAction("Export Interactive HTML...", this);
+    connect(exportHtmlAction, &QAction::triggered, this, [this]() {
+        graphView_->exportToInteractiveHtml();
+    });
+    fileMenu->addAction(exportHtmlAction);
 }
 
 void MainWindow::setupConnections()
@@ -335,7 +260,7 @@ void MainWindow::setupConnections()
 void MainWindow::openDatabase()
 {
     QString file = QFileDialog::getOpenFileName(
-        this, "Open DB", "", "SQLite DB (*.db)");
+        this, "Open Architecture File", "", "Architecture JSON (*.json);;All Files (*.*)");
 
     if (file.isEmpty())
         return;
@@ -343,17 +268,20 @@ void MainWindow::openDatabase()
     db_.close();
     auto r = db_.open(file.toStdString());
     if (!r.ok) {
-        QMessageBox::critical(this, "Error",
-                              QString::fromStdString(r.message));
+        QMessageBox::critical(this, "Error", QString::fromStdString(r.message));
         return;
     }
+    
+    if (scene_) {
+        scene_->clear();
+    }
+    primaryNode_ = nullptr;
 
     delete model_;
     model_ = new ArchitectureModel(db_);
 
     populateNavigator();
     renderGraph(model_->extractGraph(std::nullopt));
-
 }
 
 void MainWindow::populateNavigator()
@@ -397,14 +325,10 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
     if (!item)
         return;
 
-    ItemType type =
-        static_cast<ItemType>(item->data(NavRole::Type).toInt());
-
-    qulonglong id =
-        item->data(NavRole::Id).toULongLong();
+    ItemType type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
+    qulonglong id = item->data(NavRole::Id).toULongLong();
 
     switch (type) {
-
     case ItemType::Node: {
         NodeEditorDialog dlg(model_, id, this);
         dlg.exec();
@@ -413,17 +337,14 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
         renderGraph(model_->extractGraph(std::nullopt));
         break;
     }
-
     case ItemType::Layer: {
         LayerEditorDialog dlg(model_, id, this);
         dlg.exec();
 
         populateNavigator();
-        renderGraph(model_->extractGraph(
-            static_cast<LayerId>(id)));
+        renderGraph(model_->extractGraph(static_cast<LayerId>(id)));
         break;
     }
-
     default:
         renderGraph(model_->extractGraph(std::nullopt));
         break;
@@ -439,17 +360,13 @@ void MainWindow::onTreeItemClicked(const QModelIndex& index)
     if (!item)
         return;
 
-    ItemType type =
-        static_cast<ItemType>(item->data(NavRole::Type).toInt());
+    ItemType type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
 
     if (type == ItemType::Layer) {
-        LayerId layerId =
-            static_cast<LayerId>(item->data(NavRole::Id).toULongLong());
-
+        LayerId layerId = static_cast<LayerId>(item->data(NavRole::Id).toULongLong());
         renderGraph(model_->extractGraph(layerId));
     }
     else {
-        // Node or Category → full graph
         renderGraph(model_->extractGraph(std::nullopt));
     }
 }
@@ -459,7 +376,7 @@ void MainWindow::createNewNode()
     if (!model_)
         return;
 
-    NodeEditorDialog dlg(model_, /* nodeId */ 0, this);
+    NodeEditorDialog dlg(model_, 0, this);
     dlg.exec();
 
     populateNavigator();
@@ -471,7 +388,7 @@ void MainWindow::createNewLayer()
     if (!model_)
         return;
 
-    LayerEditorDialog dlg(model_, /* layerId */ 0, this);
+    LayerEditorDialog dlg(model_, 0, this);
     dlg.exec();
 
     populateNavigator();
@@ -483,7 +400,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
     if (!model_ || !scene_ || !graphView_)
         return;
 
-    // 1. Record EXACT scrollbar positions (no coordinate mapping drift)
     int hVal = graphView_->horizontalScrollBar()->value();
     int vVal = graphView_->verticalScrollBar()->value();
 
@@ -491,7 +407,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
     scene_->blockSignals(true);
     graphView_->setUpdatesEnabled(false);
 
-    // 2. Index existing scene items
+    // 1. Collect existing scene items
     std::unordered_map<NodeId, GraphNodeItem*> existingNodes;
     std::unordered_map<EdgeId, GraphEdgeItem*> existingEdges;
 
@@ -503,16 +419,16 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
             existingEdges[edge->edgeId()] = edge;
     }
 
-    // 3. Reconcile Nodes
-    std::unordered_set<NodeId> snapshotNodeIds;
+    // 2. Stage 1: Instantiate or preserve all Node items
     std::unordered_map<NodeId, GraphNodeItem*> currentNodes;
+    auto mode = graphView_->mode();
+    bool selectable = (mode == GraphView::Mode::Edit || mode == GraphView::Mode::Arch);
+    bool movable    = (mode == GraphView::Mode::Edit);
 
     int i = 0;
     for (const auto& n : snap.nodes)
     {
-        snapshotNodeIds.insert(n.id);
         GraphNodeItem* nodeItem = nullptr;
-
         auto it = existingNodes.find(n.id);
         if (it != existingNodes.end())
         {
@@ -522,50 +438,89 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         else
         {
             nodeItem = new GraphNodeItem(model_, n.id);
-
-            auto mode = graphView_->mode();
-            bool selectable = (mode == GraphView::Mode::Edit || mode == GraphView::Mode::Arch);
-            bool movable    = (mode == GraphView::Mode::Edit);
-
-            nodeItem->setFlag(QGraphicsItem::ItemIsSelectable, selectable);
-            nodeItem->setFlag(QGraphicsItem::ItemIsMovable, movable);
-            nodeItem->setAcceptHoverEvents(true);
-
-            auto nodeOpt = model_->getNodeById(n.id);
-            bool restored = false;
-
-            if (nodeOpt && !nodeOpt->metadata.empty())
-            {
-                QJsonDocument doc = QJsonDocument::fromJson(
-                    QString::fromStdString(nodeOpt->metadata).toUtf8());
-
-                if (doc.isObject())
-                {
-                    QJsonObject obj = doc.object();
-                    if (obj.contains("x") && obj.contains("y"))
-                    {
-                        nodeItem->setPos(obj["x"].toDouble(), obj["y"].toDouble());
-                        restored = true;
-                    }
-                }
-            }
-
-            if (!restored)
-                nodeItem->setPos((i % 5) * 180, (i / 5) * 120);
-
-            scene_->addItem(nodeItem);
         }
+
+        nodeItem->setFlag(QGraphicsItem::ItemIsSelectable, selectable);
+        nodeItem->setFlag(QGraphicsItem::ItemIsMovable, movable);
+        nodeItem->setAcceptHoverEvents(true);
 
         currentNodes[n.id] = nodeItem;
         ++i;
     }
 
-    // 4. Reconcile Edges
-    std::unordered_set<EdgeId> snapshotEdgeIds;
+    // 3. Stage 2: Establish Parent-Child Hierarchy safely
+    for (const auto& n : snap.nodes)
+    {
+        GraphNodeItem* nodeItem = currentNodes[n.id];
+        if (n.parentId.has_value())
+        {
+            auto pIt = currentNodes.find(*n.parentId);
+            if (pIt != currentNodes.end() && pIt->second != nodeItem)
+            {
+                nodeItem->setParentItem(pIt->second);
+                nodeItem->setZValue(pIt->second->zValue() + 1);
+            }
+            else
+            {
+                nodeItem->setParentItem(nullptr);
+            }
+        }
+        else
+        {
+            nodeItem->setParentItem(nullptr);
+        }
+    }
+
+    // 4. Stage 3: Add only root items directly to the scene canvas
+    for (const auto& n : snap.nodes)
+    {
+        GraphNodeItem* nodeItem = currentNodes[n.id];
+        if (!nodeItem->parentItem())
+        {
+            if (nodeItem->scene() != scene_)
+            {
+                scene_->addItem(nodeItem);
+            }
+        }
+    }
+
+    // 5. Stage 4: Apply Positions
+    i = 0;
+    for (const auto& n : snap.nodes)
+    {
+        GraphNodeItem* nodeItem = currentNodes[n.id];
+        bool restored = false;
+
+        auto nodeOpt = model_->getNodeById(n.id);
+        if (nodeOpt && !nodeOpt->metadata.empty())
+        {
+            QJsonDocument doc = QJsonDocument::fromJson(QString::fromStdString(nodeOpt->metadata).toUtf8());
+            if (doc.isObject())
+            {
+                QJsonObject obj = doc.object();
+                if (obj.contains("x") && obj.contains("y"))
+                {
+                    nodeItem->setPos(obj["x"].toDouble(), obj["y"].toDouble());
+                    restored = true;
+                }
+            }
+        }
+
+        if (!restored)
+        {
+            if (nodeItem->parentItem())
+                nodeItem->setPos(20, 60);
+            else
+                nodeItem->setPos((i % 5) * 200, (i / 5) * 140);
+        }
+
+        nodeItem->refreshGeometry();
+        ++i;
+    }
+
+    // 6. Stage 5: Reconcile Edges
     for (const auto& e : snap.edges)
     {
-        snapshotEdgeIds.insert(e.id);
-
         auto it = existingEdges.find(e.id);
         if (it != existingEdges.end())
         {
@@ -579,22 +534,30 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
 
             if (srcIt != currentNodes.end() && dstIt != currentNodes.end())
             {
-                auto* edgeItem = new GraphEdgeItem(
-                    model_,
-                    e.id,
-                    srcIt->second,
-                    dstIt->second);
-
+                auto* edgeItem = new GraphEdgeItem(model_, e.id, srcIt->second, dstIt->second);
                 scene_->addItem(edgeItem);
             }
         }
     }
 
-    // 5. Remove unused items
+    // 7. Cleanup unused items (unparent nodes first to prevent double-free)
     for (auto& pair : existingEdges)
     {
-        scene_->removeItem(pair.second);
-        delete pair.second;
+        if (pair.second)
+        {
+            if (pair.second->scene() == scene_)
+                scene_->removeItem(pair.second);
+            delete pair.second;
+        }
+    }
+    existingEdges.clear();
+
+    for (auto& pair : existingNodes)
+    {
+        if (pair.second)
+        {
+            pair.second->setParentItem(nullptr);
+        }
     }
 
     for (auto& pair : existingNodes)
@@ -602,30 +565,34 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         if (primaryNode_ == pair.second)
             primaryNode_ = nullptr;
 
-        scene_->removeItem(pair.second);
-        delete pair.second;
+        if (pair.second)
+        {
+            if (pair.second->scene() == scene_)
+                scene_->removeItem(pair.second);
+            delete pair.second;
+        }
     }
+    existingNodes.clear();
 
     scene_->blockSignals(false);
     graphView_->setUpdatesEnabled(true);
     isRendering_ = false;
 
-    // 6. Restore identical scrollbar values
     graphView_->horizontalScrollBar()->setValue(hVal);
     graphView_->verticalScrollBar()->setValue(vVal);
 }
 
 void MainWindow::saveLayout()
 {
-    if (!model_) return;
+    if (!model_ || !scene_) return;
 
-    for (auto* item : scene_->items()) {
-
+    for (QGraphicsItem* item : scene_->items())
+    {
         auto* nodeItem = dynamic_cast<GraphNodeItem*>(item);
         if (!nodeItem)
             continue;
 
-        NodeId id = nodeItem->nodeId();   // expose getter
+        NodeId id = nodeItem->nodeId();
         QPointF p = nodeItem->pos();
 
         QJsonObject obj;
@@ -633,10 +600,7 @@ void MainWindow::saveLayout()
         obj["y"] = p.y();
 
         QJsonDocument doc(obj);
-        model_->setNodeMetadata(
-            id,
-            doc.toJson(QJsonDocument::Compact).toStdString()
-        );
+        model_->setNodeMetadata(id, doc.toJson(QJsonDocument::Compact).toStdString());
     }
 
     statusBar()->showMessage("Layout saved", 2000);
@@ -648,7 +612,6 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
         return;
 
     NodeEditorDialog dlg(model_, 0, this);
-
     if (dlg.exec() != QDialog::Accepted)
         return;
 
@@ -659,30 +622,19 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
     NodeData& newNode = nodes.back();
     NodeId newId = newNode.id;
 
-    // Save position
     QJsonObject obj;
     obj["x"] = pos.x();
     obj["y"] = pos.y();
 
     QJsonDocument doc(obj);
-    model_->setNodeMetadata(
-        newId,
-        doc.toJson(QJsonDocument::Compact).toStdString()
-    );
+    model_->setNodeMetadata(newId, doc.toJson(QJsonDocument::Compact).toStdString());
 
-    // If a layer selected → auto membership
     QModelIndex index = navigator_->currentIndex();
     if (index.isValid()) {
-        ItemType type =
-            static_cast<ItemType>(index.data(NavRole::Type).toInt());
-
+        ItemType type = static_cast<ItemType>(index.data(NavRole::Type).toInt());
         if (type == ItemType::Layer) {
-            LayerId layerId =
-                static_cast<LayerId>(
-                    index.data(NavRole::Id).toULongLong());
-
+            LayerId layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
             model_->addNodeToLayer(newId, layerId);
-
             populateNavigator();
             renderGraph(model_->extractGraph(layerId));
             return;
@@ -693,31 +645,22 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
     renderGraph(model_->extractGraph(std::nullopt));
 }
 
-void MainWindow::handleConnectNodes(qulonglong srcId,
-                                    qulonglong dstId)
+void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
 {
-    if (!model_)
+    if (!model_ || srcId == dstId)
         return;
 
-    if (srcId == dstId)
-        return;
-
-    // Must have a layer selected
     QModelIndex index = navigator_->currentIndex();
     if (!index.isValid())
         return;
 
-    ItemType type =
-        static_cast<ItemType>(index.data(NavRole::Type).toInt());
-
+    ItemType type = static_cast<ItemType>(index.data(NavRole::Type).toInt());
     if (type != ItemType::Layer) {
         statusBar()->showMessage("Select a layer first", 2000);
         return;
     }
 
-    LayerId layerId =
-        static_cast<LayerId>(
-            index.data(NavRole::Id).toULongLong());
+    LayerId layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
 
     EdgeData e;
     e.srcNode = srcId;
@@ -728,12 +671,12 @@ void MainWindow::handleConnectNodes(qulonglong srcId,
 
     EdgeId newId;
     auto r = model_->addEdge(e, newId);
-
     if (!r.ok)
         return;
 
     renderGraph(model_->extractGraph(layerId));
 }
+
 void MainWindow::deleteSelected()
 {
     if (!scene_ || !model_)
@@ -743,7 +686,6 @@ void MainWindow::deleteSelected()
     if (selected.isEmpty())
         return;
 
-    // Confirm deletion with the user
     auto reply = QMessageBox::question(
         this,
         "Confirm Delete",
@@ -753,7 +695,6 @@ void MainWindow::deleteSelected()
     if (reply != QMessageBox::Yes)
         return;
 
-    // 1. Separate selected nodes and edges
     std::vector<GraphNodeItem*> nodesToDelete;
     std::vector<GraphEdgeItem*> edgesToDelete;
 
@@ -765,28 +706,19 @@ void MainWindow::deleteSelected()
             edgesToDelete.push_back(edge);
     }
 
-    // 2. Delete selected Edges first (standalone edge selection)
     for (auto* edge : edgesToDelete)
     {
-        if (!edge)
-            continue;
-
-        EdgeId eId = edge->edgeId();
-        model_->deleteEdge(eId); // Delete from model & DB[cite: 11]
-
+        if (!edge) continue;
+        model_->deleteEdge(edge->edgeId());
         scene_->removeItem(edge);
-        delete edge; // Destructor unlinks from src_ and dst_[cite: 1, 2]
+        delete edge;
     }
 
-    // 3. Delete selected Nodes (and cascade to connected edges)
     for (auto* node : nodesToDelete)
     {
-        if (!node)
-            continue;
-
+        if (!node) continue;
         NodeId nId = node->nodeId();
 
-        // Remove all edges in the scene connected to this node
         const auto allItems = scene_->items();
         for (QGraphicsItem* item : allItems)
         {
@@ -795,16 +727,14 @@ void MainWindow::deleteSelected()
                 auto edgeData = model_->getEdgeById(edge->edgeId());
                 if (edgeData && (edgeData->srcNode == nId || edgeData->dstNode == nId))
                 {
-                    model_->deleteEdge(edge->edgeId()); //[cite: 11]
+                    model_->deleteEdge(edge->edgeId());
                     scene_->removeItem(edge);
                     delete edge;
                 }
             }
         }
 
-        // Delete the node from the model and scene
-        model_->deleteNode(nId); //[cite: 11]
-        
+        model_->deleteNode(nId);
         if (primaryNode_ == node)
             primaryNode_ = nullptr;
 
@@ -812,7 +742,6 @@ void MainWindow::deleteSelected()
         delete node;
     }
 
-    // 4. Refresh selection state
     onSelectionChanged();
 }
 
@@ -824,23 +753,12 @@ void MainWindow::setGraphMode(GraphView::Mode mode)
     graphView_->setMode(mode);
 
     QString text;
-
     switch (mode) {
-    case GraphView::Mode::View:
-        text = "Mode: View";
-        break;
-    case GraphView::Mode::Edit:
-        text = "Mode: Layout";
-        break;
-    case GraphView::Mode::Add:
-        text = "Mode: Add";
-        break;
-    case GraphView::Mode::Arch:
-        text = "Mode: Arch";
-        break;
-    case GraphView::Mode::Connect:
-        text = "Mode: Connect";
-        break;
+    case GraphView::Mode::View:    text = "Mode: View"; break;
+    case GraphView::Mode::Edit:    text = "Mode: Layout"; break;
+    case GraphView::Mode::Add:     text = "Mode: Add"; break;
+    case GraphView::Mode::Arch:    text = "Mode: Arch"; break;
+    case GraphView::Mode::Connect: text = "Mode: Connect"; break;
     }
 
     for (auto* item : scene_->items())
@@ -862,14 +780,11 @@ void MainWindow::onSelectionChanged()
     if (isRendering_ || !scene_)
         return;
 
-    // Guard against running when MainWindow is tearing down
     auto* bar = statusBar();
     if (!bar)
         return;
 
     const auto selected = scene_->selectedItems();
-
-    // 1. If nothing is selected, clear and return
     if (selected.isEmpty())
     {
         primaryNode_ = nullptr;
@@ -877,7 +792,6 @@ void MainWindow::onSelectionChanged()
         return;
     }
 
-    // 2. Identify the primary node safely using dynamic_cast
     GraphNodeItem* newPrimary = nullptr;
     for (QGraphicsItem* item : selected)
     {
@@ -897,7 +811,6 @@ void MainWindow::onSelectionChanged()
 
     primaryNode_ = newPrimary;
 
-    // 3. Update primary highlight across nodes
     for (QGraphicsItem* item : scene_->items())
     {
         if (auto* node = dynamic_cast<GraphNodeItem*>(item))
@@ -906,17 +819,11 @@ void MainWindow::onSelectionChanged()
         }
     }
 
-    // 4. Update status bar safely
     if (primaryNode_)
     {
         QString text = primaryNode_->displayTitle();
         text.replace("\n", " | ");
-
-        QString msg = QString("Primary: %1 | Selected: %2")
-                          .arg(text)
-                          .arg(selected.size());
-
-        bar->showMessage(msg);
+        bar->showMessage(QString("Primary: %1 | Selected: %2").arg(text).arg(selected.size()));
     }
     else
     {
@@ -926,68 +833,137 @@ void MainWindow::onSelectionChanged()
 
 void MainWindow::alignHorizontal()
 {
-    if (!primaryNode_)
+    if (!primaryNode_ || !scene_)
         return;
 
     auto selected = scene_->selectedItems();
     if (selected.size() < 2)
         return;
 
-    qreal y = primaryNode_->pos().y();
+    // Primary node target horizontal line (center Y) in SCENE coordinates
+    qreal targetSceneY = primaryNode_->mapToScene(primaryNode_->boundingRect().center()).y();
 
     for (auto* item : selected)
     {
-        auto* node = qgraphicsitem_cast<GraphNodeItem*>(item);
+        auto* node = dynamic_cast<GraphNodeItem*>(item);
         if (!node || node == primaryNode_)
             continue;
 
-        node->setPos(node->pos().x(), y);
+        // Determine target Y in this node's parent space
+        qreal targetParentY = targetSceneY;
+        if (node->parentItem())
+        {
+            QPointF parentTarget = node->parentItem()->mapFromScene(QPointF(0, targetSceneY));
+            targetParentY = parentTarget.y();
+        }
+
+        // Half-height in local space
+        qreal halfHeight = node->boundingRect().height() / 2.0;
+        qreal newY = targetParentY - halfHeight - node->boundingRect().top();
+
+        node->setPos(node->pos().x(), newY);
+
+        // Update edges attached to this node
+        for (auto* edge : node->edges())
+        {
+            if (edge && edge->scene())
+                edge->updateEndpoints();
+        }
+
+        // Refresh container bounds if child was moved
+        if (auto* parentContainer = dynamic_cast<GraphNodeItem*>(node->parentItem()))
+        {
+            parentContainer->refreshGeometry();
+        }
     }
 
-    statusBar()->showMessage("Aligned horizontally", 2000);
+    statusBar()->showMessage("Aligned horizontally (center)", 2000);
 }
+
 void MainWindow::alignVertical()
 {
-    if (!primaryNode_)
+    if (!primaryNode_ || !scene_)
         return;
 
     auto selected = scene_->selectedItems();
     if (selected.size() < 2)
         return;
 
-    qreal x = primaryNode_->pos().x();
+    // Primary node target vertical line (center X) in SCENE coordinates
+    qreal targetSceneX = primaryNode_->mapToScene(primaryNode_->boundingRect().center()).x();
 
     for (auto* item : selected)
     {
-        auto* node = qgraphicsitem_cast<GraphNodeItem*>(item);
+        auto* node = dynamic_cast<GraphNodeItem*>(item);
         if (!node || node == primaryNode_)
             continue;
 
-        node->setPos(x, node->pos().y());
+        // Determine target X in this node's parent space
+        qreal targetParentX = targetSceneX;
+        if (node->parentItem())
+        {
+            QPointF parentTarget = node->parentItem()->mapFromScene(QPointF(targetSceneX, 0));
+            targetParentX = parentTarget.x();
+        }
+
+        // Half-width in local space
+        qreal halfWidth = node->boundingRect().width() / 2.0;
+        qreal newX = targetParentX - halfWidth - node->boundingRect().left();
+
+        node->setPos(newX, node->pos().y());
+
+        // Update edges attached to this node
+        for (auto* edge : node->edges())
+        {
+            if (edge && edge->scene())
+                edge->updateEndpoints();
+        }
+
+        // Refresh container bounds if child was moved
+        if (auto* parentContainer = dynamic_cast<GraphNodeItem*>(node->parentItem()))
+        {
+            parentContainer->refreshGeometry();
+        }
     }
 
-    statusBar()->showMessage("Aligned vertically", 2000);
+    statusBar()->showMessage("Aligned vertically (center)", 2000);
 }
 
 void MainWindow::setDb(std::string db_path)
 {
     if(!db_path.empty())
     {
-        // close current database
         db_.close();
-        // open as new database
         db_.open(db_path);
 
-        // delete model
-        if(model_ !=nullptr)
+        if(model_ != nullptr)
         {
             delete model_;
         }
         
-        // create Model
         model_ = new ArchitectureModel(db_);
 
         populateNavigator();
         renderGraph(model_->extractGraph(std::nullopt));
+    }
+}
+
+void MainWindow::loadThemeFromFile()
+{
+    QString file = QFileDialog::getOpenFileName(
+        this, "Select Theme File", "", "Theme JSON (*.json);;All Files (*.*)");
+
+    if (file.isEmpty())
+        return;
+
+    if (!GraphThemeManager::instance()->load(file)) {
+        QMessageBox::critical(this, "Error", "Failed to load theme configuration.");
+    }
+}
+
+void MainWindow::switchThemePreset(const QString& path)
+{
+    if (!GraphThemeManager::instance()->load(path)) {
+        QMessageBox::critical(this, "Error", "Failed to load theme configuration: " + path);
     }
 }

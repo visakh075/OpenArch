@@ -1,0 +1,125 @@
+{
+    "name": "OpenArch Dracula",
+    "view": {
+        "background": "#282a36",
+        "grid": {
+            "enabled": true,
+            "minorColor": "#343746",
+            "majorColor": "#44475a",
+            "spacing": 20,
+            "majorSpacing": 100
+        }
+    },
+    "node": {
+        "normal": {
+            "background": "#343746dd",
+            "border": "#bd93f9",
+            "borderWidth": 2,
+            "radius": 8,
+            "title": { "color": "#f8f8f2", "size": 14, "bold": true },
+            "body": { "color": "#6272a4", "size": 11, "bold": false }
+        },
+        "hover": {
+            "background": "#44475a",
+            "border": "#ff79c6",
+            "borderWidth": 3,
+            "radius": 8,
+            "title": { "color": "#ffffff", "size": 14, "bold": true },
+            "body": { "color": "#f8f8f2", "size": 11, "bold": false }
+        },
+        "selected": {
+            "background": "#44475a",
+            "border": "#50fa7b",
+            "borderWidth": 4,
+            "radius": 8,
+            "title": { "color": "#50fa7b", "size": 14, "bold": true },
+            "body": { "color": "#f8f8f2", "size": 11, "bold": false }
+        }
+    },
+    "edge": {
+        "normal": {
+            "lineColor": "#8be9fd",
+            "lineWidth": 2,
+            "arrow": {
+                "lineColor": "#8be9fd",
+                "fillColor": "#8be9fdaa",
+                "width": 14,
+                "height": 10,
+                "lineWidth": 2
+            },
+            "label": {
+                "textColor": "#f8f8f2",
+                "backgroundColor": "#282a3600",
+                "borderColor": "#6272a4",
+                "borderWidth": 1,
+                "fontSize": 11,
+                "bold": false,
+                "paddingX": 0,
+                "paddingY": 0,
+                "radius": 4,
+                "offset": 8
+            }
+        },
+        "hover": {
+            "lineColor": "#ff79c6",
+            "lineWidth": 3,
+            "arrow": {
+                "lineColor": "#ff79c6",
+                "fillColor": "#ff79c6",
+                "width": 16,
+                "height": 12,
+                "lineWidth": 2
+            },
+            "label": {
+                "textColor": "#ff79c6",
+                "backgroundColor": "#343746",
+                "borderColor": "#ff79c6",
+                "borderWidth": 1,
+                "fontSize": 11,
+                "bold": true,
+                "paddingX": 6,
+                "paddingY": 3,
+                "radius": 4,
+                "offset": 8
+            }
+        },
+        "selected": {
+            "lineColor": "#50fa7b",
+            "lineWidth": 4,
+            "arrow": {
+                "lineColor": "#50fa7b",
+                "fillColor": "#50fa7b",
+                "width": 18,
+                "height": 14,
+                "lineWidth": 3
+            },
+            "label": {
+                "textColor": "#50fa7b",
+                "backgroundColor": "#44475a",
+                "borderColor": "#50fa7b",
+                "borderWidth": 2,
+                "fontSize": 11,
+                "bold": true,
+                "paddingX": 6,
+                "paddingY": 3,
+                "radius": 4,
+                "offset": 8
+            }
+        }
+    },
+    "port": {
+        "inputColor": "#50fa7b",
+        "outputColor": "#ffb86c",
+        "hoverColor": "#ff79c6",
+        "radius": 6
+    },
+    "selection": {
+        "outline": "#50fa7b",
+        "fill": "#50fa7b22"
+    },
+    "interaction": {
+        "hoverOutline": "#ff79c6",
+        "invalidConnection": "#ff5555",
+        "dropTarget": "#50fa7b"
+    }
+}

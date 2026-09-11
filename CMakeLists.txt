@@ -32,6 +32,7 @@ add_library(openarch_core
     src/core/ArchitectureModel.cpp
     src/core/GraphJson.cpp
     src/db/DbManagerSQLite.cpp
+    src/db/DbManagerJson.cpp
 )
 
 target_include_directories(openarch_core PUBLIC

@@ -111,4 +111,7 @@ private:
         QVBoxLayout* layout);
 
     void emitThemeChanged();
+
+    public slots:
+    void syncFromTheme();
 };

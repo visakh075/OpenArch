@@ -319,20 +319,20 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     painter->restore();
 }
 
-void GraphEdgeItem::refreshLayout()
-{
-    auto edge = model_->getEdgeById(e_id);
-    if (!edge)
-        return;
+// void GraphEdgeItem::refreshLayout()
+// {
+//     auto edge = model_->getEdgeById(e_id);
+//     if (!edge)
+//         return;
 
-    cachedTitle_ = QString::fromStdString(edge->edgeType);
-    QFont font;
-    font.setPointSize(10);
-    QFontMetrics fm(font);
-    cachedTitleRect_ = fm.boundingRect(cachedTitle_);
+//     cachedTitle_ = QString::fromStdString(edge->edgeType);
+//     QFont font;
+//     font.setPointSize(10);
+//     QFontMetrics fm(font);
+//     cachedTitleRect_ = fm.boundingRect(cachedTitle_);
 
-    refreshPath();
-}
+//     refreshPath();
+// }
 
 QPainterPath GraphEdgeItem::shape() const
 {
@@ -438,4 +438,21 @@ void GraphEdgeItem::refreshPath()
     cachedBounds_ = cachedPath_.boundingRect();
     cachedBounds_.adjust(-20, -20, 20, 20);
     update();
+}
+
+void GraphEdgeItem::refreshLayout()
+{
+    auto edge = model_->getEdgeById(e_id);
+    if (!edge)
+        return;
+
+    const auto& theme = GraphThemeManager::instance()->theme();
+    cachedTitle_ = QString::fromStdString(edge->edgeType);
+    QFont font;
+    font.setPointSize(theme.edge.normal.label.fontSize); // Use active theme font size
+    font.setBold(theme.edge.normal.label.bold);
+    QFontMetrics fm(font);
+    cachedTitleRect_ = fm.boundingRect(cachedTitle_);
+
+    refreshPath();
 }
