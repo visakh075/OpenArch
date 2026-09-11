@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     type TEXT NOT NULL,
+    parent_id INTEGER REFERENCES nodes(id) ON DELETE SET NULL,
     metadata TEXT,
     attributes TEXT,
     checksum INTEGER,
@@ -80,7 +81,15 @@ Result DbManagerSQLite::open(const std::string& path) {
     if (sqlite3_open(path.c_str(), &db_) != SQLITE_OK)
         return Result::failure("Failed to open SQLite DB");
 
-    return exec(db_, SCHEMA);
+    Result r = exec(db_, SCHEMA);
+    if (!r.ok)
+        return r;
+
+    // Backward-compatibility: Add column if existing db table was created before parent_id
+    sqlite3_exec(db_, "ALTER TABLE nodes ADD COLUMN parent_id INTEGER REFERENCES nodes(id) ON DELETE SET NULL;",
+                 nullptr, nullptr, nullptr);
+
+    return Result::success();
 }
 
 void DbManagerSQLite::close() {
@@ -98,17 +107,24 @@ Result DbManagerSQLite::createNode(const NodeData& n, NodeId& outId) {
     sqlite3_stmt* st;
     sqlite3_prepare_v2(
         db_,
-        "INSERT INTO nodes(name,type,metadata,attributes,checksum,status,reviewer)"
-        "VALUES(?,?,?,?,?,?,?)",
+        "INSERT INTO nodes(name,type,parent_id,metadata,attributes,checksum,status,reviewer)"
+        "VALUES(?,?,?,?,?,?,?,?)",
         -1, &st, nullptr);
 
     sqlite3_bind_text(st, 1, n.name.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(st, 2, n.type.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 3, n.metadata.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 4, n.attributes.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(st, 5, n.checksum);
-    sqlite3_bind_text(st, 6, to_string(n.status).c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 7, n.reviewer.empty() ? nullptr : n.reviewer.c_str(),
+
+    if (n.parentId.has_value()) {
+        sqlite3_bind_int64(st, 3, static_cast<sqlite3_int64>(*n.parentId));
+    } else {
+        sqlite3_bind_null(st, 3);
+    }
+
+    sqlite3_bind_text(st, 4, n.metadata.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 5, n.attributes.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(st, 6, n.checksum);
+    sqlite3_bind_text(st, 7, to_string(n.status).c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 8, n.reviewer.empty() ? nullptr : n.reviewer.c_str(),
                       -1, SQLITE_TRANSIENT);
 
     if (sqlite3_step(st) != SQLITE_DONE) {
@@ -125,19 +141,26 @@ Result DbManagerSQLite::updateNode(const NodeData& n) {
     sqlite3_stmt* st;
     sqlite3_prepare_v2(
         db_,
-        "UPDATE nodes SET name=?,type=?,metadata=?,attributes=?,checksum=?,status=?,reviewer=? "
+        "UPDATE nodes SET name=?,type=?,parent_id=?,metadata=?,attributes=?,checksum=?,status=?,reviewer=? "
         "WHERE id=?",
         -1, &st, nullptr);
 
     sqlite3_bind_text(st, 1, n.name.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(st, 2, n.type.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 3, n.metadata.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 4, n.attributes.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(st, 5, n.checksum);
-    sqlite3_bind_text(st, 6, to_string(n.status).c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 7, n.reviewer.empty() ? nullptr : n.reviewer.c_str(),
+
+    if (n.parentId.has_value()) {
+        sqlite3_bind_int64(st, 3, static_cast<sqlite3_int64>(*n.parentId));
+    } else {
+        sqlite3_bind_null(st, 3);
+    }
+
+    sqlite3_bind_text(st, 4, n.metadata.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 5, n.attributes.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(st, 6, n.checksum);
+    sqlite3_bind_text(st, 7, to_string(n.status).c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 8, n.reviewer.empty() ? nullptr : n.reviewer.c_str(),
                       -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(st, 8, n.id);
+    sqlite3_bind_int64(st, 9, n.id);
 
     sqlite3_step(st);
     sqlite3_finalize(st);
@@ -159,7 +182,7 @@ std::vector<NodeData> DbManagerSQLite::getAllNodes() {
 
     sqlite3_prepare_v2(
         db_,
-        "SELECT id,name,type,metadata,attributes,checksum,status,reviewer FROM nodes",
+        "SELECT id,name,type,parent_id,metadata,attributes,checksum,status,reviewer FROM nodes",
         -1, &st, nullptr);
 
     while (sqlite3_step(st) == SQLITE_ROW) {
@@ -167,13 +190,20 @@ std::vector<NodeData> DbManagerSQLite::getAllNodes() {
         n.id         = sqlite3_column_int64(st, 0);
         n.name       = (const char*)sqlite3_column_text(st, 1);
         n.type       = (const char*)sqlite3_column_text(st, 2);
-        n.metadata   = (const char*)sqlite3_column_text(st, 3);
-        n.attributes = (const char*)sqlite3_column_text(st, 4);
-        n.checksum   = sqlite3_column_int(st, 5);
+
+        if (sqlite3_column_type(st, 3) != SQLITE_NULL) {
+            n.parentId = static_cast<NodeId>(sqlite3_column_int64(st, 3));
+        } else {
+            n.parentId = std::nullopt;
+        }
+
+        n.metadata   = (const char*)sqlite3_column_text(st, 4);
+        n.attributes = (const char*)sqlite3_column_text(st, 5);
+        n.checksum   = sqlite3_column_int(st, 6);
         n.status     = status_from_string(
-                           (const char*)sqlite3_column_text(st, 6));
-        if (sqlite3_column_text(st, 7))
-            n.reviewer = (const char*)sqlite3_column_text(st, 7);
+                           (const char*)sqlite3_column_text(st, 7));
+        if (sqlite3_column_text(st, 8))
+            n.reviewer = (const char*)sqlite3_column_text(st, 8);
         out.push_back(n);
     }
 
@@ -400,17 +430,17 @@ std::vector<EdgeData> DbManagerSQLite::getAllEdges() {
 
     while (sqlite3_step(st) == SQLITE_ROW) {
         EdgeData e;
-        e.id        = sqlite3_column_int64(st, 0);
-        e.srcNode   = sqlite3_column_int64(st, 1);
-        e.srcLayer  = sqlite3_column_int64(st, 2);
-        e.dstNode   = sqlite3_column_int64(st, 3);
-        e.dstLayer  = sqlite3_column_int64(st, 4);
-        e.edgeType  = (const char*)sqlite3_column_text(st, 5);
-        e.metadata  = (const char*)sqlite3_column_text(st, 6);
-        e.attributes= (const char*)sqlite3_column_text(st, 7);
-        e.checksum  = sqlite3_column_int(st, 8);
-        e.status    = status_from_string(
-                          (const char*)sqlite3_column_text(st, 9));
+        e.id         = sqlite3_column_int64(st, 0);
+        e.srcNode    = sqlite3_column_int64(st, 1);
+        e.srcLayer   = sqlite3_column_int64(st, 2);
+        e.dstNode    = sqlite3_column_int64(st, 3);
+        e.dstLayer   = sqlite3_column_int64(st, 4);
+        e.edgeType   = (const char*)sqlite3_column_text(st, 5);
+        e.metadata   = (const char*)sqlite3_column_text(st, 6);
+        e.attributes = (const char*)sqlite3_column_text(st, 7);
+        e.checksum   = sqlite3_column_int(st, 8);
+        e.status     = status_from_string(
+                           (const char*)sqlite3_column_text(st, 9));
         if (sqlite3_column_text(st, 10))
             e.reviewer = (const char*)sqlite3_column_text(st, 10);
         out.push_back(e);
