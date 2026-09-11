@@ -45,6 +45,8 @@ public:
     void refreshLayout();
     void updateEndpoints();
     void refreshPath();
+    const QPainterPath& edgePath() const { return cachedPath_; }
+    QString title() const { return cachedTitle_; }
 
 private:
     ArchitectureModel* model_;

@@ -159,7 +159,7 @@ void MainWindow::setupUi()
                 graphView_->viewport()->update();
             }
         });
-        
+
     /*
      * DOCK CONFIG
      */
@@ -342,6 +342,12 @@ void MainWindow::setupMenu()
     themeMenu->addAction("Reset to Default", this, []() {
         GraphThemeManager::instance()->resetDefaults();
     });
+
+    QAction* exportHtmlAction = new QAction("Export Interactive HTML...", this);
+    connect(exportHtmlAction, &QAction::triggered, this, [this]() {
+        graphView_->exportToInteractiveHtml();
+    });
+    fileMenu->addAction(exportHtmlAction);
 
 }
 

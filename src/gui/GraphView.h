@@ -30,6 +30,7 @@ public:
     Mode mode() const { return mode_; }
     void exportToSvg(ExportMode mode);
     void moveSelectionTo(const QPointF& target);
+    void exportToInteractiveHtml();
 
 signals:
     void requestAddNode(QPointF scenePos);
