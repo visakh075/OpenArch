@@ -208,8 +208,7 @@ QRectF GraphEdgeItem::boundingRect() const
     return rect;
 }
 
-void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
-{
+void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*){
     if (!src_ || !dst_)
         return;
 
@@ -319,20 +318,6 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     painter->restore();
 }
 
-// void GraphEdgeItem::refreshLayout()
-// {
-//     auto edge = model_->getEdgeById(e_id);
-//     if (!edge)
-//         return;
-
-//     cachedTitle_ = QString::fromStdString(edge->edgeType);
-//     QFont font;
-//     font.setPointSize(10);
-//     QFontMetrics fm(font);
-//     cachedTitleRect_ = fm.boundingRect(cachedTitle_);
-
-//     refreshPath();
-// }
 
 QPainterPath GraphEdgeItem::shape() const
 {
@@ -369,6 +354,13 @@ QPainterPath GraphEdgeItem::shape() const
 
 void GraphEdgeItem::updateEndpoints()
 {
+    if (!src_ || !dst_)
+        return;
+
+    if (!src_->scene() || !dst_->scene())
+        return;
+
+    prepareGeometryChange();
     refreshPath();
 }
 

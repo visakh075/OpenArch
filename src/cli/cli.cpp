@@ -1,13 +1,18 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <memory>
+#include <cstring>
+#include <string>
 
 #include <readline/readline.h>
 #include <readline/history.h>
 
 #include "core/ArchitectureModel.h"
 #include "core/GraphJson.h"
+#include "db/DbManager.h"
 #include "db/DbManagerSQLite.h"
+#include "db/DbManagerJson.h"
 
 static const char* COMMANDS[] = {
     "add_node", "update_node", "del_node", "list_nodes",
@@ -21,10 +26,10 @@ static const char* COMMANDS[] = {
     "add_edge", "update_edge", "del_edge", "list_edges",
     "set_edge_meta", "set_edge_attr", "review_edge",
 
+    "dump_graph", "dump_graph_json",
     "help", "exit",
     nullptr
 };
-
 
 /* ============================================================
    Command enum
@@ -67,14 +72,10 @@ static char* command_generator(const char* text, int state) {
 
 static char** cli_completion(const char* text, int start, int end) {
     (void)end;
-
-    // Only complete the first word (command)
     if (start == 0)
         return rl_completion_matches(text, command_generator);
-
     return nullptr;
 }
-
 
 /* ============================================================
    Parsing
@@ -94,7 +95,6 @@ static Command parse(const std::string& c) {
     CMD(ADD_NODE_LAYER,"add_node_layer");
     CMD(REMOVE_NODE_LAYER,"del_node_layer");
     CMD(LIST_LAYER_NODES,"list_layer_nodes");
-    
 
     CMD(ADD_EDGE,"add_edge"); CMD(UPDATE_EDGE,"update_edge");
     CMD(DELETE_EDGE,"del_edge"); CMD(LIST_EDGES,"list_edges");
@@ -116,10 +116,9 @@ static void printResult(const Result& r) {
    ============================================================ */
 static void help() {
     std::cout << R"(
-
 Nodes:
-  add_node <name> <type>
-  update_node <id> <name> <type>
+  add_node <name> <type> [parentId|-]
+  update_node <id> <name> <type> [parentId|-]
   set_node_meta <id> <json>
   set_node_attr <id> <json>
   review_node <id> <reviewer>
@@ -135,7 +134,7 @@ Layers:
   del_layer <id>
   list_layers
 
-Node–Layer:
+Node-Layer:
   add_node_layer <nodeId> <layerId>
   del_node_layer <nodeId> <layerId>
   list_layer_nodes <layerId>
@@ -164,18 +163,33 @@ General:
    ============================================================ */
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::cerr << "Usage: openarch <dbfile>\n";
+        std::cerr << "Usage: openarch <dbfile.db|architecture.json>\n";
         return 1;
     }
 
-    DbManagerSQLite db;
-    Result r = db.open(argv[1]);
+    std::string dbPath = argv[1];
+    std::unique_ptr<DbManager> db;
+
+    // Backend selection based on file extension
+    std::string ext;
+    auto dotPos = dbPath.find_last_of('.');
+    if (dotPos != std::string::npos) {
+        ext = dbPath.substr(dotPos);
+    }
+
+    if (ext == ".db" || ext == ".sqlite" || ext == ".sqlite3") {
+        db = std::make_unique<DbManagerSQLite>();
+    } else {
+        db = std::make_unique<DbManagerJson>();
+    }
+
+    Result r = db->open(dbPath);
     if (!r.ok) {
-        std::cerr << r.message << "\n";
+        std::cerr << "[ERR] " << r.message << "\n";
         return 1;
     }
 
-    ArchitectureModel model(db);
+    ArchitectureModel model(*db);
     using_history();
     help();
     rl_attempted_completion_function = cli_completion;
@@ -205,6 +219,18 @@ int main(int argc, char** argv) {
         case Command::ADD_NODE: {
             NodeData n; NodeId id;
             is >> n.name >> n.type;
+            
+            std::string parentStr;
+            if (is >> parentStr && parentStr != "-" && parentStr != "null") {
+                try {
+                    n.parentId = std::stoull(parentStr);
+                } catch (...) {
+                    n.parentId = std::nullopt;
+                }
+            } else {
+                n.parentId = std::nullopt;
+            }
+
             printResult(model.addNode(n, id));
             break;
         }
@@ -212,7 +238,28 @@ int main(int argc, char** argv) {
         case Command::UPDATE_NODE: {
             NodeData n;
             is >> n.id >> n.name >> n.type;
+
+            std::string parentStr;
+            if (is >> parentStr && parentStr != "-" && parentStr != "null") {
+                try {
+                    n.parentId = std::stoull(parentStr);
+                } catch (...) {
+                    n.parentId = std::nullopt;
+                }
+            } else {
+                n.parentId = std::nullopt;
+            }
+
             printResult(model.updateNode(n));
+            break;
+        }
+
+        case Command::DELETE_NODE: {
+            NodeId id;
+            if (is >> id)
+                printResult(model.deleteNode(id));
+            else
+                std::cout << "[ERR] Usage: del_node <id>\n";
             break;
         }
 
@@ -238,11 +285,14 @@ int main(int argc, char** argv) {
         }
 
         case Command::LIST_NODES:
-            for (auto& n : model.nodes())
+            for (auto& n : model.nodes()) {
+                std::string parentInfo = n.parentId ? std::to_string(*n.parentId) : "none";
                 std::cout << n.id << " " << n.name << " " << n.type
-                          << " [" << to_string(n.status)
-                          << "] chk=" << n.checksum
+                          << " [parent=" << parentInfo << "]"
+                          << " [" << to_string(n.status) << "]"
+                          << " chk=" << n.checksum
                           << " reviewer=" << n.reviewer << "\n";
+            }
             break;
 
         /* ===================== Layers ===================== */
@@ -257,6 +307,15 @@ int main(int argc, char** argv) {
             LayerData l;
             is >> l.id >> l.name >> l.kind;
             printResult(model.updateLayer(l));
+            break;
+        }
+
+        case Command::DELETE_LAYER: {
+            LayerId id;
+            if (is >> id)
+                printResult(model.deleteLayer(id));
+            else
+                std::cout << "[ERR] Usage: del_layer <id>\n";
             break;
         }
 
@@ -328,6 +387,15 @@ int main(int argc, char** argv) {
             break;
         }
 
+        case Command::DELETE_EDGE: {
+            EdgeId id;
+            if (is >> id)
+                printResult(model.deleteEdge(id));
+            else
+                std::cout << "[ERR] Usage: del_edge <id>\n";
+            break;
+        }
+
         case Command::SET_EDGE_META: {
             EdgeId id; std::string meta;
             is >> id; std::getline(is, meta);
@@ -360,6 +428,7 @@ int main(int argc, char** argv) {
                           << e.reviewer << "\n";
             break;
 
+        /* ===================== Graph Dumps ===================== */
         case Command::DUMP_GRAPH: {
             std::optional<LayerId> layer;
 
@@ -373,28 +442,24 @@ int main(int argc, char** argv) {
 
             std::cout << "Nodes:\n";
             for (const auto& n : snap.nodes) {
+                std::string parentInfo = n.parentId ? std::to_string(*n.parentId) : "none";
                 std::cout << "  [" << n.id << "] "
-                        << n.name << " type=" << n.type
-                        << " status=" << to_string(n.status)
-                        << " layers=";
-
-                // for (auto lid : n.layers)
-                //     std::cout << lid << " ";
-
-                std::cout << "\n";
+                          << n.name << " type=" << n.type
+                          << " parent=" << parentInfo
+                          << " status=" << to_string(n.status)
+                          << "\n";
             }
 
             std::cout << "Edges:\n";
             for (const auto& e : snap.edges) {
                 std::cout << "  [" << e.id << "] ("
-                        << e.srcNode << ":" << e.srcLayer
-                        << " -> "
-                        << e.dstNode << ":" << e.dstLayer
-                        << ") type=" << e.edgeType
-                        << " status=" << to_string(e.status)
-                        << "\n";
+                          << e.srcNode << ":" << e.srcLayer
+                          << " -> "
+                          << e.dstNode << ":" << e.dstLayer
+                          << ") type=" << e.edgeType
+                          << " status=" << to_string(e.status)
+                          << "\n";
             }
-
             break;
         }
 
@@ -408,7 +473,7 @@ int main(int argc, char** argv) {
             }
 
             auto snap = model.extractGraph(layer);
-            std::cout << toJson(snap);
+            std::cout << toJson(snap) << "\n";
             break;
         }
 

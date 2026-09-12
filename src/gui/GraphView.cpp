@@ -21,7 +21,6 @@
 GraphView::GraphView(QWidget* parent)
     : QGraphicsView(parent)
 {
-    // Ensure view doesn't hold an old cached background pixmap
     setCacheMode(QGraphicsView::CacheNone);
     setTransformationAnchor(QGraphicsView::AnchorViewCenter);
     setDragMode(QGraphicsView::RubberBandDrag);
@@ -63,8 +62,6 @@ void GraphView::setMode(Mode m)
 
 void GraphView::wheelEvent(QWheelEvent* event)
 {
-    // Space held -> Zoom targeted to mouse cursor
-    // Normal scroll -> Zoom focused at center of viewport
     if (spacePressed_)
     {
         setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
@@ -86,7 +83,6 @@ void GraphView::wheelEvent(QWheelEvent* event)
 
 void GraphView::mousePressEvent(QMouseEvent* event)
 {
-    // Pan only if Middle-Click OR Left-Click while holding Space
     if (event->button() == Qt::MiddleButton ||
         (event->button() == Qt::LeftButton && spacePressed_))
     {
@@ -116,10 +112,8 @@ void GraphView::mouseMoveEvent(QMouseEvent* event)
         hBar->setValue(oldH - delta.x());
         vBar->setValue(oldV - delta.y());
 
-        // If scrollbars are clamped because the scene is smaller than viewport (fully zoomed out)
         if (hBar->value() == oldH || vBar->value() == oldV)
         {
-            // Convert delta in viewport pixels to scene delta units
             QPointF sceneDelta = mapToScene(delta) - mapToScene(QPoint(0, 0));
             setSceneRect(sceneRect().translated(-sceneDelta.x(), -sceneDelta.y()));
         }
@@ -144,6 +138,17 @@ void GraphView::mouseReleaseEvent(QMouseEvent* event)
     QGraphicsView::mouseReleaseEvent(event);
 }
 
+void GraphView::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    if (mode_ == Mode::View)
+    {
+        event->accept();
+        return;
+    }
+
+    QGraphicsView::mouseDoubleClickEvent(event);
+}
+
 void GraphView::contextMenuEvent(QContextMenuEvent* event)
 {
     if (itemAt(event->pos()))
@@ -155,7 +160,6 @@ void GraphView::contextMenuEvent(QContextMenuEvent* event)
     if (mode_ != Mode::Edit)
         return;
 
-    // Capture scene position using viewport mapping BEFORE opening the menu
     QPoint viewportPos = viewport()->mapFromGlobal(event->globalPos());
     QPointF scenePos = mapToScene(viewportPos);
 
@@ -328,7 +332,6 @@ void GraphView::exportToInteractiveHtml()
 
     QTextStream out(&file);
 
-    // 1. HTML Header & Embedded CSS for Hover Transitions
     out << "<!DOCTYPE html>\n<html>\n<head>\n";
     out << "<meta charset=\"utf-8\"/>\n";
     out << "<title>OpenArch Diagram</title>\n";
@@ -338,7 +341,6 @@ void GraphView::exportToInteractiveHtml()
     out << "  svg { background: " << theme.view.background.name() 
         << "; box-shadow: 0 4px 20px rgba(0,0,0,0.3); border-radius: 8px; }\n";
 
-    // Node styling and :hover state
     out << "  .graph-node { cursor: pointer; }\n";
     out << "  .graph-node rect { fill: " << theme.node.normal.background.name(QColor::HexRgb) 
         << "; stroke: " << theme.node.normal.border.name() 
@@ -357,7 +359,6 @@ void GraphView::exportToInteractiveHtml()
         << "; font-size: " << theme.node.normal.body.size << "px; pointer-events: none; }\n";
     out << "  .graph-node:hover .body { fill: " << theme.node.hover.body.color.name() << "; }\n";
 
-    // Edge styling and :hover state
     out << "  .graph-edge { cursor: pointer; }\n";
     out << "  .graph-edge path.line { fill: none; stroke: " << theme.edge.normal.lineColor.name() 
         << "; stroke-width: " << theme.edge.normal.lineWidth << "; transition: all 0.15s ease; }\n";
@@ -375,12 +376,10 @@ void GraphView::exportToInteractiveHtml()
         << "; font-weight: bold; }\n";
     out << "</style>\n</head>\n<body>\n";
 
-    // 2. Open SVG (ALL graphical elements MUST be inside this tag)
     out << "<svg width=\"" << sceneBounds.width() << "\" height=\"" << sceneBounds.height() 
         << "\" viewBox=\"" << sceneBounds.left() << " " << sceneBounds.top() << " " 
         << sceneBounds.width() << " " << sceneBounds.height() << "\" xmlns=\"http://www.w3.org/2000/svg\">\n";
 
-    // 3. Render Edges FIRST (Underneath nodes)
     for (QGraphicsItem* item : scene()->items())
     {
         auto* edge = dynamic_cast<GraphEdgeItem*>(item);
@@ -389,7 +388,6 @@ void GraphView::exportToInteractiveHtml()
         QPainterPath fullPath = edge->edgePath();
         if (fullPath.elementCount() < 2) continue;
 
-        // Extract arrow geometry identically to paint()
         QPainterPath::Element e1 = fullPath.elementAt(fullPath.elementCount() - 1);
         QPainterPath::Element e2 = fullPath.elementAt(fullPath.elementCount() - 2);
 
@@ -410,7 +408,6 @@ void GraphView::exportToInteractiveHtml()
             -std::sin(angle) * arrowWidth + std::cos(angle) * arrowHeight / 2.0);
         QPointF arrowBase = (arrowP1 + arrowP2) / 2.0;
 
-        // Build SVG path data, shortening the tip to touch arrowBase
         QString d;
         for (int i = 0; i < fullPath.elementCount(); ++i)
         {
@@ -442,7 +439,6 @@ void GraphView::exportToInteractiveHtml()
         }
     }
 
-    // 4. Render Nodes on top
     for (QGraphicsItem* item : scene()->items())
     {
         auto* node = dynamic_cast<GraphNodeItem*>(item);

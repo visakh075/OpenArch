@@ -39,13 +39,7 @@ GraphNodeItem::~GraphNodeItem()
         tempPathItem_ = nullptr;
     }
 
-    for (const auto& edge : edges_)
-    {
-        if (edge && edge->scene())
-        {
-            edge->updateEndpoints();
-        }
-    }
+    edges_.clear();
 }
 
 bool GraphNodeItem::isContainer() const
