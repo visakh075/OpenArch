@@ -59,6 +59,9 @@ private:
     void onSelectionChanged();
     void alignHorizontal();
     void alignVertical();
+    void distributeHorizontal();
+    void distributeVertical();
+    // void connectSelectedNodes();
 
 private:
     QTreeView* navigator_{nullptr};
@@ -78,12 +81,17 @@ private:
     QAction* actionConn_{nullptr};
     QAction* actionEdit_{nullptr};
 
+    NodeId cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> newParentId, qreal offsetX, qreal offsetY);
+
     // Dynamic backend: prevents SQLite / JSON overwrite conflicts
     std::unique_ptr<DbManager> db_{nullptr};
     ArchitectureModel* model_{nullptr};
 
 private slots:
+
     void deleteSelected();
+    void copySelectedNode();
     void loadThemeFromFile();
     void switchThemePreset(const QString& path);
+
 };

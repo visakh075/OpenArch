@@ -17,6 +17,7 @@
 #include "ThemeEditorDock.h"
 #include <QInputDialog>
 #include <unordered_set>
+#include <QKeySequence>
 #include <QScrollBar>
 
 MainWindow::MainWindow(QWidget* parent)
@@ -132,6 +133,10 @@ void MainWindow::setupMenu()
     auto* editMenu = menuBar()->addMenu("&Edit");
     editMenu->addAction("Add Node", this, &MainWindow::createNewNode);
     editMenu->addAction("Add Layer", this, &MainWindow::createNewLayer);
+    
+    QAction* copyNodeAction = editMenu->addAction("Duplicate Node", this, &MainWindow::copySelectedNode);
+    copyNodeAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+
     editMenu->addAction("Save Layout", this, &MainWindow::saveLayout);
 
     editMenu->addSeparator();
@@ -186,6 +191,19 @@ void MainWindow::setupMenu()
         themeMenu->addSeparator();
     }
 
+    editMenu->addSeparator(); //[cite: 3]
+    auto* distH = editMenu->addAction("Distribute Horizontally", this, &MainWindow::distributeHorizontal);
+    distH->setShortcut(QKeySequence(Qt::ALT | Qt::Key_H));
+
+    auto* distV = editMenu->addAction("Distribute Vertically", this, &MainWindow::distributeVertical);
+    distV->setShortcut(QKeySequence(Qt::ALT | Qt::Key_V));
+
+    // editMenu->addSeparator(); //[cite: 3]
+    // auto* connAct = editMenu->addAction("Connect Selected Nodes", this, &MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId));
+    // connAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K));
+
+
+
     themeMenu->addAction("Open Theme File...", this, &MainWindow::loadThemeFromFile);
     themeMenu->addAction("Reset to Default", this, []() {
         GraphThemeManager::instance()->resetDefaults();
@@ -231,6 +249,9 @@ void MainWindow::setupConnections()
 
     auto* backspaceShortcut = new QShortcut(QKeySequence(Qt::Key_Backspace), this);
     connect(backspaceShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
+
+    auto* duplicateShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_D), this);
+    connect(duplicateShortcut, &QShortcut::activated, this, &MainWindow::copySelectedNode);
 }
 
 void MainWindow::setDb(const std::string& db_path)
@@ -349,8 +370,8 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
     if (!model_ || !graphView_)
         return;
 
-    if (graphView_->mode() == GraphView::Mode::View)
-        return;
+    // if (graphView_->mode() == GraphView::Mode::View)
+    //     return;
 
     auto* item = navModel_->itemFromIndex(index);
     if (!item)
@@ -690,36 +711,182 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
     renderGraph(model_->extractGraph(std::nullopt));
 }
 
+// void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
+// {
+//     if (!model_ || srcId == dstId)
+//         return;
+
+//     QModelIndex index = navigator_->currentIndex();
+//     if (!index.isValid())
+//         return;
+
+//     ItemType type = static_cast<ItemType>(index.data(NavRole::Type).toInt());
+//     if (type != ItemType::Layer) {
+//         statusBar()->showMessage("Select a layer first", 2000);
+//         return;
+//     }
+
+//     LayerId layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
+
+//     EdgeData e;
+//     e.srcNode = srcId;
+//     e.dstNode = dstId;
+//     e.srcLayer = layerId;
+//     e.dstLayer = layerId;
+//     e.edgeType = "default";
+
+//     EdgeId newId;
+//     auto r = model_->addEdge(e, newId);
+//     if (!r.ok)
+//         return;
+
+//     renderGraph(model_->extractGraph(layerId));
+// }
+
 void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
 {
     if (!model_ || srcId == dstId)
         return;
 
-    QModelIndex index = navigator_->currentIndex();
-    if (!index.isValid())
-        return;
+    auto srcOpt = model_->getNodeById(srcId);
+    auto dstOpt = model_->getNodeById(dstId);
 
-    ItemType type = static_cast<ItemType>(index.data(NavRole::Type).toInt());
-    if (type != ItemType::Layer) {
-        statusBar()->showMessage("Select a layer first", 2000);
+    QString srcName = srcOpt ? QString::fromStdString(srcOpt->name) : QString("Node %1").arg(srcId);
+    QString dstName = dstOpt ? QString::fromStdString(dstOpt->name) : QString("Node %2").arg(dstId);
+
+    // 1. Gather layers containing srcId
+    std::unordered_set<LayerId> srcLayers;
+    for (const auto& layer : model_->layers())
+    {
+        for (const auto& nl : model_->nodesInLayer(layer.id))
+        {
+            if (nl.nodeId == srcId)
+            {
+                srcLayers.insert(layer.id);
+                break;
+            }
+        }
+    }
+
+    // 2. Find common layers that also contain dstId
+    std::vector<LayerData> commonLayers;
+    for (const auto& layer : model_->layers())
+    {
+        if (srcLayers.find(layer.id) == srcLayers.end())
+            continue;
+
+        for (const auto& nl : model_->nodesInLayer(layer.id))
+        {
+            if (nl.nodeId == dstId)
+            {
+                commonLayers.push_back(layer);
+                break;
+            }
+        }
+    }
+
+    // 3. Alert if no common layer exists
+    if (commonLayers.empty())
+    {
+        QMessageBox::warning(
+            this,
+            "No Common Layer",
+            QString("Nodes '%1' and '%2' do not share any common layers.\n"
+                    "Assign them to a common layer first to connect them.")
+                .arg(srcName, dstName));
         return;
     }
 
-    LayerId layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
+    // 4. Resolve which layer to place the edge on
+    LayerId chosenLayerId = commonLayers[0].id;
 
+    // Check if the currently selected tree item is already one of the valid common layers
+    QModelIndex currentIndex = navigator_->currentIndex();
+    bool activeLayerMatched = false;
+    if (currentIndex.isValid())
+    {
+        ItemType type = static_cast<ItemType>(currentIndex.data(NavRole::Type).toInt());
+        if (type == ItemType::Layer)
+        {
+            LayerId activeLayerId = static_cast<LayerId>(currentIndex.data(NavRole::Id).toULongLong());
+            for (const auto& cl : commonLayers)
+            {
+                if (cl.id == activeLayerId)
+                {
+                    chosenLayerId = activeLayerId;
+                    activeLayerMatched = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // If not matched by current navigator selection and multiple common layers exist, prompt the user
+    if (!activeLayerMatched && commonLayers.size() > 1)
+    {
+        QStringList layerNames;
+        for (const auto& l : commonLayers)
+            layerNames << QString("%1 (ID: %2)").arg(QString::fromStdString(l.name)).arg(l.id);
+
+        bool ok = false;
+        QString chosen = QInputDialog::getItem(
+            this,
+            "Select Layer",
+            "Multiple shared layers found. Choose edge layer:",
+            layerNames,
+            0,
+            false,
+            &ok);
+
+        if (!ok)
+            return;
+
+        int idx = layerNames.indexOf(chosen);
+        chosenLayerId = commonLayers[idx].id;
+    }
+
+    // 5. Ask for the edge type / protocol
+    bool ok = false;
+    QString edgeType = QInputDialog::getText(
+        this,
+        "Edge Type",
+        "Enter connection type / protocol:",
+        QLineEdit::Normal,
+        "default",
+        &ok);
+
+    if (!ok)
+        return;
+
+    // 6. Create the edge
     EdgeData e;
     e.srcNode = srcId;
     e.dstNode = dstId;
-    e.srcLayer = layerId;
-    e.dstLayer = layerId;
-    e.edgeType = "default";
+    e.srcLayer = chosenLayerId;
+    e.dstLayer = chosenLayerId;
+    e.edgeType = edgeType.trimmed().isEmpty() ? "default" : edgeType.trimmed().toStdString();
 
-    EdgeId newId;
+    EdgeId newId = 0;
     auto r = model_->addEdge(e, newId);
     if (!r.ok)
+    {
+        QMessageBox::critical(this, "Error", QString::fromStdString(r.message));
         return;
+    }
 
-    renderGraph(model_->extractGraph(layerId));
+    // 7. Refresh current view
+    if (currentIndex.isValid() &&
+        static_cast<ItemType>(currentIndex.data(NavRole::Type).toInt()) == ItemType::Layer)
+    {
+        LayerId activeLayerId = static_cast<LayerId>(currentIndex.data(NavRole::Id).toULongLong());
+        renderGraph(model_->extractGraph(activeLayerId));
+    }
+    else
+    {
+        renderGraph(model_->extractGraph(std::nullopt));
+    }
+
+    statusBar()->showMessage(QString("Connected %1 -> %2").arg(srcName, dstName), 2500);
 }
 
 void MainWindow::deleteSelected()
@@ -788,6 +955,123 @@ void MainWindow::deleteSelected()
     }
 
     onSelectionChanged();
+}
+
+NodeId MainWindow::cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> newParentId, qreal offsetX, qreal offsetY)
+{
+    if (!model_)
+        return 0;
+
+    auto opt = model_->getNodeById(sourceId);
+    if (!opt)
+        return 0;
+
+    NodeData source = *opt;
+
+    // Prepare duplicate node data
+    NodeData copyNode;
+    copyNode.name = source.name + " (Copy)";
+    copyNode.type = source.type;
+    copyNode.parentId = newParentId;
+    copyNode.attributes = source.attributes;
+    copyNode.status = Status::New; // Reset review status
+    copyNode.reviewer = "";            // Clear reviewer
+
+    // Offset coordinates in metadata if they exist
+    if (!source.metadata.empty())
+    {
+        QJsonDocument doc = QJsonDocument::fromJson(QString::fromStdString(source.metadata).toUtf8());
+        if (doc.isObject())
+        {
+            QJsonObject obj = doc.object();
+            if (obj.contains("x") && obj.contains("y"))
+            {
+                obj["x"] = obj["x"].toDouble() + offsetX;
+                obj["y"] = obj["y"].toDouble() + offsetY;
+                copyNode.metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
+            }
+        }
+    }
+    if (copyNode.metadata.empty())
+    {
+        QJsonObject obj;
+        obj["x"] = offsetX;
+        obj["y"] = offsetY;
+        copyNode.metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
+    }
+
+    // Insert into model/DB to receive a brand new unique ID
+    NodeId newId = 0;
+    auto res = model_->addNode(copyNode, newId);
+    if (!res.ok)
+        return 0;
+
+    // Map the new node to the same layers as the original node
+    for (const auto& layer : model_->layers())
+    {
+        auto nodesInLay = model_->nodesInLayer(layer.id);
+        for (const auto& nl : nodesInLay)
+        {
+            if (nl.nodeId == sourceId)
+            {
+                model_->addNodeToLayer(newId, layer.id);
+                break;
+            }
+        }
+    }
+
+    // Recursively clone all direct children
+    for (const auto& candidate : model_->nodes())
+    {
+        if (candidate.parentId.has_value() && *candidate.parentId == sourceId)
+        {
+            // Children offset inside container relative to their standard position
+            cloneNodeRecursive(candidate.id, newId, 0, 0);
+        }
+    }
+
+    return newId;
+}
+
+void MainWindow::copySelectedNode()
+{
+    if (!model_ || !scene_ || !primaryNode_)
+    {
+        statusBar()->showMessage("Select a node to copy", 2000);
+        return;
+    }
+
+    NodeId srcId = primaryNode_->nodeId();
+    auto srcOpt = model_->getNodeById(srcId);
+    if (!srcOpt)
+        return;
+
+    // Maintain parent context if the selected node was inside another container
+    std::optional<NodeId> parentId = srcOpt->parentId;
+
+    // Clone with a 40px visual offset so the duplicate is immediately visible
+    NodeId copiedId = cloneNodeRecursive(srcId, parentId, 40.0, 40.0);
+    if (copiedId == 0)
+    {
+        QMessageBox::critical(this, "Error", "Failed to duplicate selected node.");
+        return;
+    }
+
+    populateNavigator();
+
+    // Re-render the active layer or top-level diagram
+    QModelIndex index = navigator_->currentIndex();
+    if (index.isValid() && static_cast<ItemType>(index.data(NavRole::Type).toInt()) == ItemType::Layer)
+    {
+        LayerId layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
+        renderGraph(model_->extractGraph(layerId));
+    }
+    else
+    {
+        renderGraph(model_->extractGraph(std::nullopt));
+    }
+
+    statusBar()->showMessage(QString("Node duplicated (New ID: %1)").arg(copiedId), 2500);
 }
 
 void MainWindow::setGraphMode(GraphView::Mode mode)
@@ -967,6 +1251,112 @@ void MainWindow::alignVertical()
     }
 
     statusBar()->showMessage("Aligned vertically (center)", 2000);
+}
+
+#include <algorithm>
+
+void MainWindow::distributeHorizontal()
+{
+    if (!scene_)
+        return;
+
+    std::vector<GraphNodeItem*> nodes;
+    for (QGraphicsItem* item : scene_->selectedItems()) {
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+            nodes.push_back(node);
+    }
+
+    if (nodes.size() < 3) {
+        statusBar()->showMessage("Select at least 3 nodes to distribute horizontally", 2500);
+        return;
+    }
+
+    // Sort left-to-right by scene center X
+    std::sort(nodes.begin(), nodes.end(), [](GraphNodeItem* a, GraphNodeItem* b) {
+        return a->mapToScene(a->boundingRect().center()).x() <
+               b->mapToScene(b->boundingRect().center()).x();
+    });
+
+    qreal minX = nodes.front()->mapToScene(nodes.front()->boundingRect().center()).x();
+    qreal maxX = nodes.back()->mapToScene(nodes.back()->boundingRect().center()).x();
+    qreal step = (maxX - minX) / static_cast<qreal>(nodes.size() - 1);
+
+    for (size_t i = 1; i + 1 < nodes.size(); ++i) {
+        GraphNodeItem* node = nodes[i];
+        qreal targetSceneX = minX + i * step;
+
+        qreal targetParentX = targetSceneX;
+        if (node->parentItem()) {
+            QPointF p = node->parentItem()->mapFromScene(QPointF(targetSceneX, 0));
+            targetParentX = p.x();
+        }
+
+        qreal halfW = node->boundingRect().width() / 2.0;
+        qreal newX = targetParentX - halfW - node->boundingRect().left();
+        node->setPos(newX, node->pos().y());
+
+        for (auto* edge : node->edges()) {
+            if (edge && edge->scene())
+                edge->updateEndpoints();
+        }
+
+        if (auto* parentContainer = dynamic_cast<GraphNodeItem*>(node->parentItem()))
+            parentContainer->refreshGeometry();
+    }
+
+    statusBar()->showMessage("Distributed horizontally", 2000);
+}
+
+void MainWindow::distributeVertical()
+{
+    if (!scene_)
+        return;
+
+    std::vector<GraphNodeItem*> nodes;
+    for (QGraphicsItem* item : scene_->selectedItems()) {
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+            nodes.push_back(node);
+    }
+
+    if (nodes.size() < 3) {
+        statusBar()->showMessage("Select at least 3 nodes to distribute vertically", 2500);
+        return;
+    }
+
+    // Sort top-to-bottom by scene center Y
+    std::sort(nodes.begin(), nodes.end(), [](GraphNodeItem* a, GraphNodeItem* b) {
+        return a->mapToScene(a->boundingRect().center()).y() <
+               b->mapToScene(b->boundingRect().center()).y();
+    });
+
+    qreal minY = nodes.front()->mapToScene(nodes.front()->boundingRect().center()).y();
+    qreal maxY = nodes.back()->mapToScene(nodes.back()->boundingRect().center()).y();
+    qreal step = (maxY - minY) / static_cast<qreal>(nodes.size() - 1);
+
+    for (size_t i = 1; i + 1 < nodes.size(); ++i) {
+        GraphNodeItem* node = nodes[i];
+        qreal targetSceneY = minY + i * step;
+
+        qreal targetParentY = targetSceneY;
+        if (node->parentItem()) {
+            QPointF p = node->parentItem()->mapFromScene(QPointF(0, targetSceneY));
+            targetParentY = p.y();
+        }
+
+        qreal halfH = node->boundingRect().height() / 2.0;
+        qreal newY = targetParentY - halfH - node->boundingRect().top();
+        node->setPos(node->pos().x(), newY);
+
+        for (auto* edge : node->edges()) {
+            if (edge && edge->scene())
+                edge->updateEndpoints();
+        }
+
+        if (auto* parentContainer = dynamic_cast<GraphNodeItem*>(node->parentItem()))
+            parentContainer->refreshGeometry();
+    }
+
+    statusBar()->showMessage("Distributed vertically", 2000);
 }
 
 void MainWindow::loadThemeFromFile()

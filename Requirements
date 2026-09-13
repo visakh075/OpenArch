@@ -67,3 +67,23 @@
 
 
 * **Ctrl + V:** Vertically aligns selected nodes with the Primary Node.
+
+
+
+Grahpical 
+
+
+Distirbute
+    Horizontally
+    Vertically
+
+Connect Node
+    give alert if no common nodes
+    if multiple nodes just show an option to select
+
+export html , same reactions
+ now the styling is not proper , one node is howerd is hovers all the edges
+ while howering show the meta data as a popup
+
+ Metadata edit, we should have view as json or as field and data
+
