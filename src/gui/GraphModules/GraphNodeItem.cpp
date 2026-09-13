@@ -250,6 +250,65 @@ QRectF GraphNodeItem::boundingRect() const
     return cachedRect_.adjusted(-pad, -pad, pad, pad);
 }
 
+// QPainterPath GraphNodeItem::shape() const
+// {
+//     if (isContainer())
+//     {
+//         const auto& theme = GraphThemeManager::instance()->theme();
+//         const GraphNodeState* state = isSelected() ? &theme.node.selected 
+//                                     : (hovered_ ? &theme.node.hover : &theme.node.normal);
+
+//         qreal borderWidth = std::max<qreal>(state->borderWidth, 2.0);
+
+//         // 1. Header is fully clickable
+//         QPainterPath headerPath;
+//         headerPath.addRoundedRect(cachedHeaderRect_, state->radius, state->radius);
+
+//         // 2. Outer container boundary
+//         QPainterPath outerPath;
+//         outerPath.addRoundedRect(cachedRect_, state->radius, state->radius);
+
+//         // 3. Inner cavity: starts strictly below the header and insets by border thickness
+//         QRectF cavityRect = cachedRect_.adjusted(
+//             borderWidth, 
+//             cachedHeaderRect_.height(), 
+//             -borderWidth, 
+//             -borderWidth
+//         );
+
+//         QPainterPath cavityPath;
+//         if (cavityRect.isValid())
+//         {
+//             cavityPath.addRect(cavityRect);
+//         }
+
+//         // Clickable region = Header + Perimeter border (inner cavity is transparent to mouse clicks)
+//         QPainterPath interactiveRegion = headerPath;
+//         interactiveRegion.addPath(outerPath.subtracted(cavityPath));
+//         return interactiveRegion;
+//     }
+
+//     // Standard leaf node: full body remains clickable
+//     QPainterPath defaultPath;
+//     const auto& theme = GraphThemeManager::instance()->theme();
+//     const GraphNodeState* state = isSelected() ? &theme.node.selected 
+//                                 : (hovered_ ? &theme.node.hover : &theme.node.normal);
+//     defaultPath.addRoundedRect(cachedRect_, state->radius, state->radius);
+//     return defaultPath;
+// }
+
+
+QPainterPath GraphNodeItem::shape() const
+{
+    QPainterPath path;
+    const auto& theme = GraphThemeManager::instance()->theme();
+    const GraphNodeState* state = isSelected() ? &theme.node.selected 
+                                : (hovered_ ? &theme.node.hover : &theme.node.normal);
+
+    path.addRoundedRect(cachedRect_, state->radius, state->radius);
+    return path;
+}
+
 QString GraphNodeItem::displayTitle() const
 {
     if (!model_) return "<deleted>";
@@ -443,6 +502,7 @@ void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
         return;
     }
 
+    // Edge creation interaction (Shift + Drag)
     if (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ShiftModifier))
     {
         isConnecting_ = true;
@@ -456,6 +516,27 @@ void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
 
         event->accept();
         return;
+    }
+
+    // Pass-through check for containers
+    if (isContainer() && event->button() == Qt::LeftButton)
+    {
+        // If clicked outside the header bar, check whether an edge is under the cursor
+        if (!cachedHeaderRect_.contains(event->pos()))
+        {
+            QList<QGraphicsItem*> itemsAtPoint = scene()->items(event->scenePos());
+            for (QGraphicsItem* item : itemsAtPoint)
+            {
+                if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+                {
+                    // Pass the event directly to the edge and do not select/drag the container
+                    scene()->clearSelection();
+                    edge->setSelected(true);
+                    event->accept();
+                    return;
+                }
+            }
+        }
     }
 
     QGraphicsObject::mousePressEvent(event);
@@ -485,6 +566,61 @@ void GraphNodeItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 
     QGraphicsObject::mouseMoveEvent(event);
 }
+
+// void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
+// {
+//     if (!scene() || scene()->views().isEmpty())
+//         return;
+
+//     auto* view = dynamic_cast<GraphView*>(scene()->views().first());
+//     if (view && view->mode() == GraphView::Mode::View)
+//     {
+//         event->ignore();
+//         return;
+//     }
+
+//     if (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ShiftModifier))
+//     {
+//         isConnecting_ = true;
+
+//         tempPathItem_ = new QGraphicsPathItem();
+//         QPen p(QColor(0, 180, 216), 2, Qt::DashLine, Qt::RoundCap, Qt::RoundJoin);
+//         tempPathItem_->setPen(p);
+//         tempPathItem_->setZValue(100);
+//         tempPathItem_->setPath(buildPreviewPath(event->scenePos()));
+//         scene()->addItem(tempPathItem_);
+
+//         event->accept();
+//         return;
+//     }
+
+//     QGraphicsObject::mousePressEvent(event);
+// }
+
+// void GraphNodeItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
+// {
+//     if (isConnecting_ && tempPathItem_)
+//     {
+//         GraphNodeItem* targetNode = nullptr;
+//         for (QGraphicsItem* item : scene()->items(event->scenePos()))
+//         {
+//             if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+//             {
+//                 if (node != this)
+//                 {
+//                     targetNode = node;
+//                     break;
+//                 }
+//             }
+//         }
+
+//         tempPathItem_->setPath(buildPreviewPath(event->scenePos(), targetNode));
+//         event->accept();
+//         return;
+//     }
+
+//     QGraphicsObject::mouseMoveEvent(event);
+// }
 
 void GraphNodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 {

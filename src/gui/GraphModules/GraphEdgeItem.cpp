@@ -12,6 +12,7 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QPainterPathStroker>
 #include <QtMath>
+#include <algorithm>
 
 GraphEdgeItem::GraphEdgeItem(
     ArchitectureModel* model,
@@ -29,7 +30,16 @@ GraphEdgeItem::GraphEdgeItem(
     setAcceptHoverEvents(true);
     setFlag(QGraphicsItem::ItemIsSelectable, true);
     setFlag(QGraphicsItem::ItemIsMovable, false);
-    setZValue(-1);
+
+    // Compute base Z so the edge rests above the container background (Z = 1)
+    // while remaining below child nodes when unselected
+    qreal baseZ = 1.5;
+    if (src_ && dst_)
+    {
+        baseZ = std::max(src_->zValue(), dst_->zValue()) - 0.1;
+    }
+    setZValue(baseZ);
+
     e_id = id;
 
     if (src_)
@@ -208,7 +218,8 @@ QRectF GraphEdgeItem::boundingRect() const
     return rect;
 }
 
-void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*){
+void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
+{
     if (!src_ || !dst_)
         return;
 
@@ -318,19 +329,25 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     painter->restore();
 }
 
-
 QPainterPath GraphEdgeItem::shape() const
 {
+    const auto& theme = GraphThemeManager::instance()->theme();
+    const GraphEdgeState* State = isSelected() ? &theme.edge.selected 
+                                : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
+
+    qreal tolerance = 5.0;
+    qreal hitWidth = State->lineWidth + (tolerance * 2.0);
+
     QPainterPath result;
     QPainterPathStroker stroker;
-    stroker.setWidth(12);
+    stroker.setWidth(hitWidth);
+    stroker.setCapStyle(Qt::RoundCap);
+    stroker.setJoinStyle(Qt::RoundJoin);
     result.addPath(stroker.createStroke(cachedPath_));
 
     QString title = cachedTitle_;
     if (!title.isEmpty())
     {
-        const auto& theme = GraphThemeManager::instance()->theme();
-        const GraphEdgeState* State = isSelected() ? &theme.edge.selected : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
         const auto& label = State->label;
 
         QFont font;
@@ -367,7 +384,7 @@ void GraphEdgeItem::updateEndpoints()
 void GraphEdgeItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
 {
     hovered_ = true;
-    setZValue(isSelected() ? 20 : 10);
+    setZValue(25.0);
     update();
     QGraphicsObject::hoverEnterEvent(event);
 }
@@ -375,7 +392,14 @@ void GraphEdgeItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
 void GraphEdgeItem::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
 {
     hovered_ = false;
-    setZValue(isSelected() ? 20 : -1);
+
+    qreal defaultZ = 1.5;
+    if (src_ && dst_)
+    {
+        defaultZ = std::max(src_->zValue(), dst_->zValue()) - 0.1;
+    }
+
+    setZValue(isSelected() ? 20.0 : defaultZ);
     update();
     QGraphicsObject::hoverLeaveEvent(event);
 }
@@ -441,7 +465,7 @@ void GraphEdgeItem::refreshLayout()
     const auto& theme = GraphThemeManager::instance()->theme();
     cachedTitle_ = QString::fromStdString(edge->edgeType);
     QFont font;
-    font.setPointSize(theme.edge.normal.label.fontSize); // Use active theme font size
+    font.setPointSize(theme.edge.normal.label.fontSize);
     font.setBold(theme.edge.normal.label.bold);
     QFontMetrics fm(font);
     cachedTitleRect_ = fm.boundingRect(cachedTitle_);

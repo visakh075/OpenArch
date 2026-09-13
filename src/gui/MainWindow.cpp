@@ -9,16 +9,21 @@
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QShortcut>
+#include <QToolButton>
+#include <QMenu>
+#include <QStyle>
+#include <QInputDialog>
+#include <QKeySequence>
+#include <QScrollBar>
+#include <algorithm>
+#include <unordered_set>
+
 #include "NodeEditorDialog.h"
 #include "LayerEditorDialog.h"
 #include "GraphNodeItem.h"
 #include "GraphEdgeItem.h"
 #include "GraphThemeManager.h"
 #include "ThemeEditorDock.h"
-#include <QInputDialog>
-#include <unordered_set>
-#include <QKeySequence>
-#include <QScrollBar>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -96,32 +101,6 @@ void MainWindow::setupUi()
     setDockNestingEnabled(true);
 }
 
-void MainWindow::setupToolbar()
-{
-    graphToolBar_ = addToolBar("Graph Modes");
-
-    actionView_ = graphToolBar_->addAction("View (V)");
-    actionEdit_ = graphToolBar_->addAction("Edit (E)");    
-
-    actionView_->setCheckable(true);
-    actionEdit_->setCheckable(true); 
-
-    QActionGroup* group = new QActionGroup(this);
-    group->addAction(actionView_);
-    group->addAction(actionEdit_);
-
-    actionView_->setChecked(true);
-
-    connect(actionView_, &QAction::triggered,
-            this, [this]() { setGraphMode(GraphView::Mode::View); });
-
-    connect(actionEdit_, &QAction::triggered,
-            this, [this]() { setGraphMode(GraphView::Mode::Edit); });
-
-    actionView_->setShortcut(Qt::Key_V);
-    actionEdit_->setShortcut(Qt::Key_L);
-}
-
 void MainWindow::setupMenu()
 {
     auto* fileMenu = menuBar()->addMenu("&File");
@@ -139,13 +118,55 @@ void MainWindow::setupMenu()
 
     editMenu->addAction("Save Layout", this, &MainWindow::saveLayout);
 
+    // --- Distribution Actions ---
     editMenu->addSeparator();
+    actionDistH_ = new QAction(QIcon(":/icons/dist-h.svg"), "Distribute Horizontally", this);
+    actionDistH_->setShortcut(QKeySequence(Qt::ALT | Qt::Key_H));
+    connect(actionDistH_, &QAction::triggered, this, &MainWindow::distributeHorizontal);
+    editMenu->addAction(actionDistH_);
 
-    auto* alignH = editMenu->addAction("Align Horizontal", this, &MainWindow::alignHorizontal);
-    alignH->setShortcut(Qt::CTRL | Qt::Key_H);
+    actionDistV_ = new QAction(QIcon(":/icons/dist-v.svg"), "Distribute Vertically", this);
+    actionDistV_->setShortcut(QKeySequence(Qt::ALT | Qt::Key_V));
+    connect(actionDistV_, &QAction::triggered, this, &MainWindow::distributeVertical);
+    editMenu->addAction(actionDistV_);
 
-    auto* alignV = editMenu->addAction("Align Vertical", this, &MainWindow::alignVertical);
-    alignV->setShortcut(Qt::CTRL | Qt::Key_V);
+    // --- Align Submenus ---
+    auto* alignMenu = editMenu->addMenu("Align");
+
+    auto* alignHMenu = alignMenu->addMenu("Horizontal");
+    actionAlignLeft_ = new QAction(QIcon(":/icons/align-left.svg"), "Left", this);
+    connect(actionAlignLeft_, &QAction::triggered, this, [this]() { alignNodes(AlignType::Left); });
+    alignHMenu->addAction(actionAlignLeft_);
+
+    actionAlignCenterH_ = new QAction(QIcon(":/icons/align-center-h.svg"), "Center", this);
+    actionAlignCenterH_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
+    connect(actionAlignCenterH_, &QAction::triggered, this, [this]() { alignNodes(AlignType::CenterH); });
+    alignHMenu->addAction(actionAlignCenterH_);
+
+    actionAlignRight_ = new QAction(QIcon(":/icons/align-right.svg"), "Right", this);
+    connect(actionAlignRight_, &QAction::triggered, this, [this]() { alignNodes(AlignType::Right); });
+    alignHMenu->addAction(actionAlignRight_);
+
+    auto* alignVMenu = alignMenu->addMenu("Vertical");
+    actionAlignTop_ = new QAction(QIcon(":/icons/align-top.svg"), "Top", this);
+    connect(actionAlignTop_, &QAction::triggered, this, [this]() { alignNodes(AlignType::Top); });
+    alignVMenu->addAction(actionAlignTop_);
+
+    actionAlignCenterV_ = new QAction(QIcon(":/icons/align-center-v.svg"), "Middle", this);
+    actionAlignCenterV_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_V));
+    connect(actionAlignCenterV_, &QAction::triggered, this, [this]() { alignNodes(AlignType::CenterV); });
+    alignVMenu->addAction(actionAlignCenterV_);
+
+    actionAlignBottom_ = new QAction(QIcon(":/icons/align-bottom.svg"), "Bottom", this);
+    connect(actionAlignBottom_, &QAction::triggered, this, [this]() { alignNodes(AlignType::Bottom); });
+    alignVMenu->addAction(actionAlignBottom_);
+
+    // --- Connect Action ---
+    editMenu->addSeparator();
+    actionConnect_ = new QAction(QIcon(":/icons/connect.svg"), "Connect Selected Nodes", this);
+    actionConnect_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K));
+    connect(actionConnect_, &QAction::triggered, this, &MainWindow::connectSelectedNodes);
+    editMenu->addAction(actionConnect_);
 
     QAction* exportCurrentAction = new QAction("Export Current View", this);
     connect(exportCurrentAction, &QAction::triggered, this, [this]() {
@@ -191,19 +212,6 @@ void MainWindow::setupMenu()
         themeMenu->addSeparator();
     }
 
-    editMenu->addSeparator(); //[cite: 3]
-    auto* distH = editMenu->addAction("Distribute Horizontally", this, &MainWindow::distributeHorizontal);
-    distH->setShortcut(QKeySequence(Qt::ALT | Qt::Key_H));
-
-    auto* distV = editMenu->addAction("Distribute Vertically", this, &MainWindow::distributeVertical);
-    distV->setShortcut(QKeySequence(Qt::ALT | Qt::Key_V));
-
-    // editMenu->addSeparator(); //[cite: 3]
-    // auto* connAct = editMenu->addAction("Connect Selected Nodes", this, &MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId));
-    // connAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K));
-
-
-
     themeMenu->addAction("Open Theme File...", this, &MainWindow::loadThemeFromFile);
     themeMenu->addAction("Reset to Default", this, []() {
         GraphThemeManager::instance()->resetDefaults();
@@ -214,6 +222,83 @@ void MainWindow::setupMenu()
         graphView_->exportToInteractiveHtml();
     });
     fileMenu->addAction(exportHtmlAction);
+}
+
+void MainWindow::setupToolbar()
+{
+    // ========================================================
+    // Graph Modes Toolbar
+    // ========================================================
+    graphToolBar_ = addToolBar("Graph Modes");
+
+    actionView_ = graphToolBar_->addAction("View (V)");
+    actionEdit_ = graphToolBar_->addAction("Edit (E)");    
+
+    actionView_->setCheckable(true);
+    actionEdit_->setCheckable(true); 
+
+    QActionGroup* group = new QActionGroup(this);
+    group->addAction(actionView_);
+    group->addAction(actionEdit_);
+
+    actionView_->setChecked(true);
+
+    connect(actionView_, &QAction::triggered,
+            this, [this]() { setGraphMode(GraphView::Mode::View); });
+
+    connect(actionEdit_, &QAction::triggered,
+            this, [this]() { setGraphMode(GraphView::Mode::Edit); });
+
+    actionView_->setShortcut(Qt::Key_V);
+    actionEdit_->setShortcut(Qt::Key_L);
+
+    // ========================================================
+    // Layout Toolbar (Reuses Actions from setupMenu)
+    // ========================================================
+    layoutToolBar_ = addToolBar("Layout");
+    layoutToolBar_->setIconSize(QSize(20, 20));
+
+    // 1. Align Dropdown Button
+    QToolButton* alignBtn = new QToolButton(this);
+    alignBtn->setText("Align");
+    alignBtn->setToolTip("Align selected objects relative to the primary node");
+    alignBtn->setPopupMode(QToolButton::InstantPopup);
+    alignBtn->setIcon(QIcon(":/icons/align-center-h.svg"));
+
+    QMenu* alignPopup = new QMenu(alignBtn);
+    alignPopup->addAction(actionAlignLeft_);
+    alignPopup->addAction(actionAlignCenterH_);
+    alignPopup->addAction(actionAlignRight_);
+    alignPopup->addSeparator();
+    alignPopup->addAction(actionAlignTop_);
+    alignPopup->addAction(actionAlignCenterV_);
+    alignPopup->addAction(actionAlignBottom_);
+
+    alignBtn->setMenu(alignPopup);
+    layoutToolBar_->addWidget(alignBtn);
+
+    // 2. Distribute Dropdown Button
+    QToolButton* distBtn = new QToolButton(this);
+    distBtn->setText("Distribute");
+    distBtn->setToolTip("Distribute selected objects evenly");
+    distBtn->setPopupMode(QToolButton::InstantPopup);
+    distBtn->setIcon(QIcon(":/icons/dist-h.svg"));
+
+    QMenu* distPopup = new QMenu(distBtn);
+    distPopup->addAction(actionDistH_);
+    distPopup->addAction(actionDistV_);
+
+    distBtn->setMenu(distPopup);
+    layoutToolBar_->addWidget(distBtn);
+
+    layoutToolBar_->addSeparator();
+
+    // 3. Connect and Duplicate Buttons
+    layoutToolBar_->addAction(actionConnect_);
+
+    QAction* copyBtn = layoutToolBar_->addAction(QIcon(":/icons/copy.svg"), "Duplicate");
+    copyBtn->setToolTip("Duplicate selected node (Ctrl+D)");
+    connect(copyBtn, &QAction::triggered, this, &MainWindow::copySelectedNode);
 }
 
 void MainWindow::setupConnections()
@@ -367,11 +452,8 @@ void MainWindow::populateNavigator()
 
 void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
 {
-    if (!model_ || !graphView_)
+    if (!model_)
         return;
-
-    // if (graphView_->mode() == GraphView::Mode::View)
-    //     return;
 
     auto* item = navModel_->itemFromIndex(index);
     if (!item)
@@ -385,14 +467,17 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
         NodeEditorDialog dlg(model_, id, this);
         if (dlg.exec() == QDialog::Accepted)
         {
-            // Clear existing scene items so nodes recalculate their parent hierarchy completely
-            if (scene_)
-            {
-                scene_->clear();
-            }
-            primaryNode_ = nullptr;
             populateNavigator();
-            renderGraph(model_->extractGraph(std::nullopt));
+            QModelIndex curIdx = navigator_->currentIndex();
+            if (curIdx.isValid() && static_cast<ItemType>(curIdx.data(NavRole::Type).toInt()) == ItemType::Layer)
+            {
+                LayerId layerId = static_cast<LayerId>(curIdx.data(NavRole::Id).toULongLong());
+                renderGraph(model_->extractGraph(layerId));
+            }
+            else
+            {
+                renderGraph(model_->extractGraph(std::nullopt));
+            }
         }
         break;
     }
@@ -400,11 +485,6 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
         LayerEditorDialog dlg(model_, id, this);
         if (dlg.exec() == QDialog::Accepted)
         {
-            if (scene_)
-            {
-                scene_->clear();
-            }
-            primaryNode_ = nullptr;
             populateNavigator();
             renderGraph(model_->extractGraph(static_cast<LayerId>(id)));
         }
@@ -496,9 +576,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
     }
     existingEdges.clear();
 
-    // 3. CRITICAL: Unparent ALL existing nodes immediately.
-    // This breaks Qt's automatic child-deletion cascade so deleting an unused container
-    // does NOT free child nodes that are retained in currentNodes.
+    // 3. Unparent all existing nodes to break Qt ownership cascades during layer transitions
     for (auto& pair : existingNodes)
     {
         if (pair.second)
@@ -507,7 +585,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         }
     }
 
-    // 4. Stage 1: Partition retained nodes vs obsolete nodes
+    // 4. Partition retained nodes vs obsolete nodes
     std::unordered_map<NodeId, GraphNodeItem*> currentNodes;
     auto mode = graphView_->mode();
     bool selectable = (mode == GraphView::Mode::Edit || mode == GraphView::Mode::Arch || mode == GraphView::Mode::View);
@@ -520,7 +598,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         if (it != existingNodes.end())
         {
             nodeItem = it->second;
-            existingNodes.erase(it); // Retain this node
+            existingNodes.erase(it);
         }
         else
         {
@@ -534,7 +612,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         currentNodes[n.id] = nodeItem;
     }
 
-    // 5. Delete obsolete nodes that are not in the new layer snapshot
+    // 5. Delete obsolete nodes
     for (auto& pair : existingNodes)
     {
         if (pair.second)
@@ -550,7 +628,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
     }
     existingNodes.clear();
 
-    // 6. Stage 2: Re-establish parent-child links only if the parent is present in currentNodes
+    // 6. Re-establish parent-child links safely
     for (const auto& n : snap.nodes)
     {
         GraphNodeItem* nodeItem = currentNodes[n.id];
@@ -575,7 +653,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         }
     }
 
-    // 7. Stage 3: Add only unparented root items directly to scene_
+    // 7. Add only unparented root items directly to scene_
     for (const auto& n : snap.nodes)
     {
         GraphNodeItem* nodeItem = currentNodes[n.id];
@@ -588,7 +666,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         }
     }
 
-    // 8. Stage 4: Position items and refresh geometry
+    // 8. Position items and refresh geometry
     int i = 0;
     for (const auto& n : snap.nodes)
     {
@@ -619,7 +697,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         ++i;
     }
 
-    // 9. Stage 5: Recreate edges ONLY after all nodes are positioned and attached to scene_
+    // 9. Recreate edges
     for (const auto& e : snap.edges)
     {
         auto srcIt = currentNodes.find(e.srcNode);
@@ -634,6 +712,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
             {
                 auto* edgeItem = new GraphEdgeItem(model_, e.id, srcNode, dstNode);
                 edgeItem->setFlag(QGraphicsItem::ItemIsSelectable, true);
+                // edgeItem->setZValue(10.0);
                 scene_->addItem(edgeItem);
                 edgeItem->updateEndpoints();
             }
@@ -711,38 +790,6 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
     renderGraph(model_->extractGraph(std::nullopt));
 }
 
-// void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
-// {
-//     if (!model_ || srcId == dstId)
-//         return;
-
-//     QModelIndex index = navigator_->currentIndex();
-//     if (!index.isValid())
-//         return;
-
-//     ItemType type = static_cast<ItemType>(index.data(NavRole::Type).toInt());
-//     if (type != ItemType::Layer) {
-//         statusBar()->showMessage("Select a layer first", 2000);
-//         return;
-//     }
-
-//     LayerId layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
-
-//     EdgeData e;
-//     e.srcNode = srcId;
-//     e.dstNode = dstId;
-//     e.srcLayer = layerId;
-//     e.dstLayer = layerId;
-//     e.edgeType = "default";
-
-//     EdgeId newId;
-//     auto r = model_->addEdge(e, newId);
-//     if (!r.ok)
-//         return;
-
-//     renderGraph(model_->extractGraph(layerId));
-// }
-
 void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
 {
     if (!model_ || srcId == dstId)
@@ -754,7 +801,6 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
     QString srcName = srcOpt ? QString::fromStdString(srcOpt->name) : QString("Node %1").arg(srcId);
     QString dstName = dstOpt ? QString::fromStdString(dstOpt->name) : QString("Node %2").arg(dstId);
 
-    // 1. Gather layers containing srcId
     std::unordered_set<LayerId> srcLayers;
     for (const auto& layer : model_->layers())
     {
@@ -768,7 +814,6 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
         }
     }
 
-    // 2. Find common layers that also contain dstId
     std::vector<LayerData> commonLayers;
     for (const auto& layer : model_->layers())
     {
@@ -785,7 +830,6 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
         }
     }
 
-    // 3. Alert if no common layer exists
     if (commonLayers.empty())
     {
         QMessageBox::warning(
@@ -797,12 +841,10 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
         return;
     }
 
-    // 4. Resolve which layer to place the edge on
     LayerId chosenLayerId = commonLayers[0].id;
-
-    // Check if the currently selected tree item is already one of the valid common layers
     QModelIndex currentIndex = navigator_->currentIndex();
     bool activeLayerMatched = false;
+
     if (currentIndex.isValid())
     {
         ItemType type = static_cast<ItemType>(currentIndex.data(NavRole::Type).toInt());
@@ -821,7 +863,6 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
         }
     }
 
-    // If not matched by current navigator selection and multiple common layers exist, prompt the user
     if (!activeLayerMatched && commonLayers.size() > 1)
     {
         QStringList layerNames;
@@ -845,7 +886,6 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
         chosenLayerId = commonLayers[idx].id;
     }
 
-    // 5. Ask for the edge type / protocol
     bool ok = false;
     QString edgeType = QInputDialog::getText(
         this,
@@ -858,7 +898,6 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
     if (!ok)
         return;
 
-    // 6. Create the edge
     EdgeData e;
     e.srcNode = srcId;
     e.dstNode = dstId;
@@ -874,7 +913,6 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
         return;
     }
 
-    // 7. Refresh current view
     if (currentIndex.isValid() &&
         static_cast<ItemType>(currentIndex.data(NavRole::Type).toInt()) == ItemType::Layer)
     {
@@ -887,6 +925,75 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
     }
 
     statusBar()->showMessage(QString("Connected %1 -> %2").arg(srcName, dstName), 2500);
+}
+
+void MainWindow::connectSelectedNodes()
+{
+    if (!scene_ || !model_)
+        return;
+
+    std::vector<GraphNodeItem*> selectedNodes;
+    for (QGraphicsItem* item : scene_->selectedItems())
+    {
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+            selectedNodes.push_back(node);
+    }
+
+    if (selectedNodes.size() < 2)
+    {
+        QMessageBox::information(this, "Connect Nodes", "Please select at least two nodes on the canvas to connect.");
+        return;
+    }
+
+    GraphNodeItem* srcNode = nullptr;
+    GraphNodeItem* dstNode = nullptr;
+
+    if (selectedNodes.size() == 2)
+    {
+        if (primaryNode_ && (selectedNodes[0] == primaryNode_ || selectedNodes[1] == primaryNode_))
+        {
+            srcNode = primaryNode_;
+            dstNode = (selectedNodes[0] == primaryNode_) ? selectedNodes[1] : selectedNodes[0];
+        }
+        else
+        {
+            srcNode = selectedNodes[0];
+            dstNode = selectedNodes[1];
+        }
+    }
+    else
+    {
+        QStringList titles;
+        for (auto* n : selectedNodes)
+            titles << QString("%1 (ID: %2)").arg(n->displayTitle()).arg(n->nodeId());
+
+        bool ok = false;
+        QString srcChoice = QInputDialog::getItem(this, "Select Source Node", "Source:", titles, 0, false, &ok);
+        if (!ok) return;
+
+        int srcIndex = titles.indexOf(srcChoice);
+        srcNode = selectedNodes[srcIndex];
+
+        QStringList dstTitles = titles;
+        dstTitles.removeAt(srcIndex);
+
+        QString dstChoice = QInputDialog::getItem(this, "Select Target Node", "Target:", dstTitles, 0, false, &ok);
+        if (!ok) return;
+
+        for (auto* n : selectedNodes)
+        {
+            if (QString("%1 (ID: %2)").arg(n->displayTitle()).arg(n->nodeId()) == dstChoice)
+            {
+                dstNode = n;
+                break;
+            }
+        }
+    }
+
+    if (srcNode && dstNode)
+    {
+        handleConnectNodes(srcNode->nodeId(), dstNode->nodeId());
+    }
 }
 
 void MainWindow::deleteSelected()
@@ -968,16 +1075,14 @@ NodeId MainWindow::cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> new
 
     NodeData source = *opt;
 
-    // Prepare duplicate node data
     NodeData copyNode;
     copyNode.name = source.name + " (Copy)";
     copyNode.type = source.type;
     copyNode.parentId = newParentId;
     copyNode.attributes = source.attributes;
-    copyNode.status = Status::New; // Reset review status
-    copyNode.reviewer = "";            // Clear reviewer
+    copyNode.status = Status::New;
+    copyNode.reviewer = "";
 
-    // Offset coordinates in metadata if they exist
     if (!source.metadata.empty())
     {
         QJsonDocument doc = QJsonDocument::fromJson(QString::fromStdString(source.metadata).toUtf8());
@@ -1000,13 +1105,11 @@ NodeId MainWindow::cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> new
         copyNode.metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
     }
 
-    // Insert into model/DB to receive a brand new unique ID
     NodeId newId = 0;
     auto res = model_->addNode(copyNode, newId);
     if (!res.ok)
         return 0;
 
-    // Map the new node to the same layers as the original node
     for (const auto& layer : model_->layers())
     {
         auto nodesInLay = model_->nodesInLayer(layer.id);
@@ -1020,12 +1123,10 @@ NodeId MainWindow::cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> new
         }
     }
 
-    // Recursively clone all direct children
     for (const auto& candidate : model_->nodes())
     {
         if (candidate.parentId.has_value() && *candidate.parentId == sourceId)
         {
-            // Children offset inside container relative to their standard position
             cloneNodeRecursive(candidate.id, newId, 0, 0);
         }
     }
@@ -1046,10 +1147,8 @@ void MainWindow::copySelectedNode()
     if (!srcOpt)
         return;
 
-    // Maintain parent context if the selected node was inside another container
     std::optional<NodeId> parentId = srcOpt->parentId;
 
-    // Clone with a 40px visual offset so the duplicate is immediately visible
     NodeId copiedId = cloneNodeRecursive(srcId, parentId, 40.0, 40.0);
     if (copiedId == 0)
     {
@@ -1059,7 +1158,6 @@ void MainWindow::copySelectedNode()
 
     populateNavigator();
 
-    // Re-render the active layer or top-level diagram
     QModelIndex index = navigator_->currentIndex();
     if (index.isValid() && static_cast<ItemType>(index.data(NavRole::Type).toInt()) == ItemType::Layer)
     {
@@ -1167,93 +1265,13 @@ void MainWindow::onSelectionChanged()
 
 void MainWindow::alignHorizontal()
 {
-    if (!primaryNode_ || !scene_)
-        return;
-
-    auto selected = scene_->selectedItems();
-    if (selected.size() < 2)
-        return;
-
-    qreal targetSceneY = primaryNode_->mapToScene(primaryNode_->boundingRect().center()).y();
-
-    for (auto* item : selected)
-    {
-        auto* node = dynamic_cast<GraphNodeItem*>(item);
-        if (!node || node == primaryNode_)
-            continue;
-
-        qreal targetParentY = targetSceneY;
-        if (node->parentItem())
-        {
-            QPointF parentTarget = node->parentItem()->mapFromScene(QPointF(0, targetSceneY));
-            targetParentY = parentTarget.y();
-        }
-
-        qreal halfHeight = node->boundingRect().height() / 2.0;
-        qreal newY = targetParentY - halfHeight - node->boundingRect().top();
-
-        node->setPos(node->pos().x(), newY);
-
-        for (auto* edge : node->edges())
-        {
-            if (edge && edge->scene())
-                edge->updateEndpoints();
-        }
-
-        if (auto* parentContainer = dynamic_cast<GraphNodeItem*>(node->parentItem()))
-        {
-            parentContainer->refreshGeometry();
-        }
-    }
-
-    statusBar()->showMessage("Aligned horizontally (center)", 2000);
+    alignNodes(AlignType::CenterH);
 }
 
 void MainWindow::alignVertical()
 {
-    if (!primaryNode_ || !scene_)
-        return;
-
-    auto selected = scene_->selectedItems();
-    if (selected.size() < 2)
-        return;
-
-    qreal targetSceneX = primaryNode_->mapToScene(primaryNode_->boundingRect().center()).x();
-
-    for (auto* item : selected)
-    {
-        auto* node = dynamic_cast<GraphNodeItem*>(item);
-        if (!node || node == primaryNode_)
-            continue;
-
-        qreal targetParentX = targetSceneX;
-        if (node->parentItem())
-        {
-            QPointF parentTarget = node->parentItem()->mapFromScene(QPointF(targetSceneX, 0));
-            targetParentX = parentTarget.x();
-        }
-
-        qreal halfWidth = node->boundingRect().width() / 2.0;
-        qreal newX = targetParentX - halfWidth - node->boundingRect().left();
-
-        node->setPos(newX, node->pos().y());
-
-        for (auto* edge : node->edges())
-        {
-            if (edge && edge->scene())
-                edge->updateEndpoints();
-        }
-
-        if (auto* parentContainer = dynamic_cast<GraphNodeItem*>(node->parentItem()))
-        {
-            parentContainer->refreshGeometry();
-        }
-    }
-
-    statusBar()->showMessage("Aligned vertically (center)", 2000);
+    alignNodes(AlignType::CenterV);
 }
-
-#include <algorithm>
 
 void MainWindow::distributeHorizontal()
 {
@@ -1271,7 +1289,6 @@ void MainWindow::distributeHorizontal()
         return;
     }
 
-    // Sort left-to-right by scene center X
     std::sort(nodes.begin(), nodes.end(), [](GraphNodeItem* a, GraphNodeItem* b) {
         return a->mapToScene(a->boundingRect().center()).x() <
                b->mapToScene(b->boundingRect().center()).x();
@@ -1323,7 +1340,6 @@ void MainWindow::distributeVertical()
         return;
     }
 
-    // Sort top-to-bottom by scene center Y
     std::sort(nodes.begin(), nodes.end(), [](GraphNodeItem* a, GraphNodeItem* b) {
         return a->mapToScene(a->boundingRect().center()).y() <
                b->mapToScene(b->boundingRect().center()).y();
@@ -1377,4 +1393,108 @@ void MainWindow::switchThemePreset(const QString& path)
     if (!GraphThemeManager::instance()->load(path)) {
         QMessageBox::critical(this, "Error", "Failed to load theme configuration: " + path);
     }
+}
+
+void MainWindow::alignNodes(AlignType type)
+{
+    if (!primaryNode_ || !scene_) {
+        statusBar()->showMessage("Select a primary node first", 2000);
+        return;
+    }
+
+    auto selected = scene_->selectedItems();
+    if (selected.size() < 2) {
+        statusBar()->showMessage("Select at least 2 nodes to align", 2000);
+        return;
+    }
+
+    QRectF primarySceneRect = primaryNode_->mapToScene(primaryNode_->boundingRect()).boundingRect();
+
+    qreal targetSceneX = 0;
+    qreal targetSceneY = 0;
+
+    switch (type) {
+    case AlignType::Left:
+        targetSceneX = primarySceneRect.left();
+        break;
+    case AlignType::Right:
+        targetSceneX = primarySceneRect.right();
+        break;
+    case AlignType::CenterH:
+        targetSceneX = primarySceneRect.center().x();
+        break;
+    case AlignType::Top:
+        targetSceneY = primarySceneRect.top();
+        break;
+    case AlignType::Bottom:
+        targetSceneY = primarySceneRect.bottom();
+        break;
+    case AlignType::CenterV:
+        targetSceneY = primarySceneRect.center().y();
+        break;
+    }
+
+    for (auto* item : selected) {
+        auto* node = dynamic_cast<GraphNodeItem*>(item);
+        if (!node || node == primaryNode_)
+            continue;
+
+        QRectF localBounds = node->boundingRect();
+        QPointF curPos = node->pos();
+
+        switch (type) {
+        case AlignType::Left: {
+            qreal targetParentX = targetSceneX;
+            if (node->parentItem())
+                targetParentX = node->parentItem()->mapFromScene(QPointF(targetSceneX, 0)).x();
+            node->setPos(targetParentX - localBounds.left(), curPos.y());
+            break;
+        }
+        case AlignType::Right: {
+            qreal targetParentX = targetSceneX;
+            if (node->parentItem())
+                targetParentX = node->parentItem()->mapFromScene(QPointF(targetSceneX, 0)).x();
+            node->setPos(targetParentX - localBounds.right(), curPos.y());
+            break;
+        }
+        case AlignType::CenterH: {
+            qreal targetParentX = targetSceneX;
+            if (node->parentItem())
+                targetParentX = node->parentItem()->mapFromScene(QPointF(targetSceneX, 0)).x();
+            node->setPos(targetParentX - (localBounds.width() / 2.0) - localBounds.left(), curPos.y());
+            break;
+        }
+        case AlignType::Top: {
+            qreal targetParentY = targetSceneY;
+            if (node->parentItem())
+                targetParentY = node->parentItem()->mapFromScene(QPointF(0, targetSceneY)).y();
+            node->setPos(curPos.x(), targetParentY - localBounds.top());
+            break;
+        }
+        case AlignType::Bottom: {
+            qreal targetParentY = targetSceneY;
+            if (node->parentItem())
+                targetParentY = node->parentItem()->mapFromScene(QPointF(0, targetSceneY)).y();
+            node->setPos(curPos.x(), targetParentY - localBounds.bottom());
+            break;
+        }
+        case AlignType::CenterV: {
+            qreal targetParentY = targetSceneY;
+            if (node->parentItem())
+                targetParentY = node->parentItem()->mapFromScene(QPointF(0, targetSceneY)).y();
+            node->setPos(curPos.x(), targetParentY - (localBounds.height() / 2.0) - localBounds.top());
+            break;
+        }
+        }
+
+        for (auto* edge : node->edges()) {
+            if (edge && edge->scene())
+                edge->updateEndpoints();
+        }
+
+        if (auto* parentContainer = dynamic_cast<GraphNodeItem*>(node->parentItem()))
+            parentContainer->refreshGeometry();
+    }
+
+    statusBar()->showMessage("Nodes aligned", 2000);
 }

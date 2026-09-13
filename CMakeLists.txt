@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g")
 set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+
 # ------------------------------------------------------------
 # Qt (REQUIRED for GUI)
 # ------------------------------------------------------------
@@ -76,6 +77,8 @@ target_compile_options(openarch PRIVATE
 # GUI target
 # ------------------------------------------------------------
 add_executable(openarch-gui
+    resources.qrc
+
     src/gui/main.cpp
     src/gui/MainWindow.cpp
 
@@ -85,13 +88,11 @@ add_executable(openarch-gui
 
     src/gui/GraphModules/GraphNodeItem.cpp
     src/gui/GraphModules/GraphEdgeItem.cpp
-    
 
     src/gui/GraphView.cpp    
     src/gui/theme/GraphThemeManager.cpp
     src/gui/theme/ThemeEditorDock.cpp
 )
-
 
 target_link_libraries(openarch-gui PRIVATE
     openarch_core

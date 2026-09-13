@@ -1,0 +1,24 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/icons">
+        <!-- Vertical line icons -> Left / Center (H) / Right -->
+        <file alias="align-left.svg">assets/resources/icons/align-start-vertical.svg</file>
+        <file alias="align-center-h.svg">assets/resources/icons/align-center-vertical.svg</file>
+        <file alias="align-right.svg">assets/resources/icons/align-end-vertical.svg</file>
+
+        <!-- Horizontal line icons -> Top / Middle (V) / Bottom -->
+        <file alias="align-top.svg">assets/resources/icons/align-start-horizontal.svg</file>
+        <file alias="align-center-v.svg">assets/resources/icons/align-center-horizontal.svg</file>
+        <file alias="align-bottom.svg">assets/resources/icons/align-end-horizontal.svg</file>
+
+        <!-- Distribution -->
+        <file alias="dist-h.svg">assets/resources/icons/align-horizontal-distribute-center.svg</file>
+        <file alias="dist-v.svg">assets/resources/icons/align-vertical-distribute-center.svg</file>
+
+        <!-- Tools -->
+        <file alias="copy.svg">assets/resources/icons/copy.svg</file>
+        <file alias="layers.svg">assets/resources/icons/layers.svg</file>
+        <file alias="connect.svg">assets/resources/icons/network.svg</file>
+        <file alias="add-node.svg">assets/resources/icons/plus-square.svg</file>
+    </qresource>
+</RCC>

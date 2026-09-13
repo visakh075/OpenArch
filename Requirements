@@ -81,9 +81,15 @@ Connect Node
     give alert if no common nodes
     if multiple nodes just show an option to select
 
+Align
+    Veritical left,right,center
+    Hozizontal top bottom center
+
+
 export html , same reactions
  now the styling is not proper , one node is howerd is hovers all the edges
  while howering show the meta data as a popup
 
  Metadata edit, we should have view as json or as field and data
 
+align by Palukx from <a href="https://thenounproject.com/browse/icons/term/align/" target="_blank" title="align Icons">Noun Project</a> (CC BY 3.0)

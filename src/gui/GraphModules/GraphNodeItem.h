@@ -24,7 +24,7 @@ public:
 
     QRectF boundingRect() const override;
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
-
+    QPainterPath shape() const override; // <--- ADD THIS
     void refreshGeometry();
 
     QPointF currentPosition() const;
@@ -65,6 +65,7 @@ protected:
     void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
 
 private:
+
     QRectF calculateNodeRect();
     QRectF calculateContainerRect();
     QPainterPath buildPreviewPath(const QPointF& targetScenePos, GraphNodeItem* targetNode = nullptr) const;

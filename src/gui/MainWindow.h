@@ -8,6 +8,7 @@
 #include <QActionGroup>
 #include <QDockWidget>
 #include <memory>
+#include <optional>
 
 #include "ArchitectureModel.h"
 #include "DbManager.h"
@@ -61,7 +62,18 @@ private:
     void alignVertical();
     void distributeHorizontal();
     void distributeVertical();
-    // void connectSelectedNodes();
+
+    enum class AlignType {
+        Left,
+        Right,
+        CenterH,
+        Top,
+        Bottom,
+        CenterV
+    };
+
+    void alignNodes(AlignType type);
+    NodeId cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> newParentId, qreal offsetX, qreal offsetY);
 
 private:
     QTreeView* navigator_{nullptr};
@@ -75,23 +87,36 @@ private:
     bool isRendering_{false};
 
     QToolBar* graphToolBar_{nullptr};
+    QToolBar* layoutToolBar_{nullptr};
+
     QAction* actionView_{nullptr};
     QAction* actionAdd_{nullptr};
     QAction* actionArch_{nullptr};
     QAction* actionConn_{nullptr};
     QAction* actionEdit_{nullptr};
 
-    NodeId cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> newParentId, qreal offsetX, qreal offsetY);
-
     // Dynamic backend: prevents SQLite / JSON overwrite conflicts
     std::unique_ptr<DbManager> db_{nullptr};
     ArchitectureModel* model_{nullptr};
 
 private slots:
-
     void deleteSelected();
     void copySelectedNode();
+    void connectSelectedNodes();
     void loadThemeFromFile();
     void switchThemePreset(const QString& path);
 
+private:
+    QAction* actionAlignLeft_{nullptr};
+    QAction* actionAlignCenterH_{nullptr};
+    QAction* actionAlignRight_{nullptr};
+
+    QAction* actionAlignTop_{nullptr};
+    QAction* actionAlignCenterV_{nullptr};
+    QAction* actionAlignBottom_{nullptr};
+
+    QAction* actionDistH_{nullptr};
+    QAction* actionDistV_{nullptr};
+    QAction* actionConnect_{nullptr};
+    
 };
