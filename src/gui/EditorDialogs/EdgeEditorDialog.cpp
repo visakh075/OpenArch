@@ -4,6 +4,7 @@
 #include <QVBoxLayout>
 #include <QDialogButtonBox>
 #include <QMessageBox>
+#include <QTabWidget>
 
 EdgeEditorDialog::EdgeEditorDialog(ArchitectureModel* model,
                                    EdgeId edgeId,
@@ -13,6 +14,7 @@ EdgeEditorDialog::EdgeEditorDialog(ArchitectureModel* model,
       edgeId_(edgeId)
 {
     setWindowTitle(edgeId_ == 0 ? "New Edge" : "Edit Edge");
+    resize(520, 480);
 
     EdgeData edge{};
     if (edgeId_ != 0) {
@@ -25,14 +27,26 @@ EdgeEditorDialog::EdgeEditorDialog(ArchitectureModel* model,
         edge = *opt;
     }
 
+    // General Type Form
     typeEdit_ = new QLineEdit(QString::fromStdString(edge.edgeType));
-    metadataEdit_ = new QPlainTextEdit(QString::fromStdString(edge.metadata));
-    attributesEdit_ = new QPlainTextEdit(QString::fromStdString(edge.attributes));
-
     auto* form = new QFormLayout;
-    form->addRow("Type", typeEdit_);
-    form->addRow("Metadata", metadataEdit_);
-    form->addRow("Attributes", attributesEdit_);
+    form->addRow("Connection / Protocol Type", typeEdit_);
+
+    auto* generalTab = new QWidget(this);
+    generalTab->setLayout(form);
+
+    // JSON Tree Editors
+    attributesEditor_ = new JsonTreeEditor(this);
+    attributesEditor_->setJson(QString::fromStdString(edge.attributes));
+
+    metadataEditor_ = new JsonTreeEditor(this);
+    metadataEditor_->setJson(QString::fromStdString(edge.metadata));
+
+    // Tab Widget
+    auto* tabWidget = new QTabWidget(this);
+    tabWidget->addTab(generalTab, "General");
+    tabWidget->addTab(attributesEditor_, "Attributes");
+    tabWidget->addTab(metadataEditor_, "Metadata");
 
     auto* buttons = new QDialogButtonBox(
         QDialogButtonBox::Save | QDialogButtonBox::Cancel);
@@ -40,9 +54,9 @@ EdgeEditorDialog::EdgeEditorDialog(ArchitectureModel* model,
     connect(buttons, &QDialogButtonBox::accepted, this, &EdgeEditorDialog::onSave);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-    auto* main = new QVBoxLayout(this);
-    main->addLayout(form);
-    main->addWidget(buttons);
+    auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->addWidget(tabWidget);
+    mainLayout->addWidget(buttons);
 }
 
 void EdgeEditorDialog::onSave()
@@ -54,9 +68,9 @@ void EdgeEditorDialog::onSave()
     }
 
     EdgeData edge = *opt;
-    edge.edgeType = typeEdit_->text().toStdString();
-    edge.metadata = metadataEdit_->toPlainText().toStdString();
-    edge.attributes = attributesEdit_->toPlainText().toStdString();
+    edge.edgeType   = typeEdit_->text().toStdString();
+    edge.attributes = attributesEditor_->toJsonString(QJsonDocument::Compact).toStdString();
+    edge.metadata   = metadataEditor_->toJsonString(QJsonDocument::Compact).toStdString();
 
     Result r = model_->updateEdge(edge);
     if (!r.ok) {

@@ -6,6 +6,7 @@
 #include <QDialogButtonBox>
 #include <QPushButton>
 #include <QMessageBox>
+#include <QTabWidget>
 
 LayerEditorDialog::LayerEditorDialog(ArchitectureModel* model,
                                      LayerId layerId,
@@ -15,6 +16,7 @@ LayerEditorDialog::LayerEditorDialog(ArchitectureModel* model,
       layerId_(layerId)
 {
     setWindowTitle(layerId_ == 0 ? "New Layer" : "Edit Layer");
+    resize(580, 600);
 
     LayerData layer{};
     if (layerId_ != 0) {
@@ -32,11 +34,15 @@ LayerEditorDialog::LayerEditorDialog(ArchitectureModel* model,
         originalNodes_ = stagedNodes_;
     }
 
+    // Basic Fields
     nameEdit_ = new QLineEdit(QString::fromStdString(layer.name));
     kindEdit_ = new QLineEdit(QString::fromStdString(layer.kind));
-    metadataEdit_ = new QPlainTextEdit(QString::fromStdString(layer.metadata));
-    attributesEdit_ = new QPlainTextEdit(QString::fromStdString(layer.attributes));
 
+    auto* basicForm = new QFormLayout;
+    basicForm->addRow("Name", nameEdit_);
+    basicForm->addRow("Kind", kindEdit_);
+
+    // Node Membership Dual-List
     filterEdit_ = new QLineEdit;
     filterEdit_->setPlaceholderText("Filter available nodes...");
 
@@ -69,12 +75,24 @@ LayerEditorDialog::LayerEditorDialog(ArchitectureModel* model,
     listLayout->addLayout(mid);
     listLayout->addWidget(currentNodes_);
 
-    auto* form = new QFormLayout;
-    form->addRow("Name", nameEdit_);
-    form->addRow("Kind", kindEdit_);
-    form->addRow("Metadata", metadataEdit_);
-    form->addRow("Attributes", attributesEdit_);
-    form->addRow("Nodes", listLayout);
+    basicForm->addRow("Nodes", listLayout);
+
+    // JSON Tree Editors
+    attributesEditor_ = new JsonTreeEditor(this);
+    attributesEditor_->setJson(QString::fromStdString(layer.attributes));
+
+    metadataEditor_ = new JsonTreeEditor(this);
+    metadataEditor_->setJson(QString::fromStdString(layer.metadata));
+
+    // Tab Widget
+    auto* tabWidget = new QTabWidget(this);
+
+    auto* generalTab = new QWidget(this);
+    generalTab->setLayout(basicForm);
+
+    tabWidget->addTab(generalTab, "General");
+    tabWidget->addTab(attributesEditor_, "Attributes");
+    tabWidget->addTab(metadataEditor_, "Metadata");
 
     auto* buttons = new QDialogButtonBox(
         QDialogButtonBox::Save | QDialogButtonBox::Cancel);
@@ -82,9 +100,9 @@ LayerEditorDialog::LayerEditorDialog(ArchitectureModel* model,
     connect(buttons, &QDialogButtonBox::accepted, this, &LayerEditorDialog::onSave);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-    auto* main = new QVBoxLayout(this);
-    main->addLayout(form);
-    main->addWidget(buttons);
+    auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->addWidget(tabWidget);
+    mainLayout->addWidget(buttons);
 }
 
 void LayerEditorDialog::populateMembershipUI()
@@ -139,8 +157,10 @@ void LayerEditorDialog::onSave()
     layer.id = layerId_;
     layer.name = nameEdit_->text().toStdString();
     layer.kind = kindEdit_->text().toStdString();
-    layer.metadata = metadataEdit_->toPlainText().toStdString();
-    layer.attributes = attributesEdit_->toPlainText().toStdString();
+
+    // Export JSON directly from visual tree editors
+    layer.attributes = attributesEditor_->toJsonString(QJsonDocument::Compact).toStdString();
+    layer.metadata   = metadataEditor_->toJsonString(QJsonDocument::Compact).toStdString();
 
     Result r;
     if (!layerId_) {

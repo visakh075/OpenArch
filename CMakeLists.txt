@@ -85,6 +85,8 @@ add_executable(openarch-gui
     src/gui/EditorDialogs/NodeEditorDialog.cpp
     src/gui/EditorDialogs/LayerEditorDialog.cpp
     src/gui/EditorDialogs/EdgeEditorDialog.cpp
+    src/gui/EditorDialogs/JsonTreeEditor.cpp
+    src/gui/WelcomeWidget.cpp
 
     src/gui/GraphModules/GraphNodeItem.cpp
     src/gui/GraphModules/GraphEdgeItem.cpp

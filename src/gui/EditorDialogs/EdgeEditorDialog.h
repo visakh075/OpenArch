@@ -2,8 +2,9 @@
 
 #include <QDialog>
 #include <QLineEdit>
-#include <QPlainTextEdit>
+#include <QTabWidget>
 
+#include "JsonTreeEditor.h"
 #include "ArchitectureModel.h"
 
 class EdgeEditorDialog : public QDialog
@@ -19,10 +20,10 @@ private slots:
     void onSave();
 
 private:
-    ArchitectureModel* model_;
-    EdgeId edgeId_;
+    ArchitectureModel* model_{nullptr};
+    EdgeId edgeId_{0};
 
-    QLineEdit* typeEdit_;
-    QPlainTextEdit* metadataEdit_;
-    QPlainTextEdit* attributesEdit_;
+    QLineEdit* typeEdit_{nullptr};
+    JsonTreeEditor* metadataEditor_{nullptr};
+    JsonTreeEditor* attributesEditor_{nullptr};
 };

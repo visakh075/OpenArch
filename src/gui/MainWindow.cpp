@@ -32,6 +32,9 @@ MainWindow::MainWindow(QWidget* parent)
     setupMenu();
     setupToolbar();
     setupConnections();
+
+    // Start with the welcome view active and canvas controls suspended
+    showWelcome();
 }
 
 MainWindow::~MainWindow()
@@ -64,7 +67,14 @@ void MainWindow::setupUi()
     graphView_->setRenderHint(QPainter::Antialiasing);
     graphView_->setInteractive(true);
 
-    setCentralWidget(graphView_);
+    // Stacked Widget to toggle between Welcome view and Graph Canvas
+    centralStack_ = new QStackedWidget(this);
+    welcomeWidget_ = new WelcomeWidget(this);
+
+    centralStack_->addWidget(welcomeWidget_); // Index 0
+    centralStack_->addWidget(graphView_);     // Index 1
+
+    setCentralWidget(centralStack_);
 
     ThemeEditorDock* themeDock = new ThemeEditorDock(this);
     themeDock->setObjectName("ThemeDock");
@@ -101,11 +111,42 @@ void MainWindow::setupUi()
     setDockNestingEnabled(true);
 }
 
+void MainWindow::showWelcome()
+{
+    centralStack_->setCurrentWidget(welcomeWidget_);
+    if (architectureDock_) architectureDock_->hide();
+    if (graphToolBar_) graphToolBar_->setEnabled(false);
+    if (layoutToolBar_) layoutToolBar_->setEnabled(false);
+}
+
+void MainWindow::showCanvas()
+{
+    centralStack_->setCurrentWidget(graphView_);
+    if (architectureDock_) architectureDock_->show();
+    if (graphToolBar_) graphToolBar_->setEnabled(true);
+    if (layoutToolBar_) layoutToolBar_->setEnabled(true);
+}
+
+void MainWindow::createNewDatabase()
+{
+    QString file = QFileDialog::getSaveFileName(
+        this,
+        "Create New Architecture Project",
+        "",
+        "SQLite Databases (*.db *.sqlite *.sqlite3);;Architecture JSON (*.json);;All Files (*.*)");
+
+    if (file.isEmpty())
+        return;
+
+    setDb(file.toStdString());
+}
+
 void MainWindow::setupMenu()
 {
     auto* fileMenu = menuBar()->addMenu("&File");
 
-    fileMenu->addAction("Open DB", this, &MainWindow::openDatabase);
+    fileMenu->addAction("New Project...", this, &MainWindow::createNewDatabase);
+    fileMenu->addAction("Open DB...", this, &MainWindow::openDatabase);
     fileMenu->addSeparator();
     fileMenu->addAction("Exit", this, &QWidget::close);
 
@@ -303,6 +344,19 @@ void MainWindow::setupToolbar()
 
 void MainWindow::setupConnections()
 {
+    // Welcome Widget Signals
+    connect(welcomeWidget_, &WelcomeWidget::openFileClicked,
+            this, &MainWindow::openDatabase);
+
+    connect(welcomeWidget_, &WelcomeWidget::createNewClicked,
+            this, &MainWindow::createNewDatabase);
+
+    connect(welcomeWidget_, &WelcomeWidget::recentFileSelected,
+            this, [this](const QString& path) {
+                setDb(path.toStdString());
+            });
+
+    // Scene & View Signals
     connect(navigator_, &QTreeView::doubleClicked,
             this, &MainWindow::onTreeItemDoubleClicked);
 
@@ -402,6 +456,9 @@ void MainWindow::setDb(const std::string& db_path)
     model_ = new ArchitectureModel(*db_);
     populateNavigator();
     renderGraph(model_->extractGraph(std::nullopt));
+
+    // Project opened successfully: switch from Welcome to Canvas
+    showCanvas();
 }
 
 void MainWindow::openDatabase()
@@ -712,7 +769,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
             {
                 auto* edgeItem = new GraphEdgeItem(model_, e.id, srcNode, dstNode);
                 edgeItem->setFlag(QGraphicsItem::ItemIsSelectable, true);
-                // edgeItem->setZValue(10.0);
                 scene_->addItem(edgeItem);
                 edgeItem->updateEndpoints();
             }

@@ -2,10 +2,11 @@
 
 #include <QDialog>
 #include <QLineEdit>
-#include <QPlainTextEdit>
 #include <QListWidget>
+#include <QTabWidget>
 #include <unordered_set>
 
+#include "JsonTreeEditor.h"
 #include "ArchitectureModel.h"
 
 class LayerEditorDialog : public QDialog {
@@ -24,17 +25,18 @@ private slots:
 private:
     void populateMembershipUI();
 
-    ArchitectureModel* model_;
-    LayerId layerId_;
+    ArchitectureModel* model_{nullptr};
+    LayerId layerId_{0};
 
-    QLineEdit* nameEdit_;
-    QLineEdit* kindEdit_;
-    QPlainTextEdit* metadataEdit_;
-    QPlainTextEdit* attributesEdit_;
+    QLineEdit* nameEdit_{nullptr};
+    QLineEdit* kindEdit_{nullptr};
 
-    QLineEdit* filterEdit_;
-    QListWidget* availableNodes_;
-    QListWidget* currentNodes_;
+    JsonTreeEditor* metadataEditor_{nullptr};
+    JsonTreeEditor* attributesEditor_{nullptr};
+
+    QLineEdit* filterEdit_{nullptr};
+    QListWidget* availableNodes_{nullptr};
+    QListWidget* currentNodes_{nullptr};
 
     std::unordered_set<NodeId> stagedNodes_;
     std::unordered_set<NodeId> originalNodes_;

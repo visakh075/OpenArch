@@ -22,25 +22,30 @@ int main(int argc, char *argv[])
 
     QCommandLineOption dbOption(
         QStringList() << "d" << "db",
-        "SQLite database file path",
+        "SQLite database or JSON architecture file path",
         "db");
 
     parser.addOption(themeOption);
     parser.addOption(dbOption);
+    parser.addPositionalArgument("file", "Optional file to open directly (DB or JSON)", "[file]");
 
     parser.process(app);
 
     QString themePath = parser.value(themeOption);
     QString dbPath    = parser.value(dbOption);
 
-    // Fall back to testdb.db if no CLI argument is provided
-    if (dbPath.isEmpty())
+    // Support opening files directly via positional argument (e.g., ./openarch-gui arch.json)
+    const QStringList positionalArgs = parser.positionalArguments();
+    if (dbPath.isEmpty() && !positionalArgs.isEmpty())
     {
-        dbPath = "testdb.db";
+        dbPath = positionalArgs.first();
     }
 
     qDebug() << "Theme:" << (themePath.isEmpty() ? "dark.json (default)" : themePath);
-    qDebug() << "DB:" << dbPath;
+    if (!dbPath.isEmpty())
+    {
+        qDebug() << "DB:" << dbPath;
+    }
 
     /*
      * THEME INITIALIZATION
@@ -60,7 +65,13 @@ int main(int argc, char *argv[])
      * MAIN WINDOW
      */
     MainWindow w;
-    w.setDb(dbPath.toStdString());
+
+    // Only load database if explicitly specified via CLI; otherwise show Welcome view
+    if (!dbPath.isEmpty())
+    {
+        w.setDb(dbPath.toStdString());
+    }
+
     w.show();
 
     return app.exec();

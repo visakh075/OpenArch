@@ -6,6 +6,7 @@
 #include <QDialogButtonBox>
 #include <QPushButton>
 #include <QMessageBox>
+#include <QTabWidget>
 
 NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
                                    NodeId nodeId,
@@ -15,6 +16,7 @@ NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
       nodeId_(nodeId)
 {
     setWindowTitle(nodeId_ == 0 ? "New Node" : "Edit Node");
+    resize(580, 620);
 
     NodeData node{};
     if (nodeId_ != 0) {
@@ -33,14 +35,18 @@ NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
         originalLayers_ = stagedLayers_;
     }
 
+    // Basic Fields
     nameEdit_ = new QLineEdit(QString::fromStdString(node.name));
     typeEdit_ = new QLineEdit(QString::fromStdString(node.type));
     parentContainerCombo_ = new QComboBox();
     populateParentContainerUI(node.parentId);
 
-    metadataEdit_ = new QPlainTextEdit(QString::fromStdString(node.metadata));
-    attributesEdit_ = new QPlainTextEdit(QString::fromStdString(node.attributes));
+    auto* basicForm = new QFormLayout;
+    basicForm->addRow("Name", nameEdit_);
+    basicForm->addRow("Type", typeEdit_);
+    basicForm->addRow("Parent Container", parentContainerCombo_);
 
+    // Layer Membership Dual-List
     filterEdit_ = new QLineEdit;
     filterEdit_->setPlaceholderText("Filter available layers...");
 
@@ -73,13 +79,24 @@ NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
     listLayout->addLayout(mid);
     listLayout->addWidget(currentLayers_);
 
-    auto* form = new QFormLayout;
-    form->addRow("Name", nameEdit_);
-    form->addRow("Type", typeEdit_);
-    form->addRow("Parent Container", parentContainerCombo_);
-    form->addRow("Metadata", metadataEdit_);
-    form->addRow("Attributes", attributesEdit_);
-    form->addRow("Layers", listLayout);
+    basicForm->addRow("Layers", listLayout);
+
+    // JSON Tree Editors
+    attributesEditor_ = new JsonTreeEditor(this);
+    attributesEditor_->setJson(QString::fromStdString(node.attributes));
+
+    metadataEditor_ = new JsonTreeEditor(this);
+    metadataEditor_->setJson(QString::fromStdString(node.metadata));
+
+    // Tab Interface
+    auto* tabWidget = new QTabWidget(this);
+
+    auto* generalTab = new QWidget(this);
+    generalTab->setLayout(basicForm);
+
+    tabWidget->addTab(generalTab, "General");
+    tabWidget->addTab(attributesEditor_, "Attributes");
+    tabWidget->addTab(metadataEditor_, "Metadata");
 
     auto* buttons = new QDialogButtonBox(
         QDialogButtonBox::Save | QDialogButtonBox::Cancel);
@@ -87,9 +104,9 @@ NodeEditorDialog::NodeEditorDialog(ArchitectureModel* model,
     connect(buttons, &QDialogButtonBox::accepted, this, &NodeEditorDialog::onSave);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-    auto* main = new QVBoxLayout(this);
-    main->addLayout(form);
-    main->addWidget(buttons);
+    auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->addWidget(tabWidget);
+    mainLayout->addWidget(buttons);
 }
 
 void NodeEditorDialog::populateParentContainerUI(std::optional<NodeId> currentParentId)
@@ -100,7 +117,6 @@ void NodeEditorDialog::populateParentContainerUI(std::optional<NodeId> currentPa
     int selectedIdx = 0;
 
     for (const auto& n : model_->nodes()) {
-        // A node cannot be its own parent
         if (nodeId_ != 0 && n.id == nodeId_)
             continue;
 
@@ -176,8 +192,10 @@ void NodeEditorDialog::onSave()
     node.id = nodeId_;
     node.name = nameEdit_->text().toStdString();
     node.type = typeEdit_->text().toStdString();
-    node.metadata = metadataEdit_->toPlainText().toStdString();
-    node.attributes = attributesEdit_->toPlainText().toStdString();
+
+    // Export serialized JSON directly from visual tree editors
+    node.attributes = attributesEditor_->toJsonString(QJsonDocument::Compact).toStdString();
+    node.metadata   = metadataEditor_->toJsonString(QJsonDocument::Compact).toStdString();
 
     // Extract selected parent container
     qulonglong selId = parentContainerCombo_->currentData().toULongLong();

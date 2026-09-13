@@ -9,6 +9,8 @@
 #include <QDockWidget>
 #include <memory>
 #include <optional>
+#include <QStackedWidget>
+#include "WelcomeWidget.h"
 
 #include "ArchitectureModel.h"
 #include "DbManager.h"
@@ -75,7 +77,6 @@ private:
     void alignNodes(AlignType type);
     NodeId cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> newParentId, qreal offsetX, qreal offsetY);
 
-private:
     QTreeView* navigator_{nullptr};
     QDockWidget* architectureDock_{nullptr};
     QStandardItemModel* navModel_{nullptr};
@@ -95,18 +96,7 @@ private:
     QAction* actionConn_{nullptr};
     QAction* actionEdit_{nullptr};
 
-    // Dynamic backend: prevents SQLite / JSON overwrite conflicts
-    std::unique_ptr<DbManager> db_{nullptr};
-    ArchitectureModel* model_{nullptr};
 
-private slots:
-    void deleteSelected();
-    void copySelectedNode();
-    void connectSelectedNodes();
-    void loadThemeFromFile();
-    void switchThemePreset(const QString& path);
-
-private:
     QAction* actionAlignLeft_{nullptr};
     QAction* actionAlignCenterH_{nullptr};
     QAction* actionAlignRight_{nullptr};
@@ -118,5 +108,23 @@ private:
     QAction* actionDistH_{nullptr};
     QAction* actionDistV_{nullptr};
     QAction* actionConnect_{nullptr};
-    
+
+    QStackedWidget* centralStack_{nullptr};
+    WelcomeWidget* welcomeWidget_{nullptr};
+    void showWelcome();
+    void showCanvas();
+    void createNewDatabase();
+
+
+    // Dynamic backend: prevents SQLite / JSON overwrite conflicts
+    std::unique_ptr<DbManager> db_{nullptr};
+    ArchitectureModel* model_{nullptr};
+
+private slots:
+    void deleteSelected();
+    void copySelectedNode();
+    void connectSelectedNodes();
+    void loadThemeFromFile();
+    void switchThemePreset(const QString& path);
+
 };

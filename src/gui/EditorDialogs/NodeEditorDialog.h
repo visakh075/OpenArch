@@ -2,12 +2,13 @@
 
 #include <QDialog>
 #include <QLineEdit>
-#include <QPlainTextEdit>
 #include <QListWidget>
 #include <QComboBox>
+#include <QTabWidget>
 #include <unordered_set>
 #include <optional>
 
+#include "JsonTreeEditor.h"
 #include "ArchitectureModel.h"
 
 class NodeEditorDialog : public QDialog {
@@ -31,15 +32,16 @@ private:
     NodeId nodeId_;
     std::optional<NodeId> initialParentId_{std::nullopt};
 
-    QLineEdit* nameEdit_;
-    QLineEdit* typeEdit_;
-    QComboBox* parentContainerCombo_;
-    QPlainTextEdit* metadataEdit_;
-    QPlainTextEdit* attributesEdit_;
+    QLineEdit* nameEdit_{nullptr};
+    QLineEdit* typeEdit_{nullptr};
+    QComboBox* parentContainerCombo_{nullptr};
 
-    QLineEdit* filterEdit_;
-    QListWidget* availableLayers_;
-    QListWidget* currentLayers_;
+    JsonTreeEditor* metadataEditor_{nullptr};
+    JsonTreeEditor* attributesEditor_{nullptr};
+
+    QLineEdit* filterEdit_{nullptr};
+    QListWidget* availableLayers_{nullptr};
+    QListWidget* currentLayers_{nullptr};
 
     std::unordered_set<LayerId> stagedLayers_;
     std::unordered_set<LayerId> originalLayers_;
