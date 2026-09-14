@@ -4,6 +4,7 @@
 #include "gui/EditorDialogs/NodeEditorDialog.h"
 #include "gui/theme/GraphThemeManager.h"
 
+#include <QMessageBox>
 #include <QPainter>
 #include <QCursor>
 #include <QMenu>
@@ -44,6 +45,7 @@ GraphNodeItem::~GraphNodeItem()
 
 bool GraphNodeItem::isContainer() const
 {
+    // Any node with children acts as a container
     for (auto* item : childItems())
     {
         if (dynamic_cast<GraphNodeItem*>(item))
@@ -52,7 +54,11 @@ bool GraphNodeItem::isContainer() const
 
     if (!model_) return false;
     auto n = model_->getNodeById(nodeId_);
-    return n && (n->type == "container" || n->type == "Container");
+    if (!n) return false;
+
+    QString typeStr = QString::fromStdString(n->type).trimmed().toLower();
+    return (typeStr == "container" || typeStr == "group" || 
+            typeStr == "box" || typeStr == "package" || typeStr == "cluster");
 }
 
 void GraphNodeItem::setContainerSizing(ContainerSizing mode)
@@ -88,18 +94,26 @@ void GraphNodeItem::adoptChild(GraphNodeItem* child)
     }
 
     QPointF originalScenePos = child->scenePos();
+    QRectF childBounds = child->boundingRect();
 
-    child->setParentItem(this);
-
-    // Initial position inside the parent container body (below header)
+    // Map incoming scene position to parent coordinate space
     QPointF localPos = mapFromScene(originalScenePos);
     qreal minY = cachedHeaderRect_.height() + 10.0;
     qreal minX = 10.0;
 
     localPos.setX(std::max(minX, localPos.x()));
     localPos.setY(std::max(minY, localPos.y()));
-    child->setPos(localPos);
 
+    // Expand parent dimensions if the incoming child exceeds current boundaries
+    const qreal margin = 20.0;
+    qreal requiredWidth = localPos.x() + childBounds.width() + margin;
+    qreal requiredHeight = localPos.y() + childBounds.height() + margin;
+
+    manualWidth_ = std::max(manualWidth_, requiredWidth);
+    manualHeight_ = std::max(manualHeight_, requiredHeight);
+
+    child->setParentItem(this);
+    child->setPos(localPos);
     child->setZValue(this->zValue() + 1);
 
     if (model_)
@@ -222,7 +236,7 @@ QRectF GraphNodeItem::calculateContainerRect()
             computedHeight = minH;
         }
     }
-    else
+    else // ContainerSizing::Manual
     {
         computedWidth  = manualWidth_;
         computedHeight = manualHeight_;
@@ -231,6 +245,8 @@ QRectF GraphNodeItem::calculateContainerRect()
         {
             computedWidth  = std::max(computedWidth, childrenUnion.right() + padding);
             computedHeight = std::max(computedHeight, childrenUnion.bottom() + padding);
+            manualWidth_ = computedWidth;
+            manualHeight_ = computedHeight;
         }
     }
 
@@ -249,54 +265,6 @@ QRectF GraphNodeItem::boundingRect() const
     qreal pad = (penWidth / 2.0) + 1.0;
     return cachedRect_.adjusted(-pad, -pad, pad, pad);
 }
-
-// QPainterPath GraphNodeItem::shape() const
-// {
-//     if (isContainer())
-//     {
-//         const auto& theme = GraphThemeManager::instance()->theme();
-//         const GraphNodeState* state = isSelected() ? &theme.node.selected 
-//                                     : (hovered_ ? &theme.node.hover : &theme.node.normal);
-
-//         qreal borderWidth = std::max<qreal>(state->borderWidth, 2.0);
-
-//         // 1. Header is fully clickable
-//         QPainterPath headerPath;
-//         headerPath.addRoundedRect(cachedHeaderRect_, state->radius, state->radius);
-
-//         // 2. Outer container boundary
-//         QPainterPath outerPath;
-//         outerPath.addRoundedRect(cachedRect_, state->radius, state->radius);
-
-//         // 3. Inner cavity: starts strictly below the header and insets by border thickness
-//         QRectF cavityRect = cachedRect_.adjusted(
-//             borderWidth, 
-//             cachedHeaderRect_.height(), 
-//             -borderWidth, 
-//             -borderWidth
-//         );
-
-//         QPainterPath cavityPath;
-//         if (cavityRect.isValid())
-//         {
-//             cavityPath.addRect(cavityRect);
-//         }
-
-//         // Clickable region = Header + Perimeter border (inner cavity is transparent to mouse clicks)
-//         QPainterPath interactiveRegion = headerPath;
-//         interactiveRegion.addPath(outerPath.subtracted(cavityPath));
-//         return interactiveRegion;
-//     }
-
-//     // Standard leaf node: full body remains clickable
-//     QPainterPath defaultPath;
-//     const auto& theme = GraphThemeManager::instance()->theme();
-//     const GraphNodeState* state = isSelected() ? &theme.node.selected 
-//                                 : (hovered_ ? &theme.node.hover : &theme.node.normal);
-//     defaultPath.addRoundedRect(cachedRect_, state->radius, state->radius);
-//     return defaultPath;
-// }
-
 
 QPainterPath GraphNodeItem::shape() const
 {
@@ -376,35 +344,22 @@ void GraphNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
 
 QVariant GraphNodeItem::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant& value)
 {
-    // 1. Constrain movement inside the parent container boundary
+    // Constrain position relative to parent header and left edge
     if (change == QGraphicsItem::ItemPositionChange && scene())
     {
         if (auto* parentNode = dynamic_cast<GraphNodeItem*>(parentItem()))
         {
             QPointF newPos = value.toPointF();
-            QRectF myBounds = boundingRect();
-
             qreal minX = 10.0;
             qreal minY = parentNode->cachedHeaderRect_.height() + 10.0;
 
-            // Prevent crossing the top header bar or left edge
             newPos.setX(std::max(minX, newPos.x()));
             newPos.setY(std::max(minY, newPos.y()));
-
-            // In manual mode, clamp to bottom-right bounds
-            if (parentNode->sizingMode_ == ContainerSizing::Manual)
-            {
-                qreal maxX = std::max(minX, parentNode->cachedRect_.width() - myBounds.width() - 10.0);
-                qreal maxY = std::max(minY, parentNode->cachedRect_.height() - myBounds.height() - 10.0);
-                newPos.setX(std::min(newPos.x(), maxX));
-                newPos.setY(std::min(newPos.y(), maxY));
-            }
 
             return newPos;
         }
     }
 
-    // 2. Refresh edges and container size when actual position changes
     if (change == QGraphicsItem::ItemPositionHasChanged ||
         change == QGraphicsItem::ItemScenePositionHasChanged)
     {
@@ -502,7 +457,13 @@ void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
         return;
     }
 
-    // Edge creation interaction (Shift + Drag)
+    if (event->button() == Qt::LeftButton)
+    {
+        pressScenePos_ = event->scenePos();
+        dragStartScenePos_ = event->scenePos();
+        isDraggingNode_ = false;
+    }
+
     if (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ShiftModifier))
     {
         isConnecting_ = true;
@@ -518,10 +479,8 @@ void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
         return;
     }
 
-    // Pass-through check for containers
     if (isContainer() && event->button() == Qt::LeftButton)
     {
-        // If clicked outside the header bar, check whether an edge is under the cursor
         if (!cachedHeaderRect_.contains(event->pos()))
         {
             QList<QGraphicsItem*> itemsAtPoint = scene()->items(event->scenePos());
@@ -529,7 +488,6 @@ void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
             {
                 if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
                 {
-                    // Pass the event directly to the edge and do not select/drag the container
                     scene()->clearSelection();
                     edge->setSelected(true);
                     event->accept();
@@ -564,63 +522,13 @@ void GraphNodeItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
         return;
     }
 
+    if (!isConnecting_ && (event->scenePos() - dragStartScenePos_).manhattanLength() > 4.0)
+    {
+        isDraggingNode_ = true;
+    }
+
     QGraphicsObject::mouseMoveEvent(event);
 }
-
-// void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
-// {
-//     if (!scene() || scene()->views().isEmpty())
-//         return;
-
-//     auto* view = dynamic_cast<GraphView*>(scene()->views().first());
-//     if (view && view->mode() == GraphView::Mode::View)
-//     {
-//         event->ignore();
-//         return;
-//     }
-
-//     if (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ShiftModifier))
-//     {
-//         isConnecting_ = true;
-
-//         tempPathItem_ = new QGraphicsPathItem();
-//         QPen p(QColor(0, 180, 216), 2, Qt::DashLine, Qt::RoundCap, Qt::RoundJoin);
-//         tempPathItem_->setPen(p);
-//         tempPathItem_->setZValue(100);
-//         tempPathItem_->setPath(buildPreviewPath(event->scenePos()));
-//         scene()->addItem(tempPathItem_);
-
-//         event->accept();
-//         return;
-//     }
-
-//     QGraphicsObject::mousePressEvent(event);
-// }
-
-// void GraphNodeItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
-// {
-//     if (isConnecting_ && tempPathItem_)
-//     {
-//         GraphNodeItem* targetNode = nullptr;
-//         for (QGraphicsItem* item : scene()->items(event->scenePos()))
-//         {
-//             if (auto* node = dynamic_cast<GraphNodeItem*>(item))
-//             {
-//                 if (node != this)
-//                 {
-//                     targetNode = node;
-//                     break;
-//                 }
-//             }
-//         }
-
-//         tempPathItem_->setPath(buildPreviewPath(event->scenePos(), targetNode));
-//         event->accept();
-//         return;
-//     }
-
-//     QGraphicsObject::mouseMoveEvent(event);
-// }
 
 void GraphNodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 {
@@ -657,7 +565,136 @@ void GraphNodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
         return;
     }
 
+    // Call base handler to let Qt commit coordinates
     QGraphicsObject::mouseReleaseEvent(event);
+
+    qreal moveDist = (event->scenePos() - pressScenePos_).manhattanLength();
+
+    if ((isDraggingNode_ || moveDist > 4.0) && scene())
+    {
+        isDraggingNode_ = false;
+
+        QPointF dropPoint = event->scenePos();
+        QRectF mySceneRect = mapRectToScene(boundingRect());
+
+        GraphNodeItem* targetParent = nullptr;
+        qreal bestOverlapArea = 0.0;
+
+        // 1. Direct hit-test: Is the mouse cursor positioned over another node?
+        for (QGraphicsItem* item : scene()->items(dropPoint))
+        {
+            auto* candidate = dynamic_cast<GraphNodeItem*>(item);
+            if (!candidate || candidate == this)
+                continue;
+
+            // Prevent circular parenting
+            bool isDescendant = false;
+            QGraphicsItem* p = candidate->parentItem();
+            while (p)
+            {
+                if (p == this)
+                {
+                    isDescendant = true;
+                    break;
+                }
+                p = p->parentItem();
+            }
+
+            if (!isDescendant)
+            {
+                targetParent = candidate;
+                break;
+            }
+        }
+
+        // 2. Fallback: Area intersection (covers children that are larger than the target parent)
+        if (!targetParent)
+        {
+            for (QGraphicsItem* item : scene()->items())
+            {
+                auto* candidate = dynamic_cast<GraphNodeItem*>(item);
+                if (!candidate || candidate == this)
+                    continue;
+
+                bool isDescendant = false;
+                QGraphicsItem* p = candidate->parentItem();
+                while (p)
+                {
+                    if (p == this)
+                    {
+                        isDescendant = true;
+                        break;
+                    }
+                    p = p->parentItem();
+                }
+                if (isDescendant)
+                    continue;
+
+                QRectF candRect = candidate->mapRectToScene(candidate->boundingRect());
+                QRectF overlap = mySceneRect.intersected(candRect);
+
+                if (overlap.isValid() && !overlap.isEmpty())
+                {
+                    qreal area = overlap.width() * overlap.height();
+                    if (area > bestOverlapArea)
+                    {
+                        bestOverlapArea = area;
+                        targetParent = candidate;
+                    }
+                }
+            }
+        }
+
+        // Scenario 1: Dropped over another node
+        if (targetParent && parentItem() != targetParent)
+        {
+            QString nodeName = displayTitle();
+            QString parentName = targetParent->displayTitle();
+
+            QWidget* parentWidget = (!scene()->views().isEmpty()) ? scene()->views().first() : nullptr;
+
+            auto reply = QMessageBox::question(
+                parentWidget,
+                "Add to Container",
+                QString("Add '%1' to '%2'?").arg(nodeName, parentName),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::Yes);
+
+            if (reply == QMessageBox::Yes)
+            {
+                targetParent->adoptChild(this);
+            }
+            else
+            {
+                refreshGeometry();
+            }
+        }
+        // Scenario 2: Dragged completely away from current parent container
+        else if (!targetParent && parentItem() != nullptr)
+        {
+            auto* curParent = dynamic_cast<GraphNodeItem*>(parentItem());
+            if (curParent)
+            {
+                QWidget* parentWidget = (!scene()->views().isEmpty()) ? scene()->views().first() : nullptr;
+
+                auto reply = QMessageBox::question(
+                    parentWidget,
+                    "Remove from Container",
+                    QString("Remove '%1' from '%2'?").arg(displayTitle(), curParent->displayTitle()),
+                    QMessageBox::Yes | QMessageBox::No,
+                    QMessageBox::Yes);
+
+                if (reply == QMessageBox::Yes)
+                {
+                    curParent->releaseChild(this);
+                }
+                else
+                {
+                    refreshGeometry();
+                }
+            }
+        }
+    }
 
     if (model_)
     {
@@ -763,7 +800,7 @@ QPainterPath GraphNodeItem::buildPreviewPath(const QPointF& targetScenePos, Grap
 {
     QPainterPath path;
 
-    QRectF srcRect = mapToScene(boundingRect()).boundingRect();
+    QRectF srcRect = mapRectToScene(boundingRect());
     QPointF srcCenter = srcRect.center();
 
     QRectF dstRect;
@@ -771,7 +808,7 @@ QPainterPath GraphNodeItem::buildPreviewPath(const QPointF& targetScenePos, Grap
 
     if (targetNode && targetNode != this)
     {
-        dstRect = targetNode->mapToScene(targetNode->boundingRect()).boundingRect();
+        dstRect = targetNode->mapRectToScene(targetNode->boundingRect());
         dstCenter = dstRect.center();
     }
     else
@@ -835,6 +872,7 @@ QPainterPath GraphNodeItem::buildPreviewPath(const QPointF& targetScenePos, Grap
     if (overlapX && !overlapY)
     {
         path.lineTo(p1.x(), midY);
+        // path.lineTo(EndPoint(p1.x(), midY).x(), midY);
         path.lineTo(p2.x(), midY);
     }
     else if (overlapY && !overlapX)

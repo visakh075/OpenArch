@@ -312,6 +312,14 @@ void GraphView::moveSelectionTo(const QPointF& target)
             node->setPos(node->pos() + delta);
     }
 }
+static QString toCssRgba(const QColor& c)
+{
+    return QString("rgba(%1, %2, %3, %4)")
+        .arg(c.red())
+        .arg(c.green())
+        .arg(c.blue())
+        .arg(c.alphaF(), 0, 'f', 2);
+}
 
 void GraphView::exportToInteractiveHtml()
 {
@@ -325,10 +333,29 @@ void GraphView::exportToInteractiveHtml()
         return;
 
     const auto& theme = GraphThemeManager::instance()->theme();
-    const int padding = 40;
+    const int padding = 60;
     QRectF sceneBounds = scene()->itemsBoundingRect().adjusted(-padding, -padding, padding, padding);
     if (sceneBounds.isNull() || sceneBounds.isEmpty())
-        sceneBounds = QRectF(0, 0, 800, 600);
+        sceneBounds = QRectF(0, 0, 1000, 700);
+
+    std::vector<GraphNodeItem*> containers;
+    std::vector<GraphNodeItem*> leafNodes;
+    std::vector<GraphEdgeItem*> edges;
+
+    for (QGraphicsItem* item : scene()->items())
+    {
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+        {
+            if (node->isContainer())
+                containers.push_back(node);
+            else
+                leafNodes.push_back(node);
+        }
+        else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+        {
+            edges.push_back(edge);
+        }
+    }
 
     QTextStream out(&file);
 
@@ -336,55 +363,119 @@ void GraphView::exportToInteractiveHtml()
     out << "<meta charset=\"utf-8\"/>\n";
     out << "<title>OpenArch Diagram</title>\n";
     out << "<style>\n";
-    out << "  body { margin: 0; padding: 0; background: " << theme.view.background.name() 
-        << "; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: auto; font-family: sans-serif; }\n";
-    out << "  svg { background: " << theme.view.background.name() 
-        << "; box-shadow: 0 4px 20px rgba(0,0,0,0.3); border-radius: 8px; }\n";
+    out << "  * { box-sizing: border-box; }\n";
+    out << "  body { margin: 0; padding: 0; background: " << toCssRgba(theme.view.background) 
+        << "; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden; width: 100vw; height: 100vh; display: flex; }\n";
+    out << "  #canvas-container { flex: 1; height: 100%; position: relative; cursor: grab; overflow: hidden; }\n";
+    out << "  #canvas-container:active { cursor: grabbing; }\n";
+    out << "  svg { width: 100%; height: 100%; display: block; }\n";
 
+    // --- Leaf Nodes ---
     out << "  .graph-node { cursor: pointer; }\n";
-    out << "  .graph-node rect { fill: " << theme.node.normal.background.name(QColor::HexRgb) 
-        << "; stroke: " << theme.node.normal.border.name() 
+    out << "  .graph-node rect.body { fill: " << toCssRgba(theme.node.normal.background) 
+        << "; stroke: " << toCssRgba(theme.node.normal.border) 
         << "; stroke-width: " << theme.node.normal.borderWidth 
-        << "; rx: " << theme.node.normal.radius << "px; transition: all 0.15s ease; }\n";
-    out << "  .graph-node:hover rect { fill: " << theme.node.hover.background.name() 
-        << "; stroke: " << theme.node.hover.border.name() 
+        << "px; rx: " << theme.node.normal.radius << "px; transition: all 0.15s ease; }\n";
+    out << "  .graph-node:hover rect.body { fill: " << toCssRgba(theme.node.hover.background)
+        << "; stroke: " << toCssRgba(theme.node.hover.border) 
         << "; stroke-width: " << theme.node.hover.borderWidth 
-        << "; filter: drop-shadow(0 0 6px " << theme.node.hover.border.name() << "); }\n";
-    out << "  .graph-node .title { fill: " << theme.node.normal.title.color.name() 
+        << "px; filter: drop-shadow(0 0 6px " << toCssRgba(theme.node.hover.border) << "); }\n";
+    out << "  .graph-node text.title { fill: " << toCssRgba(theme.node.normal.title.color) 
         << "; font-size: " << theme.node.normal.title.size 
         << "px; font-weight: " << (theme.node.normal.title.bold ? "bold" : "normal") 
         << "; pointer-events: none; }\n";
-    out << "  .graph-node:hover .title { fill: " << theme.node.hover.title.color.name() << "; }\n";
-    out << "  .graph-node .body { fill: " << theme.node.normal.body.color.name() 
+    out << "  .graph-node:hover text.title { fill: " << toCssRgba(theme.node.hover.title.color) << "; }\n";
+    out << "  .graph-node text.body { fill: " << toCssRgba(theme.node.normal.body.color) 
         << "; font-size: " << theme.node.normal.body.size << "px; pointer-events: none; }\n";
-    out << "  .graph-node:hover .body { fill: " << theme.node.hover.body.color.name() << "; }\n";
+    out << "  .graph-node:hover text.body { fill: " << toCssRgba(theme.node.hover.body.color) << "; }\n";
 
+    // --- Containers ---
+    QColor containerBg = theme.node.normal.background;
+    containerBg.setAlpha(45);
+    QColor containerHeaderBg = theme.node.normal.border;
+    containerHeaderBg.setAlpha(35);
+
+    out << "  .graph-container rect.box { fill: " << toCssRgba(containerBg) 
+        << "; stroke: " << toCssRgba(theme.node.normal.border) 
+        << "; stroke-width: " << theme.node.normal.borderWidth 
+        << "px; stroke-dasharray: 6 4; rx: " << theme.node.normal.radius << "px; }\n";
+    out << "  .graph-container rect.header { fill: " << toCssRgba(containerHeaderBg) 
+        << "; rx: " << theme.node.normal.radius << "px; }\n";
+    out << "  .graph-container text.header-title { fill: " << toCssRgba(theme.node.normal.title.color) 
+        << "; font-size: 13px; font-weight: bold; pointer-events: none; }\n";
+
+    // --- Edges ---
     out << "  .graph-edge { cursor: pointer; }\n";
-    out << "  .graph-edge path.line { fill: none; stroke: " << theme.edge.normal.lineColor.name() 
-        << "; stroke-width: " << theme.edge.normal.lineWidth << "; transition: all 0.15s ease; }\n";
-    out << "  .graph-edge polygon.arrow { fill: " << theme.edge.normal.arrow.fillColor.name() 
-        << "; stroke: " << theme.edge.normal.arrow.lineColor.name() 
-        << "; stroke-width: " << theme.edge.normal.arrow.lineWidth << "; transition: all 0.15s ease; }\n";
-    out << "  .graph-edge:hover path.line { stroke: " << theme.edge.hover.lineColor.name() 
+    out << "  .graph-edge path.line { fill: none; stroke: " << toCssRgba(theme.edge.normal.lineColor) 
+        << "; stroke-width: " << theme.edge.normal.lineWidth << "px; transition: stroke 0.15s ease, stroke-width 0.15s ease; }\n";
+    out << "  .graph-edge polygon.arrow { fill: " << toCssRgba(theme.edge.normal.arrow.fillColor) 
+        << "; stroke: " << toCssRgba(theme.edge.normal.arrow.lineColor) 
+        << "; stroke-width: " << theme.edge.normal.arrow.lineWidth << "px; transition: fill 0.15s ease; }\n";
+    out << "  .graph-edge:hover path.line { stroke: " << toCssRgba(theme.edge.hover.lineColor) 
         << "; stroke-width: " << theme.edge.hover.lineWidth 
-        << "; filter: drop-shadow(0 0 4px " << theme.edge.hover.lineColor.name() << "); }\n";
-    out << "  .graph-edge:hover polygon.arrow { fill: " << theme.edge.hover.arrow.fillColor.name() 
-        << "; stroke: " << theme.edge.hover.arrow.lineColor.name() << "; }\n";
-    out << "  .graph-edge text { fill: " << theme.edge.normal.label.textColor.name() 
+        << "px; filter: drop-shadow(0 0 4px " << toCssRgba(theme.edge.hover.lineColor) << "); }\n";
+    out << "  .graph-edge:hover polygon.arrow { fill: " << toCssRgba(theme.edge.hover.arrow.fillColor) 
+        << "; stroke: " << toCssRgba(theme.edge.hover.arrow.lineColor) << "; }\n";
+    out << "  .graph-edge text { fill: " << toCssRgba(theme.edge.normal.label.textColor) 
         << "; font-size: " << theme.edge.normal.label.fontSize << "px; pointer-events: none; }\n";
-    out << "  .graph-edge:hover text { fill: " << theme.edge.hover.label.textColor.name() 
-        << "; font-weight: bold; }\n";
+    out << "  .graph-edge rect.label-bg { fill: " << toCssRgba(theme.edge.normal.label.backgroundColor)
+        << "; stroke: " << toCssRgba(theme.edge.normal.label.borderColor)
+        << "; stroke-width: " << theme.edge.normal.label.borderWidth << "px; rx: " << theme.edge.normal.label.radius << "px; }\n";
+
+    // --- Theme-Aware Inspector Sidebar ---
+    QColor sidebarBg = theme.node.normal.background;
+    QColor sidebarBorder = theme.node.normal.border;
+    QColor textPrimary = theme.node.normal.title.color;
+    QColor textSecondary = theme.node.normal.body.color;
+    QColor codeBg = theme.view.background;
+
+    out << "  #sidebar { width: 340px; background: " << toCssRgba(sidebarBg) 
+        << "; color: " << toCssRgba(textPrimary) 
+        << "; border-left: 1px solid " << toCssRgba(sidebarBorder) 
+        << "; display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: -4px 0 24px rgba(0,0,0,0.2); z-index: 10; }\n";
+    out << "  #sidebar.open { transform: translateX(0); }\n";
+    out << "  .sb-header { padding: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid " << toCssRgba(sidebarBorder) << "; }\n";
+    out << "  .sb-title { margin: 0; font-size: 16px; font-weight: bold; color: " << toCssRgba(textPrimary) << "; }\n";
+    out << "  .sb-close { background: none; border: none; color: " << toCssRgba(textSecondary) << "; font-size: 20px; cursor: pointer; padding: 0 4px; }\n";
+    out << "  .sb-content { padding: 16px; overflow-y: auto; flex: 1; font-size: 13px; }\n";
+    out << "  .sb-section { margin-bottom: 20px; }\n";
+    out << "  .sb-section-title { font-size: 11px; text-transform: uppercase; color: " << toCssRgba(textSecondary) << "; font-weight: bold; margin-bottom: 8px; letter-spacing: 0.5px; }\n";
+    out << "  pre.code-block { background: " << toCssRgba(codeBg) << "; border: 1px solid " << toCssRgba(sidebarBorder) 
+        << "; padding: 10px; border-radius: 6px; overflow-x: auto; color: " << toCssRgba(textPrimary) << "; font-family: monospace; font-size: 12px; margin: 0; }\n";
+    out << "  .field-row { display: flex; margin-bottom: 6px; justify-content: space-between; }\n";
+    out << "  .field-name { color: " << toCssRgba(textSecondary) << "; }\n";
+    out << "  .field-val { color: " << toCssRgba(textPrimary) << "; font-weight: 500; }\n";
     out << "</style>\n</head>\n<body>\n";
 
-    out << "<svg width=\"" << sceneBounds.width() << "\" height=\"" << sceneBounds.height() 
-        << "\" viewBox=\"" << sceneBounds.left() << " " << sceneBounds.top() << " " 
+    out << "<div id=\"canvas-container\">\n";
+    out << "<svg id=\"main-svg\" viewBox=\"" << sceneBounds.left() << " " << sceneBounds.top() << " " 
         << sceneBounds.width() << " " << sceneBounds.height() << "\" xmlns=\"http://www.w3.org/2000/svg\">\n";
+    out << "  <g id=\"viewport-group\">\n";
 
-    for (QGraphicsItem* item : scene()->items())
+    // Containers
+    for (auto* node : containers)
     {
-        auto* edge = dynamic_cast<GraphEdgeItem*>(item);
-        if (!edge) continue;
+        QPointF scenePos = node->mapToScene(QPointF(0, 0));
+        QRectF bounds = node->boundingRect();
+        auto opt = node->model()->getNodeById(node->nodeId());
 
+        QString title = node->displayTitle().toHtmlEscaped();
+        QString type = node->displayType().toHtmlEscaped();
+        QString meta = opt ? QString::fromStdString(opt->metadata).toHtmlEscaped() : "{}";
+        QString attr = opt ? QString::fromStdString(opt->attributes).toHtmlEscaped() : "{}";
+
+        out << "    <g class=\"graph-container\" transform=\"translate(" << scenePos.x() << "," << scenePos.y() << ")\""
+            << " data-id=\"" << node->nodeId() << "\" data-title=\"" << title << "\" data-type=\"" << type 
+            << "\" data-meta=\"" << meta << "\" data-attr=\"" << attr << "\">\n";
+        out << "      <rect class=\"box\" width=\"" << bounds.width() << "\" height=\"" << bounds.height() << "\"/>\n";
+        out << "      <rect class=\"header\" width=\"" << bounds.width() << "\" height=\"32\"/>\n";
+        out << "      <text class=\"header-title\" x=\"14\" y=\"20\">" << title << "</text>\n";
+        out << "    </g>\n";
+    }
+
+    // Edges
+    for (auto* edge : edges)
+    {
         QPainterPath fullPath = edge->edgePath();
         if (fullPath.elementCount() < 2) continue;
 
@@ -422,46 +513,129 @@ void GraphView::exportToInteractiveHtml()
                 d += QString("L %1 %2 ").arg(p.x()).arg(p.y());
         }
 
-        out << "  <g class=\"graph-edge\">\n";
-        out << "    <path class=\"line\" d=\"" << d << "\"/>\n";
-        out << "    <polygon class=\"arrow\" points=\"" 
+        QString edgeTitle = edge->title().toHtmlEscaped();
+
+        out << "    <g class=\"graph-edge\" data-id=\"" << edge->edgeId() << "\" data-type=\"" << edgeTitle << "\">\n";
+        out << "      <path class=\"line\" d=\"" << d << "\"/>\n";
+        out << "      <polygon class=\"arrow\" points=\"" 
             << arrowTip.x() << "," << arrowTip.y() << " " 
             << arrowP1.x() << "," << arrowP1.y() << " " 
             << arrowP2.x() << "," << arrowP2.y() << "\"/>\n";
 
-        QPointF midPoint = edge->mapToScene(fullPath.pointAtPercent(0.5));
-        QString edgeTitle = edge->title();
         if (!edgeTitle.isEmpty())
         {
-            out << "    <text x=\"" << midPoint.x() << "\" y=\"" << (midPoint.y() - 8) 
-                << "\" text-anchor=\"middle\">" 
-                << edgeTitle.toHtmlEscaped() << "</text>\n";
+            QPointF midPoint = edge->mapToScene(fullPath.pointAtPercent(0.5));
+            qreal labelW = edgeTitle.length() * 7.5 + 12;
+            out << "      <rect class=\"label-bg\" x=\"" << (midPoint.x() - labelW / 2.0) << "\" y=\"" << (midPoint.y() - 19) 
+                << "\" width=\"" << labelW << "\" height=\"16\"/>\n";
+            out << "      <text x=\"" << midPoint.x() << "\" y=\"" << (midPoint.y() - 7) 
+                << "\" text-anchor=\"middle\">" << edgeTitle << "</text>\n";
         }
+        out << "    </g>\n";
     }
 
-    for (QGraphicsItem* item : scene()->items())
+    // Leaf Nodes
+    for (auto* node : leafNodes)
     {
-        auto* node = dynamic_cast<GraphNodeItem*>(item);
-        if (!node) continue;
+        QPointF scenePos = node->mapToScene(QPointF(0, 0));
+        QRectF bounds = node->boundingRect();
+        qreal w = bounds.width();
+        qreal h = bounds.height();
 
-        QPointF pos = node->pos();
-        QRectF localRect = node->boundingRect();
-        qreal x = pos.x();
-        qreal y = pos.y();
-        qreal w = localRect.width();
-        qreal h = localRect.height();
+        auto opt = node->model()->getNodeById(node->nodeId());
+        QString title = node->displayTitle().toHtmlEscaped();
+        QString type  = node->displayType().toHtmlEscaped();
+        QString meta  = opt ? QString::fromStdString(opt->metadata).toHtmlEscaped() : "{}";
+        QString attr  = opt ? QString::fromStdString(opt->attributes).toHtmlEscaped() : "{}";
 
-        out << "  <g class=\"graph-node\" transform=\"translate(" << x << "," << y << ")\">\n";
-        out << "    <rect width=\"" << w << "\" height=\"" << h << "\"/>\n";
-        out << "    <text class=\"title\" x=\"" << (w / 2.0) << "\" y=\"" << (h / 2.0 - 4) 
-            << "\" text-anchor=\"middle\" dominant-baseline=\"middle\">" 
-            << node->displayTitle().toHtmlEscaped() << "</text>\n";
-        out << "    <text class=\"body\" x=\"" << (w / 2.0) << "\" y=\"" << (h / 2.0 + 14) 
-            << "\" text-anchor=\"middle\" dominant-baseline=\"middle\">" 
-            << node->displayType().toHtmlEscaped() << "</text>\n";
-        out << "  </g>\n";
+        out << "    <g class=\"graph-node\" transform=\"translate(" << scenePos.x() << "," << scenePos.y() << ")\""
+            << " data-id=\"" << node->nodeId() << "\" data-title=\"" << title << "\" data-type=\"" << type 
+            << "\" data-meta=\"" << meta << "\" data-attr=\"" << attr << "\">\n";
+        out << "      <rect class=\"body\" width=\"" << w << "\" height=\"" << h << "\"/>\n";
+        out << "      <text class=\"title\" x=\"" << (w / 2.0) << "\" y=\"" << (h / 2.0 - 4) 
+            << "\" text-anchor=\"middle\" dominant-baseline=\"middle\">" << title << "</text>\n";
+        out << "      <text class=\"body\" x=\"" << (w / 2.0) << "\" y=\"" << (h / 2.0 + 14) 
+            << "\" text-anchor=\"middle\" dominant-baseline=\"middle\">" << type << "</text>\n";
+        out << "    </g>\n";
     }
 
-    out << "</svg>\n</body>\n</html>\n";
+    out << "  </g>\n";
+    out << "</svg>\n";
+    out << "</div>\n";
+
+    // Sidebar & Interactivity JS
+    out << "<div id=\"sidebar\">\n";
+    out << "  <div class=\"sb-header\">\n";
+    out << "    <h3 class=\"sb-title\" id=\"sb-title\">Inspector</h3>\n";
+    out << "    <button class=\"sb-close\" onclick=\"closeSidebar()\">&times;</button>\n";
+    out << "  </div>\n";
+    out << "  <div class=\"sb-content\" id=\"sb-body\"></div>\n";
+    out << "</div>\n";
+
+    out << "<script>\n";
+    out << "  const svg = document.getElementById('main-svg');\n";
+    out << "  const g = document.getElementById('viewport-group');\n";
+    out << "  const sidebar = document.getElementById('sidebar');\n";
+    out << "  let isPanning = false, startX = 0, startY = 0;\n";
+    out << "  let currentScale = 1.0, currentTx = 0, currentTy = 0;\n";
+
+    out << "  function updateTransform() {\n";
+    out << "    g.setAttribute('transform', `translate(${currentTx}, ${currentTy}) scale(${currentScale})`);\n";
+    out << "  }\n";
+
+    out << "  window.addEventListener('wheel', (e) => {\n";
+    out << "    e.preventDefault();\n";
+    out << "    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;\n";
+    out << "    currentScale *= zoomFactor;\n";
+    out << "    updateTransform();\n";
+    out << "  }, { passive: false });\n";
+
+    out << "  window.addEventListener('mousedown', (e) => {\n";
+    out << "    if (e.target.closest('#sidebar') || e.target.closest('.graph-node') || e.target.closest('.graph-container')) return;\n";
+    out << "    isPanning = true;\n";
+    out << "    startX = e.clientX - currentTx;\n";
+    out << "    startY = e.clientY - currentTy;\n";
+    out << "  });\n";
+
+    out << "  window.addEventListener('mousemove', (e) => {\n";
+    out << "    if (!isPanning) return;\n";
+    out << "    currentTx = e.clientX - startX;\n";
+    out << "    currentTy = e.clientY - startY;\n";
+    out << "    updateTransform();\n";
+    out << "  });\n";
+
+    out << "  window.addEventListener('mouseup', () => { isPanning = false; });\n";
+
+    out << "  function formatJson(jsonStr) {\n";
+    out << "    try { return JSON.stringify(JSON.parse(jsonStr), null, 2); }\n";
+    out << "    catch (e) { return jsonStr || '{}'; }\n";
+    out << "  }\n";
+
+    out << "  function closeSidebar() { sidebar.classList.remove('open'); }\n";
+
+    out << "  document.querySelectorAll('.graph-node, .graph-container').forEach(el => {\n";
+    out << "    el.addEventListener('click', (e) => {\n";
+    out << "      e.stopPropagation();\n";
+    out << "      document.getElementById('sb-title').innerText = el.getAttribute('data-title');\n";
+    out << "      document.getElementById('sb-body').innerHTML = `\n";
+    out << "        <div class=\"sb-section\">\n";
+    out << "          <div class=\"sb-section-title\">Details</div>\n";
+    out << "          <div class=\"field-row\"><span class=\"field-name\">ID</span><span class=\"field-val\">#${el.getAttribute('data-id')}</span></div>\n";
+    out << "          <div class=\"field-row\"><span class=\"field-name\">Type</span><span class=\"field-val\">${el.getAttribute('data-type')}</span></div>\n";
+    out << "        </div>\n";
+    out << "        <div class=\"sb-section\">\n";
+    out << "          <div class=\"sb-section-title\">Attributes</div>\n";
+    out << "          <pre class=\"code-block\">${formatJson(el.getAttribute('data-attr'))}</pre>\n";
+    out << "        </div>\n";
+    out << "        <div class=\"sb-section\">\n";
+    out << "          <div class=\"sb-section-title\">Metadata</div>\n";
+    out << "          <pre class=\"code-block\">${formatJson(el.getAttribute('data-meta'))}</pre>\n";
+    out << "        </div>\n";
+    out << "      `;\n";
+    out << "      sidebar.classList.add('open');\n";
+    out << "    });\n";
+    out << "  });\n";
+    out << "</script>\n</body>\n</html>\n";
+
     file.close();
 }

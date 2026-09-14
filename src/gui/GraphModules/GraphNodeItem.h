@@ -65,6 +65,10 @@ protected:
     void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
 
 private:
+    
+    QPointF pressScenePos_;
+    bool isDraggingNode_{false};
+    QPointF dragStartScenePos_;
 
     QRectF calculateNodeRect();
     QRectF calculateContainerRect();
