@@ -17,6 +17,8 @@
 #include <QScrollBar>
 #include <algorithm>
 #include <unordered_set>
+#include <unordered_map>
+#include <functional>
 
 #include "NodeEditorDialog.h"
 #include "LayerEditorDialog.h"
@@ -33,12 +35,14 @@ MainWindow::MainWindow(QWidget* parent)
     setupToolbar();
     setupConnections();
 
-    // Start with the welcome view active and canvas controls suspended
     showWelcome();
 }
 
 MainWindow::~MainWindow()
 {
+    if (autoSaveTimer_)
+        autoSaveTimer_->stop();
+
     if (scene_)
         scene_->disconnect(this);
 
@@ -50,13 +54,12 @@ void MainWindow::setupUi()
     navModel_ = new QStandardItemModel(this);
     navModel_->setHorizontalHeaderLabels({"Architecture"});
 
-    navigator_ = new QTreeView;
+    navigator_ = new QTreeView(this);
     navigator_->setModel(navModel_);
 
     architectureDock_ = new QDockWidget("Architecture", this);
     architectureDock_->setObjectName("ArchitectureDock");
     architectureDock_->setWidget(navigator_);
-
     addDockWidget(Qt::LeftDockWidgetArea, architectureDock_);
 
     scene_ = new QGraphicsScene(this);
@@ -67,13 +70,11 @@ void MainWindow::setupUi()
     graphView_->setRenderHint(QPainter::Antialiasing);
     graphView_->setInteractive(true);
 
-    // Stacked Widget to toggle between Welcome view and Graph Canvas
     centralStack_ = new QStackedWidget(this);
     welcomeWidget_ = new WelcomeWidget(this);
 
-    centralStack_->addWidget(welcomeWidget_); // Index 0
-    centralStack_->addWidget(graphView_);     // Index 1
-
+    centralStack_->addWidget(welcomeWidget_);
+    centralStack_->addWidget(graphView_);
     setCentralWidget(centralStack_);
 
     ThemeEditorDock* themeDock = new ThemeEditorDock(this);
@@ -91,21 +92,15 @@ void MainWindow::setupUi()
                 for (QGraphicsItem* item : scene_->items())
                 {
                     if (auto* node = dynamic_cast<GraphNodeItem*>(item))
-                    {
                         node->onThemeChanged();
-                    }
                     else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
-                    {
                         edge->refreshPath();
-                    }
                 }
                 scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
             }
 
             if (graphView_)
-            {
                 graphView_->viewport()->update();
-            }
         });
 
     setDockNestingEnabled(true);
@@ -127,39 +122,54 @@ void MainWindow::showCanvas()
     if (layoutToolBar_) layoutToolBar_->setEnabled(true);
 }
 
-void MainWindow::createNewDatabase()
-{
-    QString file = QFileDialog::getSaveFileName(
-        this,
-        "Create New Architecture Project",
-        "",
-        "SQLite Databases (*.db *.sqlite *.sqlite3);;Architecture JSON (*.json);;All Files (*.*)");
-
-    if (file.isEmpty())
-        return;
-
-    setDb(file.toStdString());
-}
-
 void MainWindow::setupMenu()
 {
     auto* fileMenu = menuBar()->addMenu("&File");
-
     fileMenu->addAction("New Project...", this, &MainWindow::createNewDatabase);
     fileMenu->addAction("Open DB...", this, &MainWindow::openDatabase);
+    fileMenu->addSeparator();
+
+    QAction* exportCurrentAction = new QAction("Export Current View", this);
+    connect(exportCurrentAction, &QAction::triggered, this, [this]() {
+        graphView_->exportToSvg(GraphView::ExportMode::CurrentView);
+    });
+    fileMenu->addAction(exportCurrentAction);
+
+    QAction* exportWholeAction = new QAction("Export Whole Diagram", this);
+    connect(exportWholeAction, &QAction::triggered, this, [this]() {
+        graphView_->exportToSvg(GraphView::ExportMode::WholeScene);
+    });
+    fileMenu->addAction(exportWholeAction);
+
+    QAction* exportHtmlAction = new QAction("Export Interactive HTML...", this);
+    connect(exportHtmlAction, &QAction::triggered, this, [this]() {
+        graphView_->exportToInteractiveHtml();
+    });
+    fileMenu->addAction(exportHtmlAction);
+
     fileMenu->addSeparator();
     fileMenu->addAction("Exit", this, &QWidget::close);
 
     auto* editMenu = menuBar()->addMenu("&Edit");
     editMenu->addAction("Add Node", this, &MainWindow::createNewNode);
     editMenu->addAction("Add Layer", this, &MainWindow::createNewLayer);
-    
+    editMenu->addSeparator();
+
+    actionCut_ = editMenu->addAction(QIcon(":/icons/cut.svg"), "Cut", this, &MainWindow::cutSelectedNodes);
+    actionCut_->setShortcut(QKeySequence::Cut);
+
+    actionCopy_ = editMenu->addAction(QIcon(":/icons/copy.svg"), "Copy", this, &MainWindow::copySelectedNodes);
+    actionCopy_->setShortcut(QKeySequence::Copy);
+
+    actionPaste_ = editMenu->addAction(QIcon(":/icons/paste.svg"), "Paste", this, [this]() { pasteNodes(); });
+    actionPaste_->setShortcut(QKeySequence::Paste);
+
     QAction* copyNodeAction = editMenu->addAction("Duplicate Node", this, &MainWindow::copySelectedNode);
     copyNodeAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
 
+    editMenu->addSeparator();
     editMenu->addAction("Save Layout", this, &MainWindow::saveLayout);
 
-    // --- Distribution Actions ---
     editMenu->addSeparator();
     actionDistH_ = new QAction(QIcon(":/icons/dist-h.svg"), "Distribute Horizontally", this);
     actionDistH_->setShortcut(QKeySequence(Qt::ALT | Qt::Key_H));
@@ -171,7 +181,6 @@ void MainWindow::setupMenu()
     connect(actionDistV_, &QAction::triggered, this, &MainWindow::distributeVertical);
     editMenu->addAction(actionDistV_);
 
-    // --- Align Submenus ---
     auto* alignMenu = editMenu->addMenu("Align");
 
     auto* alignHMenu = alignMenu->addMenu("Horizontal");
@@ -202,39 +211,11 @@ void MainWindow::setupMenu()
     connect(actionAlignBottom_, &QAction::triggered, this, [this]() { alignNodes(AlignType::Bottom); });
     alignVMenu->addAction(actionAlignBottom_);
 
-    // --- Connect Action ---
     editMenu->addSeparator();
     actionConnect_ = new QAction(QIcon(":/icons/connect.svg"), "Connect Selected Nodes", this);
     actionConnect_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K));
     connect(actionConnect_, &QAction::triggered, this, &MainWindow::connectSelectedNodes);
     editMenu->addAction(actionConnect_);
-
-    QAction* exportCurrentAction = new QAction("Export Current View", this);
-    connect(exportCurrentAction, &QAction::triggered, this, [this]() {
-        graphView_->exportToSvg(GraphView::ExportMode::CurrentView);
-    });
-    fileMenu->addAction(exportCurrentAction);
-
-    QAction* exportWholeAction = new QAction("Export Whole Diagram", this);
-    connect(exportWholeAction, &QAction::triggered, this, [this]() {
-        graphView_->exportToSvg(GraphView::ExportMode::WholeScene);
-    });
-    fileMenu->addAction(exportWholeAction);
-
-    QAction* moveAction = new QAction("Move Selection To...", this);
-    connect(moveAction, &QAction::triggered, this, [this]() {
-        bool okX = false;
-        bool okY = false;
-
-        double x = QInputDialog::getDouble(this, "Move Selection", "Target X:", 0.0, -100000, 100000, 2, &okX);
-        if (!okX) return;
-
-        double y = QInputDialog::getDouble(this, "Move Selection", "Target Y:", 0.0, -100000, 100000, 2, &okY);
-        if (!okY) return;
-
-        graphView_->moveSelectionTo(QPointF(x, y));
-    });
-    editMenu->addAction(moveAction);
 
     auto* themeMenu = menuBar()->addMenu("&Theme");
     QDir themeDir("themes");
@@ -257,56 +238,38 @@ void MainWindow::setupMenu()
     themeMenu->addAction("Reset to Default", this, []() {
         GraphThemeManager::instance()->resetDefaults();
     });
-
-    QAction* exportHtmlAction = new QAction("Export Interactive HTML...", this);
-    connect(exportHtmlAction, &QAction::triggered, this, [this]() {
-        graphView_->exportToInteractiveHtml();
-    });
-    fileMenu->addAction(exportHtmlAction);
 }
 
 void MainWindow::setupToolbar()
 {
-    // ========================================================
-    // Graph Modes Toolbar
-    // ========================================================
     graphToolBar_ = addToolBar("Graph Modes");
-
     actionView_ = graphToolBar_->addAction("View (V)");
     actionEdit_ = graphToolBar_->addAction("Edit (E)");    
 
     actionView_->setCheckable(true);
     actionEdit_->setCheckable(true); 
 
-    QActionGroup* group = new QActionGroup(this);
+    auto* group = new QActionGroup(this);
     group->addAction(actionView_);
     group->addAction(actionEdit_);
-
     actionView_->setChecked(true);
 
-    connect(actionView_, &QAction::triggered,
-            this, [this]() { setGraphMode(GraphView::Mode::View); });
-
-    connect(actionEdit_, &QAction::triggered,
-            this, [this]() { setGraphMode(GraphView::Mode::Edit); });
+    connect(actionView_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::View); });
+    connect(actionEdit_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::Edit); });
 
     actionView_->setShortcut(Qt::Key_V);
     actionEdit_->setShortcut(Qt::Key_L);
 
-    // ========================================================
-    // Layout Toolbar (Reuses Actions from setupMenu)
-    // ========================================================
     layoutToolBar_ = addToolBar("Layout");
     layoutToolBar_->setIconSize(QSize(20, 20));
 
-    // 1. Align Dropdown Button
-    QToolButton* alignBtn = new QToolButton(this);
+    auto* alignBtn = new QToolButton(this);
     alignBtn->setText("Align");
     alignBtn->setToolTip("Align selected objects relative to the primary node");
     alignBtn->setPopupMode(QToolButton::InstantPopup);
     alignBtn->setIcon(QIcon(":/icons/align-center-h.svg"));
 
-    QMenu* alignPopup = new QMenu(alignBtn);
+    auto* alignPopup = new QMenu(alignBtn);
     alignPopup->addAction(actionAlignLeft_);
     alignPopup->addAction(actionAlignCenterH_);
     alignPopup->addAction(actionAlignRight_);
@@ -314,27 +277,22 @@ void MainWindow::setupToolbar()
     alignPopup->addAction(actionAlignTop_);
     alignPopup->addAction(actionAlignCenterV_);
     alignPopup->addAction(actionAlignBottom_);
-
     alignBtn->setMenu(alignPopup);
     layoutToolBar_->addWidget(alignBtn);
 
-    // 2. Distribute Dropdown Button
-    QToolButton* distBtn = new QToolButton(this);
+    auto* distBtn = new QToolButton(this);
     distBtn->setText("Distribute");
     distBtn->setToolTip("Distribute selected objects evenly");
     distBtn->setPopupMode(QToolButton::InstantPopup);
     distBtn->setIcon(QIcon(":/icons/dist-h.svg"));
 
-    QMenu* distPopup = new QMenu(distBtn);
+    auto* distPopup = new QMenu(distBtn);
     distPopup->addAction(actionDistH_);
     distPopup->addAction(actionDistV_);
-
     distBtn->setMenu(distPopup);
     layoutToolBar_->addWidget(distBtn);
 
     layoutToolBar_->addSeparator();
-
-    // 3. Connect and Duplicate Buttons
     layoutToolBar_->addAction(actionConnect_);
 
     QAction* copyBtn = layoutToolBar_->addAction(QIcon(":/icons/copy.svg"), "Duplicate");
@@ -344,44 +302,20 @@ void MainWindow::setupToolbar()
 
 void MainWindow::setupConnections()
 {
-    // Welcome Widget Signals
-    connect(welcomeWidget_, &WelcomeWidget::openFileClicked,
-            this, &MainWindow::openDatabase);
+    connect(welcomeWidget_, &WelcomeWidget::openFileClicked, this, &MainWindow::openDatabase);
+    connect(welcomeWidget_, &WelcomeWidget::createNewClicked, this, &MainWindow::createNewDatabase);
+    connect(welcomeWidget_, &WelcomeWidget::recentFileSelected, this, [this](const QString& path) {
+        setDb(path.toStdString());
+    });
 
-    connect(welcomeWidget_, &WelcomeWidget::createNewClicked,
-            this, &MainWindow::createNewDatabase);
+    connect(navigator_, &QTreeView::doubleClicked, this, &MainWindow::onTreeItemDoubleClicked);
+    connect(navigator_, &QTreeView::clicked, this, &MainWindow::onTreeItemClicked);
 
-    connect(welcomeWidget_, &WelcomeWidget::recentFileSelected,
-            this, [this](const QString& path) {
-                setDb(path.toStdString());
-            });
-
-    // Scene & View Signals
-    connect(navigator_, &QTreeView::doubleClicked,
-            this, &MainWindow::onTreeItemDoubleClicked);
-
-    connect(navigator_, &QTreeView::clicked,
-            this, &MainWindow::onTreeItemClicked);
-
-    connect(graphView_, &GraphView::requestAddNode,
-            this, &MainWindow::handleAddNodeAtPosition);
-
-    connect(graphView_, &GraphView::requestAddLayer,
-            this, &MainWindow::createNewLayer);
-
-    connect(graphView_, &GraphView::requestConnectNodes,
-            this, &MainWindow::handleConnectNodes);
-
-    connect(graphView_, &GraphView::deleteRequested,
-            this, &MainWindow::deleteSelected);
-
-    connect(scene_, &QGraphicsScene::selectionChanged,
-            this, &MainWindow::onSelectionChanged);
-
-    connect(GraphThemeManager::instance(),
-            &GraphThemeManager::themeChanged,
-            scene_,
-            [this]() { scene_->update(); });
+    connect(graphView_, &GraphView::requestAddNode, this, &MainWindow::handleAddNodeAtPosition);
+    connect(graphView_, &GraphView::requestAddLayer, this, &MainWindow::createNewLayer);
+    connect(graphView_, &GraphView::requestConnectNodes, this, &MainWindow::handleConnectNodes);
+    connect(graphView_, &GraphView::deleteRequested, this, &MainWindow::deleteSelected);
+    connect(scene_, &QGraphicsScene::selectionChanged, this, &MainWindow::onSelectionChanged);
 
     auto* deleteShortcut = new QShortcut(QKeySequence::Delete, this);
     connect(deleteShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
@@ -391,6 +325,28 @@ void MainWindow::setupConnections()
 
     auto* duplicateShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_D), this);
     connect(duplicateShortcut, &QShortcut::activated, this, &MainWindow::copySelectedNode);
+
+    auto* cutShortcut = new QShortcut(QKeySequence::Cut, this);
+    connect(cutShortcut, &QShortcut::activated, this, &MainWindow::cutSelectedNodes);
+
+    auto* copyShortcut = new QShortcut(QKeySequence::Copy, this);
+    connect(copyShortcut, &QShortcut::activated, this, &MainWindow::copySelectedNodes);
+
+    auto* pasteShortcut = new QShortcut(QKeySequence::Paste, this);
+    connect(pasteShortcut, &QShortcut::activated, this, [this]() { pasteNodes(); });
+
+    autoSaveTimer_ = new QTimer(this);
+    autoSaveTimer_->setSingleShot(true);
+    autoSaveTimer_->setInterval(500);
+    connect(autoSaveTimer_, &QTimer::timeout, this, &MainWindow::saveLayout);
+}
+
+void MainWindow::scheduleAutoSave()
+{
+    if (autoSaveTimer_ && model_ && !isRendering_)
+    {
+        autoSaveTimer_->start();
+    }
 }
 
 void MainWindow::setDb(const std::string& db_path)
@@ -398,12 +354,17 @@ void MainWindow::setDb(const std::string& db_path)
     if (db_path.empty())
         return;
 
+    if (autoSaveTimer_)
+        autoSaveTimer_->stop();
+
+    clipboardNodes_.clear();
+    cutNodeIds_.clear();
+
     if (scene_)
     {
         scene_->blockSignals(true);
 
-        QList<QGraphicsItem*> allItems = scene_->items();
-        for (QGraphicsItem* item : allItems)
+        for (QGraphicsItem* item : scene_->items())
         {
             if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
             {
@@ -423,8 +384,8 @@ void MainWindow::setDb(const std::string& db_path)
         scene_->clear();
         scene_->blockSignals(false);
     }
-    primaryNode_ = nullptr;
 
+    primaryNode_ = nullptr;
     delete model_;
     model_ = nullptr;
 
@@ -449,15 +410,14 @@ void MainWindow::setDb(const std::string& db_path)
     auto r = db_->open(db_path);
     if (!r.ok)
     {
-        QMessageBox::critical(this, "Error", QString::fromStdString(r.message));
+        QMessageBox::critical(this, "Database Error", QString::fromStdString(r.message));
         return;
     }
 
     model_ = new ArchitectureModel(*db_);
+
     populateNavigator();
     renderGraph(model_->extractGraph(std::nullopt));
-
-    // Project opened successfully: switch from Welcome to Canvas
     showCanvas();
 }
 
@@ -468,6 +428,20 @@ void MainWindow::openDatabase()
         "Open Architecture Database",
         "",
         "Supported Files (*.db *.sqlite *.sqlite3 *.json);;SQLite Databases (*.db *.sqlite *.sqlite3);;Architecture JSON (*.json);;All Files (*.*)");
+
+    if (file.isEmpty())
+        return;
+
+    setDb(file.toStdString());
+}
+
+void MainWindow::createNewDatabase()
+{
+    QString file = QFileDialog::getSaveFileName(
+        this,
+        "Create New Architecture Project",
+        "",
+        "SQLite Databases (*.db *.sqlite *.sqlite3);;Architecture JSON (*.json);;All Files (*.*)");
 
     if (file.isEmpty())
         return;
@@ -509,14 +483,12 @@ void MainWindow::populateNavigator()
 
 void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
 {
-    if (!model_)
-        return;
+    if (!model_) return;
 
     auto* item = navModel_->itemFromIndex(index);
-    if (!item)
-        return;
+    if (!item) return;
 
-    ItemType type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
+    auto type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
     qulonglong id = item->data(NavRole::Id).toULongLong();
 
     switch (type) {
@@ -528,7 +500,7 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
             QModelIndex curIdx = navigator_->currentIndex();
             if (curIdx.isValid() && static_cast<ItemType>(curIdx.data(NavRole::Type).toInt()) == ItemType::Layer)
             {
-                LayerId layerId = static_cast<LayerId>(curIdx.data(NavRole::Id).toULongLong());
+                auto layerId = static_cast<LayerId>(curIdx.data(NavRole::Id).toULongLong());
                 renderGraph(model_->extractGraph(layerId));
             }
             else
@@ -555,17 +527,15 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
 
 void MainWindow::onTreeItemClicked(const QModelIndex& index)
 {
-    if (!model_ || !index.isValid())
-        return;
+    if (!model_ || !index.isValid()) return;
 
     auto* item = navModel_->itemFromIndex(index);
-    if (!item)
-        return;
+    if (!item) return;
 
-    ItemType type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
+    auto type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
 
     if (type == ItemType::Layer) {
-        LayerId layerId = static_cast<LayerId>(item->data(NavRole::Id).toULongLong());
+        auto layerId = static_cast<LayerId>(item->data(NavRole::Id).toULongLong());
         renderGraph(model_->extractGraph(layerId));
     }
     else {
@@ -575,8 +545,7 @@ void MainWindow::onTreeItemClicked(const QModelIndex& index)
 
 void MainWindow::createNewNode()
 {
-    if (!model_)
-        return;
+    if (!model_) return;
 
     NodeEditorDialog dlg(model_, 0, this);
     dlg.exec();
@@ -587,8 +556,7 @@ void MainWindow::createNewNode()
 
 void MainWindow::createNewLayer()
 {
-    if (!model_)
-        return;
+    if (!model_) return;
 
     LayerEditorDialog dlg(model_, 0, this);
     dlg.exec();
@@ -609,7 +577,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
     scene_->blockSignals(true);
     graphView_->setUpdatesEnabled(false);
 
-    // 1. Collect all existing scene items
     std::unordered_map<NodeId, GraphNodeItem*> existingNodes;
     std::unordered_map<EdgeId, GraphEdgeItem*> existingEdges;
 
@@ -621,7 +588,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
             existingEdges[edge->edgeId()] = edge;
     }
 
-    // 2. Remove and delete ALL edges first to prevent dangling callbacks
     for (auto& pair : existingEdges)
     {
         if (pair.second)
@@ -633,7 +599,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
     }
     existingEdges.clear();
 
-    // 3. Unparent all existing nodes to break Qt ownership cascades during layer transitions
     for (auto& pair : existingNodes)
     {
         if (pair.second)
@@ -642,7 +607,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         }
     }
 
-    // 4. Partition retained nodes vs obsolete nodes
     std::unordered_map<NodeId, GraphNodeItem*> currentNodes;
     auto mode = graphView_->mode();
     bool selectable = (mode == GraphView::Mode::Edit || mode == GraphView::Mode::Arch || mode == GraphView::Mode::View);
@@ -666,10 +630,12 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         nodeItem->setFlag(QGraphicsItem::ItemIsMovable, movable);
         nodeItem->setAcceptHoverEvents(true);
 
+        connect(nodeItem, &QGraphicsObject::xChanged, this, &MainWindow::scheduleAutoSave, Qt::UniqueConnection);
+        connect(nodeItem, &QGraphicsObject::yChanged, this, &MainWindow::scheduleAutoSave, Qt::UniqueConnection);
+
         currentNodes[n.id] = nodeItem;
     }
 
-    // 5. Delete obsolete nodes
     for (auto& pair : existingNodes)
     {
         if (pair.second)
@@ -685,7 +651,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
     }
     existingNodes.clear();
 
-    // 6. Re-establish parent-child links safely
     for (const auto& n : snap.nodes)
     {
         GraphNodeItem* nodeItem = currentNodes[n.id];
@@ -710,7 +675,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         }
     }
 
-    // 7. Add only unparented root items directly to scene_
     for (const auto& n : snap.nodes)
     {
         GraphNodeItem* nodeItem = currentNodes[n.id];
@@ -723,7 +687,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         }
     }
 
-    // 8. Position items and refresh geometry
     int i = 0;
     for (const auto& n : snap.nodes)
     {
@@ -754,7 +717,6 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         ++i;
     }
 
-    // 9. Recreate edges
     for (const auto& e : snap.edges)
     {
         auto srcIt = currentNodes.find(e.srcNode);
@@ -785,7 +747,7 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
 
 void MainWindow::saveLayout()
 {
-    if (!model_ || !scene_) return;
+    if (!model_ || !scene_ || isRendering_) return;
 
     for (QGraphicsItem* item : scene_->items())
     {
@@ -804,13 +766,12 @@ void MainWindow::saveLayout()
         model_->setNodeMetadata(id, doc.toJson(QJsonDocument::Compact).toStdString());
     }
 
-    statusBar()->showMessage("Layout saved", 2000);
+    statusBar()->showMessage("Layout saved", 1500);
 }
 
 void MainWindow::handleAddNodeAtPosition(QPointF pos)
 {
-    if (!model_)
-        return;
+    if (!model_) return;
 
     NodeEditorDialog dlg(model_, 0, this);
     if (dlg.exec() != QDialog::Accepted)
@@ -832,9 +793,9 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
 
     QModelIndex index = navigator_->currentIndex();
     if (index.isValid()) {
-        ItemType type = static_cast<ItemType>(index.data(NavRole::Type).toInt());
+        auto type = static_cast<ItemType>(index.data(NavRole::Type).toInt());
         if (type == ItemType::Layer) {
-            LayerId layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
+            auto layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
             model_->addNodeToLayer(newId, layerId);
             populateNavigator();
             renderGraph(model_->extractGraph(layerId));
@@ -903,10 +864,10 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
 
     if (currentIndex.isValid())
     {
-        ItemType type = static_cast<ItemType>(currentIndex.data(NavRole::Type).toInt());
+        auto type = static_cast<ItemType>(currentIndex.data(NavRole::Type).toInt());
         if (type == ItemType::Layer)
         {
-            LayerId activeLayerId = static_cast<LayerId>(currentIndex.data(NavRole::Id).toULongLong());
+            auto activeLayerId = static_cast<LayerId>(currentIndex.data(NavRole::Id).toULongLong());
             for (const auto& cl : commonLayers)
             {
                 if (cl.id == activeLayerId)
@@ -972,7 +933,7 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
     if (currentIndex.isValid() &&
         static_cast<ItemType>(currentIndex.data(NavRole::Type).toInt()) == ItemType::Layer)
     {
-        LayerId activeLayerId = static_cast<LayerId>(currentIndex.data(NavRole::Id).toULongLong());
+        auto activeLayerId = static_cast<LayerId>(currentIndex.data(NavRole::Id).toULongLong());
         renderGraph(model_->extractGraph(activeLayerId));
     }
     else
@@ -985,8 +946,7 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
 
 void MainWindow::connectSelectedNodes()
 {
-    if (!scene_ || !model_)
-        return;
+    if (!scene_ || !model_) return;
 
     std::vector<GraphNodeItem*> selectedNodes;
     for (QGraphicsItem* item : scene_->selectedItems())
@@ -1054,67 +1014,126 @@ void MainWindow::connectSelectedNodes()
 
 void MainWindow::deleteSelected()
 {
-    if (!scene_ || !model_)
-        return;
+    if (!scene_ || !model_) return;
 
     const auto selected = scene_->selectedItems();
-    if (selected.isEmpty())
-        return;
+    if (selected.isEmpty()) return;
+
+    // 1. Collect all directly selected nodes and their recursive descendants
+    std::unordered_set<NodeId> allNodeIdsToDelete;
+    std::unordered_set<GraphNodeItem*> allNodeItemsToDelete;
+    std::unordered_set<GraphEdgeItem*> edgesToDelete;
+
+    std::function<void(NodeId)> collectDescendants;
+    collectDescendants = [&](NodeId nId) {
+        if (allNodeIdsToDelete.count(nId)) return;
+        allNodeIdsToDelete.insert(nId);
+
+        for (QGraphicsItem* item : scene_->items())
+        {
+            if (auto* nodeItem = dynamic_cast<GraphNodeItem*>(item))
+            {
+                if (nodeItem->nodeId() == nId)
+                {
+                    allNodeItemsToDelete.insert(nodeItem);
+                    break;
+                }
+            }
+        }
+
+        for (const auto& candidate : model_->nodes())
+        {
+            if (candidate.parentId.has_value() && *candidate.parentId == nId)
+            {
+                collectDescendants(candidate.id);
+            }
+        }
+    };
+
+    for (QGraphicsItem* item : selected)
+    {
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+            collectDescendants(node->nodeId());
+        else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+            edgesToDelete.insert(edge);
+    }
+
+    // 2. Collect all attached edges to prevent dangling edges in the database
+    for (QGraphicsItem* item : scene_->items())
+    {
+        if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+        {
+            auto edgeData = model_->getEdgeById(edge->edgeId());
+            if (edgeData && (allNodeIdsToDelete.count(edgeData->srcNode) || 
+                             allNodeIdsToDelete.count(edgeData->dstNode)))
+            {
+                edgesToDelete.insert(edge);
+            }
+        }
+    }
 
     auto reply = QMessageBox::question(
         this,
         "Confirm Delete",
-        QString("Are you sure you want to delete %1 selected item(s)?").arg(selected.size()),
+        QString("Are you sure you want to delete %1 node(s) (including children) and %2 edge(s)?")
+            .arg(allNodeIdsToDelete.size())
+            .arg(edgesToDelete.size()),
         QMessageBox::Yes | QMessageBox::No);
 
     if (reply != QMessageBox::Yes)
         return;
 
-    std::vector<GraphNodeItem*> nodesToDelete;
-    std::vector<GraphEdgeItem*> edgesToDelete;
-
-    for (QGraphicsItem* item : selected)
+    // 3. PHASE 1: Unparent ALL child items from parent containers first.
+    //    CRITICAL: This prevents Qt's ~QGraphicsItem() from cascade-deleting children 
+    //    while pointers to those children are still waiting in allNodeItemsToDelete!
+    for (auto* node : allNodeItemsToDelete)
     {
-        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
-            nodesToDelete.push_back(node);
-        else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
-            edgesToDelete.push_back(edge);
+        if (node)
+        {
+            node->setParentItem(nullptr);
+        }
     }
 
+    // 4. Delete edges from DB and Scene
     for (auto* edge : edgesToDelete)
     {
         if (!edge) continue;
         model_->deleteEdge(edge->edgeId());
-        scene_->removeItem(edge);
+        if (edge->scene() == scene_)
+            scene_->removeItem(edge);
         delete edge;
     }
 
-    for (auto* node : nodesToDelete)
+    // 5. Delete nodes from DB
+    for (NodeId nId : allNodeIdsToDelete)
+    {
+        model_->deleteNode(nId);
+    }
+
+    // 6. PHASE 2: Safely delete graphical node items now that none are children of each other
+    for (auto* node : allNodeItemsToDelete)
     {
         if (!node) continue;
-        NodeId nId = node->nodeId();
-
-        const auto allItems = scene_->items();
-        for (QGraphicsItem* item : allItems)
-        {
-            if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
-            {
-                auto edgeData = model_->getEdgeById(edge->edgeId());
-                if (edgeData && (edgeData->srcNode == nId || edgeData->dstNode == nId))
-                {
-                    model_->deleteEdge(edge->edgeId());
-                    scene_->removeItem(edge);
-                    delete edge;
-                }
-            }
-        }
-
-        model_->deleteNode(nId);
         if (primaryNode_ == node)
             primaryNode_ = nullptr;
 
-        scene_->removeItem(node);
+        if (node->scene() == scene_)
+            scene_->removeItem(node);
         delete node;
+    }
+
+    // 7. Synchronize Navigator and View
+    populateNavigator();
+
+    QModelIndex index = navigator_->currentIndex();
+    if (index.isValid() && static_cast<ItemType>(index.data(NavRole::Type).toInt()) == ItemType::Layer)
+    {
+        auto layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
+        renderGraph(model_->extractGraph(layerId));
+    }
+    else
+    {
+        renderGraph(model_->extractGraph(std::nullopt));
     }
 
     onSelectionChanged();
@@ -1122,12 +1141,10 @@ void MainWindow::deleteSelected()
 
 NodeId MainWindow::cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> newParentId, qreal offsetX, qreal offsetY)
 {
-    if (!model_)
-        return 0;
+    if (!model_) return 0;
 
     auto opt = model_->getNodeById(sourceId);
-    if (!opt)
-        return 0;
+    if (!opt) return 0;
 
     NodeData source = *opt;
 
@@ -1163,8 +1180,7 @@ NodeId MainWindow::cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> new
 
     NodeId newId = 0;
     auto res = model_->addNode(copyNode, newId);
-    if (!res.ok)
-        return 0;
+    if (!res.ok) return 0;
 
     for (const auto& layer : model_->layers())
     {
@@ -1194,14 +1210,13 @@ void MainWindow::copySelectedNode()
 {
     if (!model_ || !scene_ || !primaryNode_)
     {
-        statusBar()->showMessage("Select a node to copy", 2000);
+        statusBar()->showMessage("Select a node to duplicate", 2000);
         return;
     }
 
     NodeId srcId = primaryNode_->nodeId();
     auto srcOpt = model_->getNodeById(srcId);
-    if (!srcOpt)
-        return;
+    if (!srcOpt) return;
 
     std::optional<NodeId> parentId = srcOpt->parentId;
 
@@ -1217,7 +1232,7 @@ void MainWindow::copySelectedNode()
     QModelIndex index = navigator_->currentIndex();
     if (index.isValid() && static_cast<ItemType>(index.data(NavRole::Type).toInt()) == ItemType::Layer)
     {
-        LayerId layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
+        auto layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
         renderGraph(model_->extractGraph(layerId));
     }
     else
@@ -1228,10 +1243,420 @@ void MainWindow::copySelectedNode()
     statusBar()->showMessage(QString("Node duplicated (New ID: %1)").arg(copiedId), 2500);
 }
 
+// ===========================================================================
+// CUT / COPY / PASTE IMPLEMENTATION
+// ===========================================================================
+
+void MainWindow::cutSelectedNodes()
+{
+    if (!scene_ || !model_) return;
+
+    clipboardNodes_.clear();
+    cutNodeIds_.clear();
+
+    std::unordered_set<NodeId> visited;
+    std::function<void(NodeId, bool)> collectCutHierarchy;
+
+    collectCutHierarchy = [&](NodeId nId, bool isRoot) {
+        if (visited.count(nId)) return;
+        visited.insert(nId);
+
+        QPointF scenePos(0, 0);
+        for (QGraphicsItem* item : scene_->items())
+        {
+            if (auto* nodeItem = dynamic_cast<GraphNodeItem*>(item))
+            {
+                if (nodeItem->nodeId() == nId)
+                {
+                    scenePos = nodeItem->scenePos();
+                    nodeItem->setVisible(false);
+                    for (auto* edge : nodeItem->edges())
+                    {
+                        if (edge) edge->setVisible(false);
+                    }
+                    break;
+                }
+            }
+        }
+
+        cutNodeIds_.push_back({nId, scenePos, isRoot});
+
+        for (const auto& candidate : model_->nodes())
+        {
+            if (candidate.parentId.has_value() && *candidate.parentId == nId)
+            {
+                collectCutHierarchy(candidate.id, false);
+            }
+        }
+    };
+
+    for (QGraphicsItem* item : scene_->selectedItems())
+    {
+        if (auto* nodeItem = dynamic_cast<GraphNodeItem*>(item))
+        {
+            collectCutHierarchy(nodeItem->nodeId(), true);
+        }
+    }
+
+    if (!cutNodeIds_.empty())
+    {
+        scene_->clearSelection();
+        statusBar()->showMessage(QString("Cut %1 node(s) to clipboard").arg(cutNodeIds_.size()), 2500);
+    }
+}
+
+void MainWindow::copySelectedNodes()
+{
+    if (!scene_ || !model_) return;
+
+    if (!cutNodeIds_.empty())
+    {
+        for (const auto& rec : cutNodeIds_)
+        {
+            for (QGraphicsItem* item : scene_->items())
+            {
+                if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+                {
+                    if (node->nodeId() == rec.id)
+                    {
+                        node->setVisible(true);
+                        for (auto* e : node->edges()) if (e) e->setVisible(true);
+                    }
+                }
+            }
+        }
+        cutNodeIds_.clear();
+    }
+
+    clipboardNodes_.clear();
+    pasteOffsetMultiplier_ = 1;
+
+    std::function<void(NodeId, bool)> collectNodeAndChildren;
+    std::unordered_set<NodeId> visitedIds;
+
+    collectNodeAndChildren = [&](NodeId nId, bool isRoot) {
+        if (visitedIds.count(nId)) return;
+        visitedIds.insert(nId);
+
+        auto opt = model_->getNodeById(nId);
+        if (!opt) return;
+
+        ClipboardNode cn;
+        cn.data = *opt;
+        cn.isRoot = isRoot;
+        cn.localPos = QPointF(0, 0);
+
+        for (QGraphicsItem* item : scene_->items())
+        {
+            if (auto* nodeItem = dynamic_cast<GraphNodeItem*>(item))
+            {
+                if (nodeItem->nodeId() == nId)
+                {
+                    cn.localPos = isRoot ? nodeItem->scenePos() : nodeItem->pos();
+                    break;
+                }
+            }
+        }
+
+        for (const auto& layer : model_->layers())
+        {
+            for (const auto& nl : model_->nodesInLayer(layer.id))
+            {
+                if (nl.nodeId == nId)
+                {
+                    cn.layers.push_back(layer.id);
+                    break;
+                }
+            }
+        }
+
+        clipboardNodes_.push_back(cn);
+
+        for (const auto& candidate : model_->nodes())
+        {
+            if (candidate.parentId.has_value() && *candidate.parentId == nId)
+            {
+                collectNodeAndChildren(candidate.id, false);
+            }
+        }
+    };
+
+    for (QGraphicsItem* item : scene_->selectedItems())
+    {
+        auto* nodeItem = dynamic_cast<GraphNodeItem*>(item);
+        if (!nodeItem) continue;
+
+        collectNodeAndChildren(nodeItem->nodeId(), true);
+    }
+
+    if (!clipboardNodes_.empty())
+    {
+        statusBar()->showMessage(QString("Copied %1 node(s) with hierarchy").arg(clipboardNodes_.size()), 2000);
+    }
+}
+
+void MainWindow::pasteNodes()
+{
+    pasteNodesAt(std::nullopt);
+}
+
+void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
+{
+    if (!model_ || !scene_) return;
+
+    // =======================================================================
+    // Scenario A: CUT Relocation
+    // =======================================================================
+    if (!cutNodeIds_.empty())
+    {
+        QPointF anchorPos(0, 0);
+        for (const auto& rec : cutNodeIds_)
+        {
+            if (rec.isRoot)
+            {
+                anchorPos = rec.originalScenePos;
+                break;
+            }
+        }
+
+        QPointF destPos = targetPos.value_or(anchorPos + QPointF(40, 40));
+
+        GraphNodeItem* dropContainer = nullptr;
+        for (QGraphicsItem* item : scene_->items(destPos))
+        {
+            if (auto* cand = dynamic_cast<GraphNodeItem*>(item))
+            {
+                bool isCut = false;
+                for (const auto& r : cutNodeIds_)
+                {
+                    if (r.id == cand->nodeId()) { isCut = true; break; }
+                }
+                if (!isCut && cand->isContainer())
+                {
+                    dropContainer = cand;
+                    break;
+                }
+            }
+        }
+
+        for (const auto& rec : cutNodeIds_)
+        {
+            auto nodeOpt = model_->getNodeById(rec.id);
+            if (!nodeOpt) continue;
+
+            if (rec.isRoot)
+            {
+                qreal relX = rec.originalScenePos.x() - anchorPos.x();
+                qreal relY = rec.originalScenePos.y() - anchorPos.y();
+                QPointF newScenePos = destPos + QPointF(relX, relY);
+
+                if (dropContainer)
+                {
+                    nodeOpt->parentId = dropContainer->nodeId();
+                    QPointF localInContainer = dropContainer->mapFromScene(newScenePos);
+                    qreal minY = dropContainer->rect().top() + 30.0;
+                    localInContainer.setY(std::max(minY, localInContainer.y()));
+                    localInContainer.setX(std::max(10.0, localInContainer.x()));
+
+                    QJsonObject obj;
+                    obj["x"] = localInContainer.x();
+                    obj["y"] = localInContainer.y();
+                    nodeOpt->metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
+                }
+                else
+                {
+                    nodeOpt->parentId = std::nullopt;
+                    QJsonObject obj;
+                    obj["x"] = newScenePos.x();
+                    obj["y"] = newScenePos.y();
+                    nodeOpt->metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
+                }
+
+                model_->updateNode(*nodeOpt);
+            }
+        }
+
+        std::vector<NodeId> movedIds;
+        for (const auto& r : cutNodeIds_) movedIds.push_back(r.id);
+        cutNodeIds_.clear();
+
+        populateNavigator();
+
+        QModelIndex index = navigator_->currentIndex();
+        if (index.isValid() && static_cast<ItemType>(index.data(NavRole::Type).toInt()) == ItemType::Layer)
+        {
+            auto layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
+            renderGraph(model_->extractGraph(layerId));
+        }
+        else
+        {
+            renderGraph(model_->extractGraph(std::nullopt));
+        }
+
+        for (QGraphicsItem* item : scene_->items())
+        {
+            if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+            {
+                node->setVisible(true);
+                if (std::find(movedIds.begin(), movedIds.end(), node->nodeId()) != movedIds.end())
+                {
+                    node->setSelected(true);
+                    node->refreshGeometry();
+                }
+            }
+            else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+            {
+                edge->setVisible(true);
+                edge->updateEndpoints();
+                edge->refreshPath();
+            }
+        }
+
+        if (dropContainer)
+        {
+            dropContainer->refreshGeometry();
+        }
+
+        scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+        graphView_->viewport()->update();
+
+        statusBar()->showMessage(QString("Moved %1 cut node(s)").arg(movedIds.size()), 2000);
+        return;
+    }
+
+    // =======================================================================
+    // Scenario B: COPY Duplication
+    // =======================================================================
+    if (clipboardNodes_.empty()) return;
+
+    scene_->clearSelection();
+
+    std::unordered_map<NodeId, NodeId> oldToNewId;
+    std::vector<NodeId> newlyCreatedIds;
+
+    QPointF referencePos = clipboardNodes_.front().localPos;
+    for (const auto& cn : clipboardNodes_)
+    {
+        if (cn.isRoot)
+        {
+            referencePos = cn.localPos;
+            break;
+        }
+    }
+
+    bool placeAtCursor = targetPos.has_value();
+    const qreal defaultOffset = 30.0 * pasteOffsetMultiplier_;
+
+    for (const auto& cn : clipboardNodes_)
+    {
+        NodeData copyData = cn.data;
+        copyData.name = cn.data.name + " (Copy)";
+        copyData.type = cn.data.type;
+        copyData.attributes = cn.data.attributes;
+        copyData.status = Status::New;
+        copyData.reviewer = "";
+
+        qreal finalX = 0;
+        qreal finalY = 0;
+
+        if (cn.isRoot)
+        {
+            if (placeAtCursor)
+            {
+                qreal relX = cn.localPos.x() - referencePos.x();
+                qreal relY = cn.localPos.y() - referencePos.y();
+                finalX = targetPos->x() + relX;
+                finalY = targetPos->y() + relY;
+            }
+            else
+            {
+                finalX = cn.localPos.x() + defaultOffset;
+                finalY = cn.localPos.y() + defaultOffset;
+            }
+        }
+        else
+        {
+            finalX = cn.localPos.x();
+            finalY = cn.localPos.y();
+        }
+
+        QJsonObject obj;
+        if (!cn.data.metadata.empty())
+        {
+            QJsonDocument doc = QJsonDocument::fromJson(QString::fromStdString(cn.data.metadata).toUtf8());
+            if (doc.isObject())
+                obj = doc.object();
+        }
+        obj["x"] = finalX;
+        obj["y"] = finalY;
+        copyData.metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
+
+        NodeId newId = 0;
+        auto res = model_->addNode(copyData, newId);
+        if (!res.ok) continue;
+
+        oldToNewId[cn.data.id] = newId;
+        newlyCreatedIds.push_back(newId);
+
+        for (LayerId lid : cn.layers)
+        {
+            model_->addNodeToLayer(newId, lid);
+        }
+    }
+
+    for (const auto& cn : clipboardNodes_)
+    {
+        if (cn.data.parentId.has_value())
+        {
+            auto pIt = oldToNewId.find(*cn.data.parentId);
+            if (pIt != oldToNewId.end())
+            {
+                NodeId newChildId = oldToNewId[cn.data.id];
+                auto nodeOpt = model_->getNodeById(newChildId);
+                if (nodeOpt)
+                {
+                    nodeOpt->parentId = pIt->second;
+                    model_->updateNode(*nodeOpt);
+                }
+            }
+        }
+    }
+
+    if (!placeAtCursor)
+    {
+        pasteOffsetMultiplier_++;
+    }
+
+    populateNavigator();
+
+    QModelIndex index = navigator_->currentIndex();
+    if (index.isValid() && static_cast<ItemType>(index.data(NavRole::Type).toInt()) == ItemType::Layer)
+    {
+        auto layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
+        renderGraph(model_->extractGraph(layerId));
+    }
+    else
+    {
+        renderGraph(model_->extractGraph(std::nullopt));
+    }
+
+    for (QGraphicsItem* item : scene_->items())
+    {
+        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+        {
+            if (std::find(newlyCreatedIds.begin(), newlyCreatedIds.end(), node->nodeId()) != newlyCreatedIds.end())
+            {
+                node->setSelected(true);
+            }
+        }
+    }
+
+    statusBar()->showMessage(QString("Pasted %1 node(s)").arg(newlyCreatedIds.size()), 2000);
+}
+
 void MainWindow::setGraphMode(GraphView::Mode mode)
 {
-    if (!graphView_)
-        return;
+    if (!graphView_) return;
 
     graphView_->setMode(mode);
 
@@ -1263,15 +1688,12 @@ void MainWindow::setGraphMode(GraphView::Mode mode)
 
 void MainWindow::onSelectionChanged()
 {
-    if (isRendering_ || !scene_)
-        return;
+    if (isRendering_ || !scene_) return;
 
     auto* bar = statusBar();
-    if (!bar)
-        return;
+    if (!bar) return;
 
     const auto selected = scene_->selectedItems();
-    
     if (selected.isEmpty())
     {
         primaryNode_ = nullptr;
@@ -1280,7 +1702,6 @@ void MainWindow::onSelectionChanged()
     }
 
     GraphNodeItem* newPrimary = nullptr;
-    
     for (QGraphicsItem* item : selected)
     {
         if (auto* node = dynamic_cast<GraphNodeItem*>(item))
@@ -1331,8 +1752,7 @@ void MainWindow::alignVertical()
 
 void MainWindow::distributeHorizontal()
 {
-    if (!scene_)
-        return;
+    if (!scene_) return;
 
     std::vector<GraphNodeItem*> nodes;
     for (QGraphicsItem* item : scene_->selectedItems()) {
@@ -1382,8 +1802,7 @@ void MainWindow::distributeHorizontal()
 
 void MainWindow::distributeVertical()
 {
-    if (!scene_)
-        return;
+    if (!scene_) return;
 
     std::vector<GraphNodeItem*> nodes;
     for (QGraphicsItem* item : scene_->selectedItems()) {

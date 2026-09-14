@@ -16,6 +16,7 @@ class QGraphicsPathItem;
 class GraphNodeItem : public QGraphicsObject
 {
     Q_OBJECT
+
 public:
     enum class ContainerSizing { AutoFit, Manual };
 
@@ -24,7 +25,7 @@ public:
 
     QRectF boundingRect() const override;
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
-    QPainterPath shape() const override; // <--- ADD THIS
+    QPainterPath shape() const override;
     void refreshGeometry();
 
     QPointF currentPosition() const;
@@ -41,7 +42,6 @@ public:
     bool isPrimary() const;
     void setEditable(bool enabled);
 
-    // Any node can act as a container
     bool isContainer() const;
     void adoptChild(GraphNodeItem* child);
     void releaseChild(GraphNodeItem* child);
@@ -65,7 +65,6 @@ protected:
     void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
 
 private:
-    
     QPointF pressScenePos_;
     bool isDraggingNode_{false};
     QPointF dragStartScenePos_;

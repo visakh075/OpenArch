@@ -7,11 +7,15 @@
 #include <QToolBar>
 #include <QActionGroup>
 #include <QDockWidget>
+#include <QStackedWidget>
+#include <QTimer>
 #include <memory>
 #include <optional>
-#include <QStackedWidget>
-#include "WelcomeWidget.h"
+#include <vector>
+#include <string>
+#include <unordered_set>
 
+#include "WelcomeWidget.h"
 #include "ArchitectureModel.h"
 #include "DbManager.h"
 #include "DbManagerSQLite.h"
@@ -39,31 +43,45 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
+    ~MainWindow() override;
+
     void setDb(const std::string& db_path);
-    ~MainWindow();
+    bool hasClipboard() const { return !clipboardNodes_.empty() || !cutNodeIds_.empty(); }
+    void pasteNodesAt(const std::optional<QPointF>& targetPos = std::nullopt);
+    void populateNavigator();
+
+public slots:
+    void cutSelectedNodes();
+    void copySelectedNodes();
+    void copySelectedNode();
+    void pasteNodes();
+
+private slots:
+    void saveLayout();
+    void scheduleAutoSave();
+    void loadThemeFromFile();
+    void switchThemePreset(const QString& path);
+    void onTreeItemDoubleClicked(const QModelIndex& index);
+    void onTreeItemClicked(const QModelIndex& index);
+    void onSelectionChanged();
+    void handleAddNodeAtPosition(QPointF pos);
+    void handleConnectNodes(qulonglong srcId, qulonglong dstId);
+    void deleteSelected();
+    void connectSelectedNodes();
 
 private:
     void setupUi();
     void setupMenu();
     void setupToolbar();
     void setupConnections();
-    void populateNavigator();
-    void renderGraph(const GraphSnapshot& snap);
-    void saveLayout();
-    void setGraphMode(GraphView::Mode mode);
-    void handleAddNodeAtPosition(QPointF pos);
-    void handleConnectNodes(qulonglong srcId, qulonglong dstId);
+    void showWelcome();
+    void showCanvas();
     void openDatabase();
+    void createNewDatabase();
     void createNewNode();
     void createNewLayer();
-    void onTreeItemDoubleClicked(const QModelIndex& index);
-    void onTreeItemClicked(const QModelIndex& index);
-
-    void onSelectionChanged();
-    void alignHorizontal();
-    void alignVertical();
-    void distributeHorizontal();
-    void distributeVertical();
+    void renderGraph(const GraphSnapshot& snap);
+    void setGraphMode(GraphView::Mode mode);
 
     enum class AlignType {
         Left,
@@ -73,9 +91,16 @@ private:
         Bottom,
         CenterV
     };
-
     void alignNodes(AlignType type);
-    NodeId cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> newParentId, qreal offsetX, qreal offsetY);
+    void alignHorizontal();
+    void alignVertical();
+    void distributeHorizontal();
+    void distributeVertical();
+
+    NodeId cloneNodeRecursive(NodeId sourceId,
+                              std::optional<NodeId> newParentId,
+                              qreal offsetX,
+                              qreal offsetY);
 
     QTreeView* navigator_{nullptr};
     QDockWidget* architectureDock_{nullptr};
@@ -84,47 +109,49 @@ private:
     QGraphicsScene* scene_{nullptr};
     GraphView* graphView_{nullptr};
     GraphNodeItem* primaryNode_{nullptr};
-
     bool isRendering_{false};
+
+    QStackedWidget* centralStack_{nullptr};
+    WelcomeWidget* welcomeWidget_{nullptr};
 
     QToolBar* graphToolBar_{nullptr};
     QToolBar* layoutToolBar_{nullptr};
 
     QAction* actionView_{nullptr};
-    QAction* actionAdd_{nullptr};
-    QAction* actionArch_{nullptr};
-    QAction* actionConn_{nullptr};
     QAction* actionEdit_{nullptr};
-
+    QAction* actionConnect_{nullptr};
+    QAction* actionCut_{nullptr};
+    QAction* actionCopy_{nullptr};
+    QAction* actionPaste_{nullptr};
 
     QAction* actionAlignLeft_{nullptr};
     QAction* actionAlignCenterH_{nullptr};
     QAction* actionAlignRight_{nullptr};
-
     QAction* actionAlignTop_{nullptr};
     QAction* actionAlignCenterV_{nullptr};
     QAction* actionAlignBottom_{nullptr};
-
     QAction* actionDistH_{nullptr};
     QAction* actionDistV_{nullptr};
-    QAction* actionConnect_{nullptr};
 
-    QStackedWidget* centralStack_{nullptr};
-    WelcomeWidget* welcomeWidget_{nullptr};
-    void showWelcome();
-    void showCanvas();
-    void createNewDatabase();
+    // --- Clipboard Data ---
+    struct ClipboardNode {
+        NodeData data;
+        QPointF localPos;
+        bool isRoot{false};
+        std::vector<LayerId> layers;
+    };
+    std::vector<ClipboardNode> clipboardNodes_;
+    int pasteOffsetMultiplier_{1};
 
+    // --- Cut Buffer Data ---
+    struct CutNodeRecord {
+        NodeId id;
+        QPointF originalScenePos;
+        bool isRoot{false};
+    };
+    std::vector<CutNodeRecord> cutNodeIds_;
 
-    // Dynamic backend: prevents SQLite / JSON overwrite conflicts
+    QTimer* autoSaveTimer_{nullptr};
     std::unique_ptr<DbManager> db_{nullptr};
     ArchitectureModel* model_{nullptr};
-
-private slots:
-    void deleteSelected();
-    void copySelectedNode();
-    void connectSelectedNodes();
-    void loadThemeFromFile();
-    void switchThemePreset(const QString& path);
-
 };

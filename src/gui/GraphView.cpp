@@ -2,6 +2,7 @@
 #include "GraphNodeItem.h"
 #include "GraphEdgeItem.h"
 #include "GraphThemeManager.h"
+#include "MainWindow.h"
 
 #include <QMouseEvent>
 #include <QTextStream>
@@ -17,6 +18,15 @@
 #include <QGraphicsScene>
 #include <QMenu>
 #include <cmath>
+
+static QString toCssRgba(const QColor& c)
+{
+    return QString("rgba(%1, %2, %3, %4)")
+        .arg(c.red())
+        .arg(c.green())
+        .arg(c.blue())
+        .arg(c.alphaF(), 0, 'f', 2);
+}
 
 GraphView::GraphView(QWidget* parent)
     : QGraphicsView(parent)
@@ -151,60 +161,31 @@ void GraphView::mouseDoubleClickEvent(QMouseEvent* event)
 
 void GraphView::contextMenuEvent(QContextMenuEvent* event)
 {
+    // If clicked on an item, delegate to the item's own context menu
     if (itemAt(event->pos()))
     {
         QGraphicsView::contextMenuEvent(event);
         return;
     }
 
-    if (mode_ != Mode::Edit)
-        return;
-
-    QPoint viewportPos = viewport()->mapFromGlobal(event->globalPos());
-    QPointF scenePos = mapToScene(viewportPos);
+    auto* mainWin = dynamic_cast<MainWindow*>(window());
+    QPointF sceneClickPos = mapToScene(event->pos());
 
     QMenu menu(this);
-    QAction* addNodeAct = menu.addAction("Add Node");
-    QAction* addLayerAct = menu.addAction("Add Layer");
+    QAction* pasteAct = menu.addAction(QIcon(":/icons/paste.svg"), "Paste Here");
+    pasteAct->setEnabled(mainWin && mainWin->hasClipboard());
 
-    QAction* selected = menu.exec(event->globalPos());
+    QAction* addNodeAct = menu.addAction("Add Node Here");
 
-    if (selected == addNodeAct)
-        emit requestAddNode(scenePos);
-    else if (selected == addLayerAct)
-        emit requestAddLayer();
-}
-
-void GraphView::keyPressEvent(QKeyEvent* event)
-{
-    if (event->key() == Qt::Key_Space)
+    QAction* chosen = menu.exec(event->globalPos());
+    if (chosen == pasteAct && mainWin)
     {
-        spacePressed_ = true;
-        setCursor(Qt::OpenHandCursor);
+        mainWin->pasteNodesAt(sceneClickPos);
     }
-
-    if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace)
+    else if (chosen == addNodeAct)
     {
-        if (mode() == Mode::Edit)
-        {
-            emit deleteRequested();
-            event->accept();
-            return;
-        }
+        emit requestAddNode(sceneClickPos);
     }
-
-    QGraphicsView::keyPressEvent(event);
-}
-
-void GraphView::keyReleaseEvent(QKeyEvent* event)
-{
-    if (event->key() == Qt::Key_Space)
-    {
-        spacePressed_ = false;
-        setCursor(Qt::ArrowCursor);
-    }
-
-    QGraphicsView::keyReleaseEvent(event);
 }
 
 void GraphView::exportToSvg(ExportMode mode)
@@ -312,14 +293,6 @@ void GraphView::moveSelectionTo(const QPointF& target)
             node->setPos(node->pos() + delta);
     }
 }
-static QString toCssRgba(const QColor& c)
-{
-    return QString("rgba(%1, %2, %3, %4)")
-        .arg(c.red())
-        .arg(c.green())
-        .arg(c.blue())
-        .arg(c.alphaF(), 0, 'f', 2);
-}
 
 void GraphView::exportToInteractiveHtml()
 {
@@ -422,7 +395,7 @@ void GraphView::exportToInteractiveHtml()
         << "; stroke: " << toCssRgba(theme.edge.normal.label.borderColor)
         << "; stroke-width: " << theme.edge.normal.label.borderWidth << "px; rx: " << theme.edge.normal.label.radius << "px; }\n";
 
-    // --- Theme-Aware Inspector Sidebar ---
+    // --- Sidebar Drawer ---
     QColor sidebarBg = theme.node.normal.background;
     QColor sidebarBorder = theme.node.normal.border;
     QColor textPrimary = theme.node.normal.title.color;
