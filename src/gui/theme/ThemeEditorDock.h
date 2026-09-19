@@ -2,33 +2,28 @@
 
 #include <QDockWidget>
 #include <QColor>
-
 #include <functional>
+
+#include "GraphTheme.h"
 
 class QPushButton;
 class QVBoxLayout;
 class QTreeWidget;
 class QTreeWidgetItem;
 class QStackedWidget;
-
-struct GraphNodeState;
-struct GraphEdgeState;
-struct GraphArrowState;
-struct GraphTextStyle;
-struct GraphEdgeLabelState;
-struct GraphPortState;
+class QComboBox;
 
 class ThemeEditorDock : public QDockWidget
 {
     Q_OBJECT
 
 public:
+    explicit ThemeEditorDock(QWidget* parent = nullptr);
 
-    explicit ThemeEditorDock(
-        QWidget* parent = nullptr);
+public slots:
+    void syncFromTheme();
 
 private:
-
     struct InspectorPage
     {
         QWidget* container = nullptr;
@@ -37,11 +32,10 @@ private:
     };
 
     QTreeWidget* m_tree = nullptr;
-
     QStackedWidget* m_stack = nullptr;
+    bool m_isInternalUpdate = false;
 
     void populateTree();
-
     void connectTree();
 
     InspectorPage createInspectorPage();
@@ -71,27 +65,42 @@ private:
         bool value,
         std::function<void(bool)> onChanged);
 
+    QWidget* createPenStyleEditor(
+        const QString& title,
+        Qt::PenStyle value,
+        std::function<void(Qt::PenStyle)> onChanged);
+
     void buildTextStyleSection(
         const QString& title,
         GraphTextStyle& style,
-        QVBoxLayout* parentLayout);
+        QVBoxLayout* parentLayout,
+        std::function<void()> onUpdate = nullptr);
 
     void buildArrowStateSection(
         const QString& title,
         GraphArrowState& state,
-        QVBoxLayout* parentLayout);
+        QVBoxLayout* parentLayout,
+        std::function<void()> onUpdate = nullptr);
 
     void buildEdgeLabelStyleSection(
         const QString& title,
         GraphEdgeLabelState& style,
-        QVBoxLayout* parentLayout);
+        QVBoxLayout* parentLayout,
+        std::function<void()> onUpdate = nullptr);
 
-    void buildNodeStateProperties(
-        GraphNodeState& state,
-        QVBoxLayout* layout);
+    void buildComponentStateProperties(
+        GraphComponentState& state,
+        QVBoxLayout* layout,
+        bool isContainer,
+        int kind = 0);
 
     void buildEdgeStateProperties(
         GraphEdgeState& state,
+        QVBoxLayout* layout,
+        int kind = 0);
+
+    void buildPreviewLineProperties(
+        GraphPreviewLineTheme& preview,
         QVBoxLayout* layout);
 
     void buildPortStateProperties(
@@ -111,7 +120,4 @@ private:
         QVBoxLayout* layout);
 
     void emitThemeChanged();
-
-    public slots:
-    void syncFromTheme();
 };

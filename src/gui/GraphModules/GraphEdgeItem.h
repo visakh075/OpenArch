@@ -7,7 +7,7 @@
 #include <QPointer>
 #include <QGraphicsSceneContextMenuEvent>
 
-#include "ArchitectureModel.h"
+#include "core/ArchitectureModel.h"
 
 class GraphNodeItem;
 
@@ -33,7 +33,7 @@ public:
                   GraphNodeItem* src,
                   GraphNodeItem* dst,
                   QGraphicsItem* parent = nullptr);
-    ~GraphEdgeItem() override;
+    virtual ~GraphEdgeItem() override;
 
     QRectF boundingRect() const override;
     void paint(QPainter* painter,
@@ -48,9 +48,19 @@ public:
     const QPainterPath& edgePath() const { return cachedPath_; }
     QString title() const { return cachedTitle_; }
 
+public slots:
+    void onThemeChanged();
+
+protected:
+    void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override;
+    void hoverLeaveEvent(QGraphicsSceneHoverEvent* event) override;
+    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+    void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
+
 private:
-    ArchitectureModel* model_;
-    EdgeId e_id;
+    ArchitectureModel* model_{nullptr};
+    EdgeId e_id{0};
     
     QPainterPath cachedPath_;
     QString cachedTitle_;
@@ -70,14 +80,7 @@ private:
     QPen normalPen_;
     QPen highlightPen_;
 
-    bool hovered_ = false;
-
-protected:
-    void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override;
-    void hoverLeaveEvent(QGraphicsSceneHoverEvent* event) override;
-    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
-    void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
-    void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
+    bool hovered_{false};
 };
 
 #endif

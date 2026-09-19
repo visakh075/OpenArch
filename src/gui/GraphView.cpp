@@ -161,7 +161,6 @@ void GraphView::mouseDoubleClickEvent(QMouseEvent* event)
 
 void GraphView::contextMenuEvent(QContextMenuEvent* event)
 {
-    // If clicked on an item, delegate to the item's own context menu
     if (itemAt(event->pos()))
     {
         QGraphicsView::contextMenuEvent(event);
@@ -239,9 +238,9 @@ void GraphView::drawBackground(QPainter* painter, const QRectF& rect)
 
     if (theme.view.grid.enabled)
     {
-        const int gridSize = 20;
+        const int gridSize = theme.view.grid.spacing > 0 ? theme.view.grid.spacing : 20;
         QPen pen(theme.view.grid.majorColor);
-        pen.setWidth(1);
+        pen.setWidth(theme.view.grid.lineWidth);
         painter->setPen(pen);
 
         QRect viewportRect = viewport()->rect();
@@ -362,25 +361,36 @@ void GraphView::exportToInteractiveHtml()
         << "; font-size: " << theme.node.normal.body.size << "px; pointer-events: none; }\n";
     out << "  .graph-node:hover text.body { fill: " << toCssRgba(theme.node.hover.body.color) << "; }\n";
 
-    // --- Containers ---
-    QColor containerBg = theme.node.normal.background;
-    containerBg.setAlpha(45);
-    QColor containerHeaderBg = theme.node.normal.border;
-    containerHeaderBg.setAlpha(35);
+    // --- Containers (Fully Theme-Driven) ---
+    const auto& cNormal = theme.container.normal;
+    const auto& cHover = theme.container.hover;
 
-    out << "  .graph-container rect.box { fill: " << toCssRgba(containerBg) 
-        << "; stroke: " << toCssRgba(theme.node.normal.border) 
-        << "; stroke-width: " << theme.node.normal.borderWidth 
-        << "px; stroke-dasharray: 6 4; rx: " << theme.node.normal.radius << "px; }\n";
-    out << "  .graph-container rect.header { fill: " << toCssRgba(containerHeaderBg) 
-        << "; rx: " << theme.node.normal.radius << "px; }\n";
-    out << "  .graph-container text.header-title { fill: " << toCssRgba(theme.node.normal.title.color) 
-        << "; font-size: 13px; font-weight: bold; pointer-events: none; }\n";
+    QString dashArray = "none";
+    if (cNormal.borderStyle == Qt::DashLine || !cNormal.dashPattern.isEmpty())
+        dashArray = "6 4";
+
+    out << "  .graph-container rect.box { fill: " << toCssRgba(cNormal.background) 
+        << "; stroke: " << toCssRgba(cNormal.border) 
+        << "; stroke-width: " << cNormal.borderWidth 
+        << "px; stroke-dasharray: " << dashArray 
+        << "; rx: " << cNormal.radius << "px; transition: all 0.15s ease; }\n";
+    out << "  .graph-container:hover rect.box { fill: " << toCssRgba(cHover.background)
+        << "; stroke: " << toCssRgba(cHover.border)
+        << "; stroke-width: " << cHover.borderWidth << "px; }\n";
+    out << "  .graph-container rect.header { fill: " << toCssRgba(cNormal.headerBackground) 
+        << "; rx: " << cNormal.radius << "px; }\n";
+    out << "  .graph-container text.header-title { fill: " << toCssRgba(cNormal.title.color) 
+        << "; font-size: " << cNormal.title.size << "px; font-weight: " 
+        << (cNormal.title.bold ? "bold" : "normal") << "; pointer-events: none; }\n";
 
     // --- Edges ---
+    QString edgeDash = (theme.edge.normal.lineStyle == Qt::DashLine || theme.edge.normal.dashed) ? "6 4" : "none";
+
     out << "  .graph-edge { cursor: pointer; }\n";
     out << "  .graph-edge path.line { fill: none; stroke: " << toCssRgba(theme.edge.normal.lineColor) 
-        << "; stroke-width: " << theme.edge.normal.lineWidth << "px; transition: stroke 0.15s ease, stroke-width 0.15s ease; }\n";
+        << "; stroke-width: " << theme.edge.normal.lineWidth 
+        << "px; stroke-dasharray: " << edgeDash 
+        << "; transition: stroke 0.15s ease, stroke-width 0.15s ease; }\n";
     out << "  .graph-edge polygon.arrow { fill: " << toCssRgba(theme.edge.normal.arrow.fillColor) 
         << "; stroke: " << toCssRgba(theme.edge.normal.arrow.lineColor) 
         << "; stroke-width: " << theme.edge.normal.arrow.lineWidth << "px; transition: fill 0.15s ease; }\n";

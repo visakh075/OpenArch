@@ -89,12 +89,13 @@ void MainWindow::setupUi()
         {
             if (scene_)
             {
+                // Force full visual, layout, and geometric invalidation across all items
                 for (QGraphicsItem* item : scene_->items())
                 {
                     if (auto* node = dynamic_cast<GraphNodeItem*>(item))
                         node->onThemeChanged();
                     else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
-                        edge->refreshPath();
+                        edge->onThemeChanged();
                 }
                 scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
             }
@@ -1019,7 +1020,6 @@ void MainWindow::deleteSelected()
     const auto selected = scene_->selectedItems();
     if (selected.isEmpty()) return;
 
-    // 1. Collect all directly selected nodes and their recursive descendants
     std::unordered_set<NodeId> allNodeIdsToDelete;
     std::unordered_set<GraphNodeItem*> allNodeItemsToDelete;
     std::unordered_set<GraphEdgeItem*> edgesToDelete;
@@ -1058,7 +1058,6 @@ void MainWindow::deleteSelected()
             edgesToDelete.insert(edge);
     }
 
-    // 2. Collect all attached edges to prevent dangling edges in the database
     for (QGraphicsItem* item : scene_->items())
     {
         if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
@@ -1083,9 +1082,6 @@ void MainWindow::deleteSelected()
     if (reply != QMessageBox::Yes)
         return;
 
-    // 3. PHASE 1: Unparent ALL child items from parent containers first.
-    //    CRITICAL: This prevents Qt's ~QGraphicsItem() from cascade-deleting children 
-    //    while pointers to those children are still waiting in allNodeItemsToDelete!
     for (auto* node : allNodeItemsToDelete)
     {
         if (node)
@@ -1094,7 +1090,6 @@ void MainWindow::deleteSelected()
         }
     }
 
-    // 4. Delete edges from DB and Scene
     for (auto* edge : edgesToDelete)
     {
         if (!edge) continue;
@@ -1104,13 +1099,11 @@ void MainWindow::deleteSelected()
         delete edge;
     }
 
-    // 5. Delete nodes from DB
     for (NodeId nId : allNodeIdsToDelete)
     {
         model_->deleteNode(nId);
     }
 
-    // 6. PHASE 2: Safely delete graphical node items now that none are children of each other
     for (auto* node : allNodeItemsToDelete)
     {
         if (!node) continue;
@@ -1122,7 +1115,6 @@ void MainWindow::deleteSelected()
         delete node;
     }
 
-    // 7. Synchronize Navigator and View
     populateNavigator();
 
     QModelIndex index = navigator_->currentIndex();
@@ -1242,10 +1234,6 @@ void MainWindow::copySelectedNode()
 
     statusBar()->showMessage(QString("Node duplicated (New ID: %1)").arg(copiedId), 2500);
 }
-
-// ===========================================================================
-// CUT / COPY / PASTE IMPLEMENTATION
-// ===========================================================================
 
 void MainWindow::cutSelectedNodes()
 {
@@ -1404,76 +1392,82 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
 {
     if (!model_ || !scene_) return;
 
-    // =======================================================================
-    // Scenario A: CUT Relocation
-    // =======================================================================
+    auto findContainerAt = [this](const QPointF& scenePt, const std::unordered_set<NodeId>& excludeIds) -> GraphNodeItem* {
+        for (QGraphicsItem* item : scene_->items(scenePt))
+        {
+            if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+            {
+                if (node->isContainer() && excludeIds.find(node->nodeId()) == excludeIds.end())
+                {
+                    return node;
+                }
+            }
+        }
+        return nullptr;
+    };
+
     if (!cutNodeIds_.empty())
     {
-        QPointF anchorPos(0, 0);
+        std::unordered_set<NodeId> cutIdSet;
+        for (const auto& r : cutNodeIds_) cutIdSet.insert(r.id);
+
+        QPointF anchorScenePos(0, 0);
         for (const auto& rec : cutNodeIds_)
         {
             if (rec.isRoot)
             {
-                anchorPos = rec.originalScenePos;
+                anchorScenePos = rec.originalScenePos;
                 break;
             }
         }
 
-        QPointF destPos = targetPos.value_or(anchorPos + QPointF(40, 40));
+        const bool hasExplicitTarget = targetPos.has_value();
+        QPointF dropScenePos = hasExplicitTarget ? *targetPos : (anchorScenePos + QPointF(30, 30));
 
-        GraphNodeItem* dropContainer = nullptr;
-        for (QGraphicsItem* item : scene_->items(destPos))
-        {
-            if (auto* cand = dynamic_cast<GraphNodeItem*>(item))
-            {
-                bool isCut = false;
-                for (const auto& r : cutNodeIds_)
-                {
-                    if (r.id == cand->nodeId()) { isCut = true; break; }
-                }
-                if (!isCut && cand->isContainer())
-                {
-                    dropContainer = cand;
-                    break;
-                }
-            }
-        }
+        GraphNodeItem* targetContainer = findContainerAt(dropScenePos, cutIdSet);
 
         for (const auto& rec : cutNodeIds_)
         {
+            if (!rec.isRoot) continue;
+
             auto nodeOpt = model_->getNodeById(rec.id);
             if (!nodeOpt) continue;
 
-            if (rec.isRoot)
+            qreal deltaX = rec.originalScenePos.x() - anchorScenePos.x();
+            qreal deltaY = rec.originalScenePos.y() - anchorScenePos.y();
+            QPointF thisRootScenePos = dropScenePos + QPointF(deltaX, deltaY);
+
+            qreal finalX = 0;
+            qreal finalY = 0;
+
+            if (targetContainer)
             {
-                qreal relX = rec.originalScenePos.x() - anchorPos.x();
-                qreal relY = rec.originalScenePos.y() - anchorPos.y();
-                QPointF newScenePos = destPos + QPointF(relX, relY);
+                nodeOpt->parentId = targetContainer->nodeId();
+                QPointF localPt = targetContainer->mapFromScene(thisRootScenePos);
 
-                if (dropContainer)
-                {
-                    nodeOpt->parentId = dropContainer->nodeId();
-                    QPointF localInContainer = dropContainer->mapFromScene(newScenePos);
-                    qreal minY = dropContainer->rect().top() + 30.0;
-                    localInContainer.setY(std::max(minY, localInContainer.y()));
-                    localInContainer.setX(std::max(10.0, localInContainer.x()));
-
-                    QJsonObject obj;
-                    obj["x"] = localInContainer.x();
-                    obj["y"] = localInContainer.y();
-                    nodeOpt->metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
-                }
-                else
-                {
-                    nodeOpt->parentId = std::nullopt;
-                    QJsonObject obj;
-                    obj["x"] = newScenePos.x();
-                    obj["y"] = newScenePos.y();
-                    nodeOpt->metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
-                }
-
-                model_->updateNode(*nodeOpt);
+                qreal minX = 10.0;
+                qreal minY = targetContainer->rect().top() + 35.0;
+                finalX = std::max(minX, localPt.x());
+                finalY = std::max(minY, localPt.y());
             }
+            else
+            {
+                nodeOpt->parentId = std::nullopt;
+                finalX = thisRootScenePos.x();
+                finalY = thisRootScenePos.y();
+            }
+
+            QJsonObject obj;
+            if (!nodeOpt->metadata.empty())
+            {
+                QJsonDocument doc = QJsonDocument::fromJson(QString::fromStdString(nodeOpt->metadata).toUtf8());
+                if (doc.isObject()) obj = doc.object();
+            }
+            obj["x"] = finalX;
+            obj["y"] = finalY;
+            nodeOpt->metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
+
+            model_->updateNode(*nodeOpt);
         }
 
         std::vector<NodeId> movedIds;
@@ -1512,40 +1506,36 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
             }
         }
 
-        if (dropContainer)
-        {
-            dropContainer->refreshGeometry();
-        }
-
+        if (targetContainer) targetContainer->refreshGeometry();
         scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
         graphView_->viewport()->update();
 
-        statusBar()->showMessage(QString("Moved %1 cut node(s)").arg(movedIds.size()), 2000);
+        statusBar()->showMessage(QString("Moved %1 node(s)").arg(movedIds.size()), 2000);
         return;
     }
 
-    // =======================================================================
-    // Scenario B: COPY Duplication
-    // =======================================================================
     if (clipboardNodes_.empty()) return;
 
     scene_->clearSelection();
 
-    std::unordered_map<NodeId, NodeId> oldToNewId;
-    std::vector<NodeId> newlyCreatedIds;
-
-    QPointF referencePos = clipboardNodes_.front().localPos;
+    QPointF anchorScenePos = clipboardNodes_.front().localPos;
     for (const auto& cn : clipboardNodes_)
     {
         if (cn.isRoot)
         {
-            referencePos = cn.localPos;
+            anchorScenePos = cn.localPos;
             break;
         }
     }
 
-    bool placeAtCursor = targetPos.has_value();
+    const bool hasExplicitTarget = targetPos.has_value();
     const qreal defaultOffset = 30.0 * pasteOffsetMultiplier_;
+    QPointF dropScenePos = hasExplicitTarget ? *targetPos : (anchorScenePos + QPointF(defaultOffset, defaultOffset));
+
+    GraphNodeItem* targetContainer = findContainerAt(dropScenePos, {});
+
+    std::unordered_map<NodeId, NodeId> oldToNewId;
+    std::vector<NodeId> newlyCreatedIds;
 
     for (const auto& cn : clipboardNodes_)
     {
@@ -1561,17 +1551,24 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
 
         if (cn.isRoot)
         {
-            if (placeAtCursor)
+            qreal deltaX = cn.localPos.x() - anchorScenePos.x();
+            qreal deltaY = cn.localPos.y() - anchorScenePos.y();
+            QPointF thisRootScenePos = dropScenePos + QPointF(deltaX, deltaY);
+
+            if (targetContainer)
             {
-                qreal relX = cn.localPos.x() - referencePos.x();
-                qreal relY = cn.localPos.y() - referencePos.y();
-                finalX = targetPos->x() + relX;
-                finalY = targetPos->y() + relY;
+                copyData.parentId = targetContainer->nodeId();
+                QPointF localPt = targetContainer->mapFromScene(thisRootScenePos);
+                qreal minX = 10.0;
+                qreal minY = targetContainer->rect().top() + 35.0;
+                finalX = std::max(minX, localPt.x());
+                finalY = std::max(minY, localPt.y());
             }
             else
             {
-                finalX = cn.localPos.x() + defaultOffset;
-                finalY = cn.localPos.y() + defaultOffset;
+                copyData.parentId = std::nullopt;
+                finalX = thisRootScenePos.x();
+                finalY = thisRootScenePos.y();
             }
         }
         else
@@ -1584,8 +1581,7 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
         if (!cn.data.metadata.empty())
         {
             QJsonDocument doc = QJsonDocument::fromJson(QString::fromStdString(cn.data.metadata).toUtf8());
-            if (doc.isObject())
-                obj = doc.object();
+            if (doc.isObject()) obj = doc.object();
         }
         obj["x"] = finalX;
         obj["y"] = finalY;
@@ -1622,7 +1618,7 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
         }
     }
 
-    if (!placeAtCursor)
+    if (!hasExplicitTarget)
     {
         pasteOffsetMultiplier_++;
     }
@@ -1647,9 +1643,14 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
             if (std::find(newlyCreatedIds.begin(), newlyCreatedIds.end(), node->nodeId()) != newlyCreatedIds.end())
             {
                 node->setSelected(true);
+                node->refreshGeometry();
             }
         }
     }
+
+    if (targetContainer) targetContainer->refreshGeometry();
+    scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+    graphView_->viewport()->update();
 
     statusBar()->showMessage(QString("Pasted %1 node(s)").arg(newlyCreatedIds.size()), 2000);
 }

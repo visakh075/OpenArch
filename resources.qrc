@@ -17,6 +17,8 @@
 
         <!-- Tools -->
         <file alias="copy.svg">assets/resources/icons/copy.svg</file>
+        <file alias="cut.svg">assets/resources/icons/scissors.svg</file>
+        <file alias="paste.svg">assets/resources/icons/clipboard.svg</file>
         <file alias="layers.svg">assets/resources/icons/layers.svg</file>
         <file alias="connect.svg">assets/resources/icons/network.svg</file>
         <file alias="add-node.svg">assets/resources/icons/plus-square.svg</file>

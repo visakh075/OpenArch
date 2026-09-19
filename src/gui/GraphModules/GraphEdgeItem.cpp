@@ -1,8 +1,8 @@
 #include "GraphEdgeItem.h"
 #include "GraphNodeItem.h"
-#include "GraphView.h"
-#include "EdgeEditorDialog.h"
-#include "GraphThemeManager.h"
+#include "gui/GraphView.h"
+#include "gui/EditorDialogs/EdgeEditorDialog.h"
+#include "gui/theme/GraphThemeManager.h"
 
 #include <QPainter>
 #include <QString>
@@ -13,6 +13,7 @@
 #include <QPainterPathStroker>
 #include <QtMath>
 #include <algorithm>
+#include <cmath>
 
 GraphEdgeItem::GraphEdgeItem(
     ArchitectureModel* model,
@@ -31,8 +32,6 @@ GraphEdgeItem::GraphEdgeItem(
     setFlag(QGraphicsItem::ItemIsSelectable, true);
     setFlag(QGraphicsItem::ItemIsMovable, false);
 
-    // Compute base Z so the edge rests above the container background (Z = 1)
-    // while remaining below child nodes when unselected
     qreal baseZ = 1.5;
     if (src_ && dst_)
     {
@@ -51,6 +50,9 @@ GraphEdgeItem::GraphEdgeItem(
     highlightPen_ = QPen(Qt::blue, 3);
     cachedPath_ = buildPath();
 
+    connect(GraphThemeManager::instance(), &GraphThemeManager::themeChanged,
+            this, &GraphEdgeItem::onThemeChanged);
+
     refreshLayout();
 }
 
@@ -60,6 +62,13 @@ GraphEdgeItem::~GraphEdgeItem()
         src_->removeEdge(this);
     if (dst_)
         dst_->removeEdge(this);
+}
+
+void GraphEdgeItem::onThemeChanged()
+{
+    prepareGeometryChange();
+    refreshLayout();
+    update();
 }
 
 QPointF GraphEdgeItem::portScenePosition(GraphNodeItem* node, Port port) const
@@ -213,8 +222,13 @@ QPainterPath GraphEdgeItem::buildPath() const
 
 QRectF GraphEdgeItem::boundingRect() const
 {
+    const auto& theme = GraphThemeManager::instance()->theme();
+    const GraphEdgeState* State = isSelected() ? &theme.edge.selected 
+                                : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
+
+    qreal extraMargin = State->lineWidth + State->label.offset + State->label.paddingY + 30.0;
     QRectF rect = cachedPath_.boundingRect();
-    rect.adjust(-20, -20, 20, 20);
+    rect.adjust(-extraMargin, -extraMargin, extraMargin, extraMargin);
     return rect;
 }
 
@@ -249,12 +263,12 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     double arrowHeight = arrow.height;
 
     QPointF arrowP1 = arrowTip - QPointF(
-        std::cos(angle) * arrowWidth - std::sin(angle) * arrowHeight / 2,
-        -std::sin(angle) * arrowWidth - std::cos(angle) * arrowHeight / 2);
+        std::cos(angle) * arrowWidth - std::sin(angle) * arrowHeight / 2.0,
+        -std::sin(angle) * arrowWidth - std::cos(angle) * arrowHeight / 2.0);
 
     QPointF arrowP2 = arrowTip - QPointF(
-        std::cos(angle) * arrowWidth + std::sin(angle) * arrowHeight / 2,
-        -std::sin(angle) * arrowWidth + std::cos(angle) * arrowHeight / 2);
+        std::cos(angle) * arrowWidth + std::sin(angle) * arrowHeight / 2.0,
+        -std::sin(angle) * arrowWidth + std::cos(angle) * arrowHeight / 2.0);
 
     QPointF arrowBaseCenter = (arrowP1 + arrowP2) / 2.0;
 
@@ -274,6 +288,11 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
 
     QPen edgePen(State->lineColor);
     edgePen.setWidth(State->lineWidth);
+    edgePen.setStyle(State->lineStyle);
+    if (State->lineStyle == Qt::CustomDashLine && !State->dashPattern.isEmpty())
+    {
+        edgePen.setDashPattern(State->dashPattern);
+    }
     edgePen.setJoinStyle(Qt::RoundJoin);
     edgePen.setCapStyle(Qt::RoundCap);
 
@@ -307,15 +326,17 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     double degrees = textAngle * 180.0 / M_PI;
 
     if (degrees > 90 || degrees < -90)
-        degrees += 180;
+        degrees += 180.0;
 
     painter->save();
     painter->translate(p1);
     painter->rotate(degrees);
 
-    QPointF textPos(-textRect.width() / 2, -label.offset);
+    qreal badgeHalfHeight = (textRect.height() / 2.0) + label.paddingY;
+    qreal verticalDistance = (State->lineWidth / 2.0) + label.offset + badgeHalfHeight;
+
     QRect bgRect = textRect.adjusted(-label.paddingX, -label.paddingY, label.paddingX, label.paddingY);
-    bgRect.moveCenter(QPoint(0, -label.offset));
+    bgRect.moveCenter(QPoint(0, static_cast<int>(-verticalDistance)));
 
     QPen bgPen(label.borderColor);
     bgPen.setWidth(label.borderWidth);
@@ -325,7 +346,7 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     painter->drawRoundedRect(bgRect, label.radius, label.radius);
 
     painter->setPen(label.textColor);
-    painter->drawText(textPos, title);
+    painter->drawText(bgRect, Qt::AlignCenter, title);
     painter->restore();
 }
 
@@ -358,8 +379,11 @@ QPainterPath GraphEdgeItem::shape() const
         QPainterPath path = cachedPath_;
         QPointF p = path.pointAtPercent(0.5);
 
+        qreal badgeHalfHeight = (textRect.height() / 2.0) + label.paddingY;
+        qreal verticalDistance = (State->lineWidth / 2.0) + label.offset + badgeHalfHeight;
+
         QRectF bgRect = textRect.adjusted(-label.paddingX, -label.paddingY, label.paddingX, label.paddingY);
-        bgRect.moveCenter(QPointF(p.x(), p.y() - label.offset));
+        bgRect.moveCenter(QPointF(p.x(), p.y() - verticalDistance));
 
         QPainterPath labelPath;
         labelPath.addRoundedRect(bgRect, label.radius, label.radius);
@@ -451,8 +475,14 @@ void GraphEdgeItem::refreshPath()
 {
     prepareGeometryChange();
     cachedPath_ = buildPath();
+
+    const auto& theme = GraphThemeManager::instance()->theme();
+    const GraphEdgeState* State = isSelected() ? &theme.edge.selected 
+                                : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
+
+    qreal extraMargin = State->lineWidth + State->label.offset + State->label.paddingY + 30.0;
     cachedBounds_ = cachedPath_.boundingRect();
-    cachedBounds_.adjust(-20, -20, 20, 20);
+    cachedBounds_.adjust(-extraMargin, -extraMargin, extraMargin, extraMargin);
     update();
 }
 
