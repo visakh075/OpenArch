@@ -3,6 +3,7 @@
 #include <QCommandLineOption>
 #include <QDebug>
 #include <QFileInfo>
+#include <QFile>
 
 #include "MainWindow.h"
 #include "GraphThemeManager.h"
@@ -58,7 +59,23 @@ int main(int argc, char *argv[])
     }
     else
     {
-        themeManager.load("dark.json");
+        QString defaultTheme = "dark.json";
+        if (!QFile::exists(defaultTheme)) {
+            QStringList candidates = {
+                QCoreApplication::applicationDirPath() + "/dark.json",
+                QCoreApplication::applicationDirPath() + "/themes/Dark.json",
+                "themes/Dark.json",
+                "src/gui/theme/themes/Dark.json",
+                QCoreApplication::applicationDirPath() + "/../src/gui/theme/themes/Dark.json"
+            };
+            for (const auto& candidate : candidates) {
+                if (QFile::exists(candidate)) {
+                    defaultTheme = candidate;
+                    break;
+                }
+            }
+        }
+        themeManager.load(defaultTheme);
     }
 
     /*

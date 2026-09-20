@@ -81,6 +81,8 @@ add_executable(openarch-gui
 
     src/gui/main.cpp
     src/gui/MainWindow.cpp
+    src/gui/ShortcutManager.cpp
+    src/gui/ShortcutConfigDialog.cpp
 
     src/gui/EditorDialogs/NodeEditorDialog.cpp
     src/gui/EditorDialogs/LayerEditorDialog.cpp
@@ -97,6 +99,33 @@ add_executable(openarch-gui
 )
 
 target_link_libraries(openarch-gui PRIVATE
+    openarch_core
+    Qt5::Widgets
+    Qt5::Svg
+)
+
+# ------------------------------------------------------------
+# Test target
+# ------------------------------------------------------------
+add_executable(test_shortcuts
+    resources.qrc
+    tests/test_shortcuts.cpp
+    src/gui/MainWindow.cpp
+    src/gui/ShortcutManager.cpp
+    src/gui/ShortcutConfigDialog.cpp
+    src/gui/EditorDialogs/NodeEditorDialog.cpp
+    src/gui/EditorDialogs/LayerEditorDialog.cpp
+    src/gui/EditorDialogs/EdgeEditorDialog.cpp
+    src/gui/EditorDialogs/JsonTreeEditor.cpp
+    src/gui/WelcomeWidget.cpp
+    src/gui/GraphModules/GraphNodeItem.cpp
+    src/gui/GraphModules/GraphEdgeItem.cpp
+    src/gui/GraphView.cpp    
+    src/gui/theme/GraphThemeManager.cpp
+    src/gui/theme/ThemeEditorDock.cpp
+)
+
+target_link_libraries(test_shortcuts PRIVATE
     openarch_core
     Qt5::Widgets
     Qt5::Svg

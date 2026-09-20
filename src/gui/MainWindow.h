@@ -33,9 +33,15 @@ enum class ItemType : int
 
 namespace NavRole
 {
-    constexpr int Id   = Qt::UserRole + 1;
-    constexpr int Type = Qt::UserRole + 2;
+    constexpr int Id      = Qt::UserRole + 1;
+    constexpr int Type    = Qt::UserRole + 2;
+    constexpr int Subtype = Qt::UserRole + 3;
 }
+
+class ArchitectureFilterProxyModel;
+class QLineEdit;
+class QComboBox;
+class QLabel;
 
 class MainWindow : public QMainWindow
 {
@@ -68,11 +74,14 @@ private slots:
     void handleConnectNodes(qulonglong srcId, qulonglong dstId);
     void deleteSelected();
     void connectSelectedNodes();
+    void openShortcutConfigDialog();
+    void updateShortcutLabels();
 
 private:
     void setupUi();
     void setupMenu();
     void setupToolbar();
+    void setupShortcuts();
     void setupConnections();
     void showWelcome();
     void showCanvas();
@@ -102,9 +111,15 @@ private:
                               qreal offsetX,
                               qreal offsetY);
 
+    void updateNavStatus();
+
     QTreeView* navigator_{nullptr};
     QDockWidget* architectureDock_{nullptr};
     QStandardItemModel* navModel_{nullptr};
+    ArchitectureFilterProxyModel* navProxyModel_{nullptr};
+    QLineEdit* treeSearchEdit_{nullptr};
+    QComboBox* treeFilterCombo_{nullptr};
+    QLabel* treeStatusLabel_{nullptr};
 
     QGraphicsScene* scene_{nullptr};
     GraphView* graphView_{nullptr};
@@ -123,6 +138,14 @@ private:
     QAction* actionCut_{nullptr};
     QAction* actionCopy_{nullptr};
     QAction* actionPaste_{nullptr};
+    QAction* actionDuplicate_{nullptr};
+    QAction* actionAddNode_{nullptr};
+    QAction* actionAddLayer_{nullptr};
+    QAction* actionSaveLayout_{nullptr};
+    QAction* actionExportCurrent_{nullptr};
+    QAction* actionExportWhole_{nullptr};
+    QAction* actionExportHtml_{nullptr};
+    QAction* duplicateBtn_{nullptr};
 
     QAction* actionAlignLeft_{nullptr};
     QAction* actionAlignCenterH_{nullptr};

@@ -89,6 +89,14 @@ GraphTextStyle loadTextStyle(const QJsonObject& obj)
     return style;
 }
 
+QString saveAlign(Qt::Alignment align)
+{
+    if (align & Qt::AlignLeft)    return "left";
+    if (align & Qt::AlignRight)   return "right";
+    if (align & Qt::AlignJustify) return "justify";
+    return "center";
+}
+
 QJsonObject saveTextStyle(const GraphTextStyle& style)
 {
     QJsonObject obj;
@@ -96,6 +104,7 @@ QJsonObject saveTextStyle(const GraphTextStyle& style)
     obj["size"] = style.size;
     obj["bold"] = style.bold;
     obj["italic"] = style.italic;
+    obj["align"] = saveAlign(style.align);
     return obj;
 }
 
@@ -331,7 +340,7 @@ GraphThemeManager* GraphThemeManager::instance()
 
 void GraphThemeManager::initializeDefaults()
 {
-    m_theme.name = "Default";
+    m_theme.name = "OpenArch Dark";
 
     m_theme.view.background = QColor("#202020");
     m_theme.view.grid.enabled = true;
@@ -346,20 +355,101 @@ void GraphThemeManager::initializeDefaults()
     m_theme.node.minHeight = 50.0;
     m_theme.node.normal.background = QColor(45, 45, 48, 255);
     m_theme.node.normal.border = QColor(106, 149, 255, 255);
+    m_theme.node.normal.borderWidth = 2;
     m_theme.node.normal.borderStyle = Qt::SolidLine;
+    m_theme.node.normal.radius = 8;
+    m_theme.node.normal.padding = 8;
+    m_theme.node.normal.title = {QColor("#ffffff"), 14, true, false, 5, 5, 5, 5, Qt::AlignCenter};
+    m_theme.node.normal.body = {QColor("#d0d0d0"), 11, false, false, 5, 5, 5, 5, Qt::AlignCenter};
+
+    m_theme.node.hover.background = QColor(53, 53, 58, 255);
+    m_theme.node.hover.border = QColor(255, 255, 255, 255);
+    m_theme.node.hover.borderWidth = 3;
+    m_theme.node.hover.borderStyle = Qt::SolidLine;
+    m_theme.node.hover.radius = 8;
+    m_theme.node.hover.padding = 8;
+    m_theme.node.hover.title = {QColor("#ffffff"), 14, true, false, 5, 5, 5, 5, Qt::AlignCenter};
+    m_theme.node.hover.body = {QColor("#ffffff"), 11, false, false, 5, 5, 5, 5, Qt::AlignCenter};
+
+    m_theme.node.selected.background = QColor(58, 53, 32, 255);
+    m_theme.node.selected.border = QColor(255, 204, 0, 255);
+    m_theme.node.selected.borderWidth = 4;
+    m_theme.node.selected.borderStyle = Qt::SolidLine;
+    m_theme.node.selected.radius = 8;
+    m_theme.node.selected.padding = 8;
+    m_theme.node.selected.title = {QColor("#ffcc00"), 14, true, false, 5, 5, 5, 5, Qt::AlignCenter};
+    m_theme.node.selected.body = {QColor("#ffffff"), 11, false, false, 5, 5, 5, 5, Qt::AlignCenter};
 
     // Container defaults: Alpha embedded directly in QColor
     m_theme.container.minWidth = 220.0;
     m_theme.container.minHeight = 140.0;
     m_theme.container.normal.background = QColor(45, 45, 48, 45);
     m_theme.container.normal.border = QColor(106, 149, 255, 255);
+    m_theme.container.normal.borderWidth = 2;
     m_theme.container.normal.borderStyle = Qt::DashLine;
     m_theme.container.normal.dashPattern = {6.0, 4.0};
+    m_theme.container.normal.radius = 8;
+    m_theme.container.normal.padding = 8;
     m_theme.container.normal.headerBackground = QColor(106, 149, 255, 35);
+    m_theme.container.normal.headerHeightPadding = 12;
+    m_theme.container.normal.title = {QColor("#ffffff"), 14, true, false, 5, 5, 5, 5, Qt::AlignLeft};
 
+    m_theme.container.hover.background = QColor(53, 53, 58, 55);
+    m_theme.container.hover.border = QColor(255, 255, 255, 255);
+    m_theme.container.hover.borderWidth = 2;
+    m_theme.container.hover.borderStyle = Qt::DashLine;
+    m_theme.container.hover.dashPattern = {6.0, 4.0};
+    m_theme.container.hover.radius = 8;
+    m_theme.container.hover.padding = 8;
+    m_theme.container.hover.headerBackground = QColor(255, 255, 255, 45);
+    m_theme.container.hover.headerHeightPadding = 12;
+    m_theme.container.hover.title = {QColor("#ffffff"), 14, true, false, 5, 5, 5, 5, Qt::AlignLeft};
+
+    m_theme.container.selected.background = QColor(58, 53, 32, 60);
+    m_theme.container.selected.border = QColor(255, 204, 0, 255);
+    m_theme.container.selected.borderWidth = 3;
+    m_theme.container.selected.borderStyle = Qt::DashLine;
+    m_theme.container.selected.dashPattern = {6.0, 4.0};
+    m_theme.container.selected.radius = 8;
+    m_theme.container.selected.padding = 8;
+    m_theme.container.selected.headerBackground = QColor(255, 204, 0, 50);
+    m_theme.container.selected.headerHeightPadding = 12;
+    m_theme.container.selected.title = {QColor("#ffcc00"), 14, true, false, 5, 5, 5, 5, Qt::AlignLeft};
+
+    // Edge defaults
     m_theme.edge.preview.color = QColor(0, 180, 216);
     m_theme.edge.preview.width = 2;
     m_theme.edge.preview.style = Qt::DashLine;
+
+    m_theme.edge.normal.lineColor = QColor("#7aa2f7");
+    m_theme.edge.normal.lineWidth = 2;
+    m_theme.edge.normal.arrow = {QColor("#7aa2f7"), QColor(122, 162, 247, 170), QColor("#000000"), 14, 10, 2, 1};
+    m_theme.edge.normal.label = {QColor("#d0d0d0"), QColor(32, 32, 32, 0), QColor("#404040"), 1, 11, false, 0, 0, 4, 8};
+
+    m_theme.edge.hover.lineColor = QColor("#ffffff");
+    m_theme.edge.hover.lineWidth = 3;
+    m_theme.edge.hover.arrow = {QColor("#ffffff"), QColor("#ffffff"), QColor("#000000"), 16, 12, 2, 1};
+    m_theme.edge.hover.label = {QColor("#ffffff"), QColor("#2c2c2c"), QColor("#ffffff"), 1, 11, true, 6, 3, 4, 8};
+
+    m_theme.edge.selected.lineColor = QColor("#ffcc00");
+    m_theme.edge.selected.lineWidth = 4;
+    m_theme.edge.selected.arrow = {QColor("#ffcc00"), QColor("#ffcc00"), QColor("#000000"), 18, 14, 3, 1};
+    m_theme.edge.selected.label = {QColor("#ffcc00"), QColor("#3a3520"), QColor("#ffcc00"), 2, 11, true, 6, 3, 4, 8};
+
+    // Port defaults
+    m_theme.port.normal.inputColor = QColor("#4ec9b0");
+    m_theme.port.normal.outputColor = QColor("#dcdcaa");
+    m_theme.port.normal.hoverColor = QColor("#ffffff");
+    m_theme.port.normal.radius = 6;
+
+    // Selection defaults
+    m_theme.selection.outline = QColor("#ffcc00");
+    m_theme.selection.fill = QColor(255, 204, 0, 34);
+
+    // Interaction defaults
+    m_theme.interaction.hoverOutline = QColor("#ffffff");
+    m_theme.interaction.invalidConnection = QColor("#ff4444");
+    m_theme.interaction.dropTarget = QColor("#00ff88");
 }
 
 void GraphThemeManager::resetDefaults()
@@ -488,6 +578,33 @@ bool GraphThemeManager::save(const QString& path) const
         edgeObj["selected"] = saveEdgeState(m_theme.edge.selected);
         edgeObj["preview"] = savePreviewLineTheme(m_theme.edge.preview);
         root["edge"] = edgeObj;
+    }
+
+    // Port
+    {
+        QJsonObject portObj;
+        portObj["inputColor"] = m_theme.port.normal.inputColor.name(QColor::HexArgb);
+        portObj["outputColor"] = m_theme.port.normal.outputColor.name(QColor::HexArgb);
+        portObj["hoverColor"] = m_theme.port.normal.hoverColor.name(QColor::HexArgb);
+        portObj["radius"] = m_theme.port.normal.radius;
+        root["port"] = portObj;
+    }
+
+    // Selection
+    {
+        QJsonObject selObj;
+        selObj["outline"] = m_theme.selection.outline.name(QColor::HexArgb);
+        selObj["fill"] = m_theme.selection.fill.name(QColor::HexArgb);
+        root["selection"] = selObj;
+    }
+
+    // Interaction
+    {
+        QJsonObject intObj;
+        intObj["hoverOutline"] = m_theme.interaction.hoverOutline.name(QColor::HexArgb);
+        intObj["invalidConnection"] = m_theme.interaction.invalidConnection.name(QColor::HexArgb);
+        intObj["dropTarget"] = m_theme.interaction.dropTarget.name(QColor::HexArgb);
+        root["interaction"] = intObj;
     }
 
     QJsonDocument doc(root);

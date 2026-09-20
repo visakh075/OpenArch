@@ -5,6 +5,7 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QStatusBar>
+#include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
@@ -20,12 +21,21 @@
 #include <unordered_map>
 #include <functional>
 
+#include <QLineEdit>
+#include <QComboBox>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+
+#include "ArchitectureFilterProxyModel.h"
 #include "NodeEditorDialog.h"
 #include "LayerEditorDialog.h"
 #include "GraphNodeItem.h"
 #include "GraphEdgeItem.h"
 #include "GraphThemeManager.h"
 #include "ThemeEditorDock.h"
+#include "ShortcutManager.h"
+#include "ShortcutConfigDialog.h"
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -33,6 +43,7 @@ MainWindow::MainWindow(QWidget* parent)
     setupUi();
     setupMenu();
     setupToolbar();
+    setupShortcuts();
     setupConnections();
 
     showWelcome();
@@ -54,12 +65,43 @@ void MainWindow::setupUi()
     navModel_ = new QStandardItemModel(this);
     navModel_->setHorizontalHeaderLabels({"Architecture"});
 
+    navProxyModel_ = new ArchitectureFilterProxyModel(this);
+    navProxyModel_->setSourceModel(navModel_);
+
     navigator_ = new QTreeView(this);
-    navigator_->setModel(navModel_);
+    navigator_->setModel(navProxyModel_);
+    navigator_->setHeaderHidden(false);
+
+    auto* navContainer = new QWidget(this);
+    auto* navLayout = new QVBoxLayout(navContainer);
+    navLayout->setContentsMargins(6, 6, 6, 6);
+    navLayout->setSpacing(6);
+
+    // Search bar
+    treeSearchEdit_ = new QLineEdit(navContainer);
+    treeSearchEdit_->setPlaceholderText("Search architecture...");
+    treeSearchEdit_->setClearButtonEnabled(true);
+
+    // Filter bar
+    treeFilterCombo_ = new QComboBox(navContainer);
+    treeFilterCombo_->addItem("All Categories", 0);
+    treeFilterCombo_->addItem("Nodes Only", 1);
+    treeFilterCombo_->addItem("Layers Only", 2);
+
+    // Status label
+    treeStatusLabel_ = new QLabel(navContainer);
+    treeStatusLabel_->setStyleSheet("color: #888888; font-size: 11px; padding: 2px;");
+
+    navLayout->addWidget(treeSearchEdit_);
+    navLayout->addWidget(treeFilterCombo_);
+    navLayout->addWidget(navigator_, 1);
+    navLayout->addWidget(treeStatusLabel_);
 
     architectureDock_ = new QDockWidget("Architecture", this);
     architectureDock_->setObjectName("ArchitectureDock");
-    architectureDock_->setWidget(navigator_);
+    architectureDock_->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
+    architectureDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    architectureDock_->setWidget(navContainer);
     addDockWidget(Qt::LeftDockWidgetArea, architectureDock_);
 
     scene_ = new QGraphicsScene(this);
@@ -130,30 +172,30 @@ void MainWindow::setupMenu()
     fileMenu->addAction("Open DB...", this, &MainWindow::openDatabase);
     fileMenu->addSeparator();
 
-    QAction* exportCurrentAction = new QAction("Export Current View", this);
-    connect(exportCurrentAction, &QAction::triggered, this, [this]() {
+    actionExportCurrent_ = new QAction("Export Current View", this);
+    connect(actionExportCurrent_, &QAction::triggered, this, [this]() {
         graphView_->exportToSvg(GraphView::ExportMode::CurrentView);
     });
-    fileMenu->addAction(exportCurrentAction);
+    fileMenu->addAction(actionExportCurrent_);
 
-    QAction* exportWholeAction = new QAction("Export Whole Diagram", this);
-    connect(exportWholeAction, &QAction::triggered, this, [this]() {
+    actionExportWhole_ = new QAction("Export Whole Diagram", this);
+    connect(actionExportWhole_, &QAction::triggered, this, [this]() {
         graphView_->exportToSvg(GraphView::ExportMode::WholeScene);
     });
-    fileMenu->addAction(exportWholeAction);
+    fileMenu->addAction(actionExportWhole_);
 
-    QAction* exportHtmlAction = new QAction("Export Interactive HTML...", this);
-    connect(exportHtmlAction, &QAction::triggered, this, [this]() {
+    actionExportHtml_ = new QAction("Export Interactive HTML...", this);
+    connect(actionExportHtml_, &QAction::triggered, this, [this]() {
         graphView_->exportToInteractiveHtml();
     });
-    fileMenu->addAction(exportHtmlAction);
+    fileMenu->addAction(actionExportHtml_);
 
     fileMenu->addSeparator();
     fileMenu->addAction("Exit", this, &QWidget::close);
 
     auto* editMenu = menuBar()->addMenu("&Edit");
-    editMenu->addAction("Add Node", this, &MainWindow::createNewNode);
-    editMenu->addAction("Add Layer", this, &MainWindow::createNewLayer);
+    actionAddNode_ = editMenu->addAction("Add Node", this, &MainWindow::createNewNode);
+    actionAddLayer_ = editMenu->addAction("Add Layer", this, &MainWindow::createNewLayer);
     editMenu->addSeparator();
 
     actionCut_ = editMenu->addAction(QIcon(":/icons/cut.svg"), "Cut", this, &MainWindow::cutSelectedNodes);
@@ -165,20 +207,17 @@ void MainWindow::setupMenu()
     actionPaste_ = editMenu->addAction(QIcon(":/icons/paste.svg"), "Paste", this, [this]() { pasteNodes(); });
     actionPaste_->setShortcut(QKeySequence::Paste);
 
-    QAction* copyNodeAction = editMenu->addAction("Duplicate Node", this, &MainWindow::copySelectedNode);
-    copyNodeAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+    actionDuplicate_ = editMenu->addAction(QIcon(":/icons/copy.svg"), "Duplicate Node", this, &MainWindow::copySelectedNode);
 
     editMenu->addSeparator();
-    editMenu->addAction("Save Layout", this, &MainWindow::saveLayout);
+    actionSaveLayout_ = editMenu->addAction("Save Layout", this, &MainWindow::saveLayout);
 
     editMenu->addSeparator();
     actionDistH_ = new QAction(QIcon(":/icons/dist-h.svg"), "Distribute Horizontally", this);
-    actionDistH_->setShortcut(QKeySequence(Qt::ALT | Qt::Key_H));
     connect(actionDistH_, &QAction::triggered, this, &MainWindow::distributeHorizontal);
     editMenu->addAction(actionDistH_);
 
     actionDistV_ = new QAction(QIcon(":/icons/dist-v.svg"), "Distribute Vertically", this);
-    actionDistV_->setShortcut(QKeySequence(Qt::ALT | Qt::Key_V));
     connect(actionDistV_, &QAction::triggered, this, &MainWindow::distributeVertical);
     editMenu->addAction(actionDistV_);
 
@@ -190,7 +229,6 @@ void MainWindow::setupMenu()
     alignHMenu->addAction(actionAlignLeft_);
 
     actionAlignCenterH_ = new QAction(QIcon(":/icons/align-center-h.svg"), "Center", this);
-    actionAlignCenterH_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
     connect(actionAlignCenterH_, &QAction::triggered, this, [this]() { alignNodes(AlignType::CenterH); });
     alignHMenu->addAction(actionAlignCenterH_);
 
@@ -204,7 +242,6 @@ void MainWindow::setupMenu()
     alignVMenu->addAction(actionAlignTop_);
 
     actionAlignCenterV_ = new QAction(QIcon(":/icons/align-center-v.svg"), "Middle", this);
-    actionAlignCenterV_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_V));
     connect(actionAlignCenterV_, &QAction::triggered, this, [this]() { alignNodes(AlignType::CenterV); });
     alignVMenu->addAction(actionAlignCenterV_);
 
@@ -214,12 +251,23 @@ void MainWindow::setupMenu()
 
     editMenu->addSeparator();
     actionConnect_ = new QAction(QIcon(":/icons/connect.svg"), "Connect Selected Nodes", this);
-    actionConnect_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K));
     connect(actionConnect_, &QAction::triggered, this, &MainWindow::connectSelectedNodes);
     editMenu->addAction(actionConnect_);
 
+    editMenu->addSeparator();
+    editMenu->addAction("Configure Shortcuts...", this, &MainWindow::openShortcutConfigDialog);
+
     auto* themeMenu = menuBar()->addMenu("&Theme");
     QDir themeDir("themes");
+    if (!themeDir.exists()) {
+        themeDir = QDir(QCoreApplication::applicationDirPath() + "/themes");
+    }
+    if (!themeDir.exists()) {
+        themeDir = QDir(QCoreApplication::applicationDirPath() + "/../src/gui/theme/themes");
+    }
+    if (!themeDir.exists()) {
+        themeDir = QDir("src/gui/theme/themes");
+    }
     if (themeDir.exists()) {
         QStringList filters;
         filters << "*.json";
@@ -239,13 +287,16 @@ void MainWindow::setupMenu()
     themeMenu->addAction("Reset to Default", this, []() {
         GraphThemeManager::instance()->resetDefaults();
     });
+
+    auto* settingsMenu = menuBar()->addMenu("&Settings");
+    settingsMenu->addAction("Configure Shortcuts...", this, &MainWindow::openShortcutConfigDialog);
 }
 
 void MainWindow::setupToolbar()
 {
     graphToolBar_ = addToolBar("Graph Modes");
-    actionView_ = graphToolBar_->addAction("View (V)");
-    actionEdit_ = graphToolBar_->addAction("Edit (E)");    
+    actionView_ = graphToolBar_->addAction("View");
+    actionEdit_ = graphToolBar_->addAction("Edit");    
 
     actionView_->setCheckable(true);
     actionEdit_->setCheckable(true); 
@@ -257,9 +308,6 @@ void MainWindow::setupToolbar()
 
     connect(actionView_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::View); });
     connect(actionEdit_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::Edit); });
-
-    actionView_->setShortcut(Qt::Key_V);
-    actionEdit_->setShortcut(Qt::Key_L);
 
     layoutToolBar_ = addToolBar("Layout");
     layoutToolBar_->setIconSize(QSize(20, 20));
@@ -296,9 +344,8 @@ void MainWindow::setupToolbar()
     layoutToolBar_->addSeparator();
     layoutToolBar_->addAction(actionConnect_);
 
-    QAction* copyBtn = layoutToolBar_->addAction(QIcon(":/icons/copy.svg"), "Duplicate");
-    copyBtn->setToolTip("Duplicate selected node (Ctrl+D)");
-    connect(copyBtn, &QAction::triggered, this, &MainWindow::copySelectedNode);
+    duplicateBtn_ = layoutToolBar_->addAction(QIcon(":/icons/copy.svg"), "Duplicate");
+    connect(duplicateBtn_, &QAction::triggered, this, &MainWindow::copySelectedNode);
 }
 
 void MainWindow::setupConnections()
@@ -312,6 +359,30 @@ void MainWindow::setupConnections()
     connect(navigator_, &QTreeView::doubleClicked, this, &MainWindow::onTreeItemDoubleClicked);
     connect(navigator_, &QTreeView::clicked, this, &MainWindow::onTreeItemClicked);
 
+    connect(treeSearchEdit_, &QLineEdit::textChanged, this, [this](const QString& text) {
+        if (navProxyModel_) {
+            navProxyModel_->setSearchText(text);
+            navigator_->expandAll();
+            updateNavStatus();
+        }
+    });
+
+    connect(treeFilterCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        if (navProxyModel_) {
+            navProxyModel_->setCategoryFilter(index);
+            navigator_->expandAll();
+            updateNavStatus();
+        }
+    });
+
+    auto* findShortcut = new QShortcut(QKeySequence::Find, this);
+    connect(findShortcut, &QShortcut::activated, this, [this]() {
+        if (treeSearchEdit_) {
+            treeSearchEdit_->setFocus();
+            treeSearchEdit_->selectAll();
+        }
+    });
+
     connect(graphView_, &GraphView::requestAddNode, this, &MainWindow::handleAddNodeAtPosition);
     connect(graphView_, &GraphView::requestAddLayer, this, &MainWindow::createNewLayer);
     connect(graphView_, &GraphView::requestConnectNodes, this, &MainWindow::handleConnectNodes);
@@ -324,9 +395,6 @@ void MainWindow::setupConnections()
     auto* backspaceShortcut = new QShortcut(QKeySequence(Qt::Key_Backspace), this);
     connect(backspaceShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
 
-    auto* duplicateShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_D), this);
-    connect(duplicateShortcut, &QShortcut::activated, this, &MainWindow::copySelectedNode);
-
     auto* cutShortcut = new QShortcut(QKeySequence::Cut, this);
     connect(cutShortcut, &QShortcut::activated, this, &MainWindow::cutSelectedNodes);
 
@@ -336,10 +404,95 @@ void MainWindow::setupConnections()
     auto* pasteShortcut = new QShortcut(QKeySequence::Paste, this);
     connect(pasteShortcut, &QShortcut::activated, this, [this]() { pasteNodes(); });
 
+    connect(ShortcutManager::instance(), &ShortcutManager::shortcutsChanged, this, &MainWindow::updateShortcutLabels);
+
     autoSaveTimer_ = new QTimer(this);
     autoSaveTimer_->setSingleShot(true);
     autoSaveTimer_->setInterval(500);
     connect(autoSaveTimer_, &QTimer::timeout, this, &MainWindow::saveLayout);
+}
+
+void MainWindow::setupShortcuts()
+{
+    auto* sm = ShortcutManager::instance();
+
+    // Standard / Reserved Shortcuts (Immutable)
+    sm->registerStandardShortcut("std.cut", "Cut", "Standard", QKeySequence::Cut, "Cut selected objects to clipboard");
+    sm->registerStandardShortcut("std.copy", "Copy", "Standard", QKeySequence::Copy, "Copy selected objects to clipboard");
+    sm->registerStandardShortcut("std.paste", "Paste", "Standard", QKeySequence::Paste, "Paste objects from clipboard");
+    sm->registerStandardShortcut("std.delete", "Delete", "Standard", QKeySequence::Delete, "Delete selected objects");
+    sm->registerStandardShortcut("std.backspace", "Delete (Backspace)", "Standard", QKeySequence(Qt::Key_Backspace), "Delete selected objects");
+    sm->registerStandardShortcut("std.find", "Find in Architecture", "Standard", QKeySequence::Find, "Find and focus search in Architecture Navigator");
+
+    // Configurable Shortcuts
+    // Mode
+    sm->registerAction("mode.view", "View Mode", "Mode", QKeySequence(Qt::Key_V), actionView_, "Switch canvas interaction to View mode");
+    sm->registerAction("mode.edit", "Edit Mode", "Mode", QKeySequence(Qt::Key_L), actionEdit_, "Switch canvas interaction to Edit mode");
+
+    // Edit
+    sm->registerAction("edit.duplicate", "Duplicate Node", "Edit", QKeySequence(Qt::CTRL | Qt::Key_D), actionDuplicate_, "Duplicate the currently selected node");
+    sm->registerAction("edit.connect", "Connect Selected Nodes", "Edit", QKeySequence(Qt::CTRL | Qt::Key_K), actionConnect_, "Connect the selected nodes with an edge");
+    sm->registerAction("edit.add_node", "Add Node", "Edit", QKeySequence(), actionAddNode_, "Create a new node in the architecture");
+    sm->registerAction("edit.add_layer", "Add Layer", "Edit", QKeySequence(), actionAddLayer_, "Create a new layer in the architecture");
+
+    // Layout
+    sm->registerAction("layout.dist_h", "Distribute Horizontally", "Layout", QKeySequence(Qt::ALT | Qt::Key_H), actionDistH_, "Distribute selected nodes evenly along horizontal axis");
+    sm->registerAction("layout.dist_v", "Distribute Vertically", "Layout", QKeySequence(Qt::ALT | Qt::Key_V), actionDistV_, "Distribute selected nodes evenly along vertical axis");
+    sm->registerAction("layout.save_layout", "Save Layout", "Layout", QKeySequence(), actionSaveLayout_, "Save node positions to the database");
+
+    // Alignment
+    sm->registerAction("align.left", "Align Left", "Alignment", QKeySequence(), actionAlignLeft_, "Align selected nodes to left edge of primary node");
+    sm->registerAction("align.center_h", "Align Center (Horizontal)", "Alignment", QKeySequence(Qt::CTRL | Qt::Key_H), actionAlignCenterH_, "Align selected nodes to horizontal center of primary node");
+    sm->registerAction("align.right", "Align Right", "Alignment", QKeySequence(), actionAlignRight_, "Align selected nodes to right edge of primary node");
+    sm->registerAction("align.top", "Align Top", "Alignment", QKeySequence(), actionAlignTop_, "Align selected nodes to top edge of primary node");
+    sm->registerAction("align.center_v", "Align Middle (Vertical)", "Alignment", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), actionAlignCenterV_, "Align selected nodes to vertical center of primary node");
+    sm->registerAction("align.bottom", "Align Bottom", "Alignment", QKeySequence(), actionAlignBottom_, "Align selected nodes to bottom edge of primary node");
+
+    // Export
+    sm->registerAction("export.current_view", "Export Current View", "Export", QKeySequence(), actionExportCurrent_, "Export visible canvas area to SVG");
+    sm->registerAction("export.whole_diagram", "Export Whole Diagram", "Export", QKeySequence(), actionExportWhole_, "Export entire architecture diagram to SVG");
+    sm->registerAction("export.html", "Export Interactive HTML", "Export", QKeySequence(), actionExportHtml_, "Export architecture diagram to standalone interactive HTML");
+
+    // Load saved shortcuts from QSettings and apply
+    sm->loadSettings();
+
+    // Update dynamic button texts and tooltips
+    updateShortcutLabels();
+}
+
+void MainWindow::updateShortcutLabels()
+{
+    auto* sm = ShortcutManager::instance();
+    if (!sm) return;
+
+    // View mode
+    if (actionView_) {
+        QKeySequence viewKey = sm->getShortcut("mode.view");
+        QString viewStr = viewKey.toString(QKeySequence::NativeText);
+        actionView_->setText(viewStr.isEmpty() ? "View" : QString("View (%1)").arg(viewStr));
+        actionView_->setToolTip(viewStr.isEmpty() ? "View Mode" : QString("View Mode (%1)").arg(viewStr));
+    }
+
+    // Edit mode
+    if (actionEdit_) {
+        QKeySequence editKey = sm->getShortcut("mode.edit");
+        QString editStr = editKey.toString(QKeySequence::NativeText);
+        actionEdit_->setText(editStr.isEmpty() ? "Edit" : QString("Edit (%1)").arg(editStr));
+        actionEdit_->setToolTip(editStr.isEmpty() ? "Edit Mode" : QString("Edit Mode (%1)").arg(editStr));
+    }
+
+    // Duplicate toolbar button
+    if (duplicateBtn_) {
+        QKeySequence dupKey = sm->getShortcut("edit.duplicate");
+        QString dupStr = dupKey.toString(QKeySequence::NativeText);
+        duplicateBtn_->setToolTip(dupStr.isEmpty() ? "Duplicate selected node" : QString("Duplicate selected node (%1)").arg(dupStr));
+    }
+}
+
+void MainWindow::openShortcutConfigDialog()
+{
+    ShortcutConfigDialog dialog(this);
+    dialog.exec();
 }
 
 void MainWindow::scheduleAutoSave()
@@ -464,6 +617,10 @@ void MainWindow::populateNavigator()
         auto* item = new QStandardItem(QString::fromStdString(n.name));
         item->setData(static_cast<qulonglong>(n.id), NavRole::Id);
         item->setData(static_cast<int>(ItemType::Node), NavRole::Type);
+        item->setData(QString::fromStdString(n.type), NavRole::Subtype);
+        if (!n.type.empty()) {
+            item->setToolTip(QString("%1 (%2)").arg(QString::fromStdString(n.name), QString::fromStdString(n.type)));
+        }
         nodesRoot->appendRow(item);
     }
 
@@ -474,19 +631,29 @@ void MainWindow::populateNavigator()
         auto* item = new QStandardItem(QString::fromStdString(l.name));
         item->setData(static_cast<qulonglong>(l.id), NavRole::Id);
         item->setData(static_cast<int>(ItemType::Layer), NavRole::Type);
+        item->setData(QString::fromStdString(l.kind), NavRole::Subtype);
+        if (!l.kind.empty()) {
+            item->setToolTip(QString("%1 [%2]").arg(QString::fromStdString(l.name), QString::fromStdString(l.kind)));
+        }
         layersRoot->appendRow(item);
     }
 
     root->appendRow(nodesRoot);
     root->appendRow(layersRoot);
+
+    if (navProxyModel_) {
+        navProxyModel_->invalidate();
+    }
     navigator_->expandAll();
+    updateNavStatus();
 }
 
 void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
 {
-    if (!model_) return;
+    if (!model_ || !index.isValid()) return;
 
-    auto* item = navModel_->itemFromIndex(index);
+    QModelIndex srcIndex = navProxyModel_ ? navProxyModel_->mapToSource(index) : index;
+    auto* item = navModel_->itemFromIndex(srcIndex);
     if (!item) return;
 
     auto type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
@@ -530,7 +697,8 @@ void MainWindow::onTreeItemClicked(const QModelIndex& index)
 {
     if (!model_ || !index.isValid()) return;
 
-    auto* item = navModel_->itemFromIndex(index);
+    QModelIndex srcIndex = navProxyModel_ ? navProxyModel_->mapToSource(index) : index;
+    auto* item = navModel_->itemFromIndex(srcIndex);
     if (!item) return;
 
     auto type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
@@ -541,6 +709,52 @@ void MainWindow::onTreeItemClicked(const QModelIndex& index)
     }
     else {
         renderGraph(model_->extractGraph(std::nullopt));
+    }
+}
+
+void MainWindow::updateNavStatus()
+{
+    if (!treeStatusLabel_) return;
+
+    if (!model_) {
+        treeStatusLabel_->clear();
+        return;
+    }
+
+    int totalNodes = static_cast<int>(model_->nodes().size());
+    int totalLayers = static_cast<int>(model_->layers().size());
+
+    QString searchText = treeSearchEdit_ ? treeSearchEdit_->text().trimmed() : QString();
+    int filterMode = treeFilterCombo_ ? treeFilterCombo_->currentData().toInt() : 0;
+
+    if (searchText.isEmpty() && filterMode == 0) {
+        treeStatusLabel_->setText(QString("%1 nodes, %2 layers").arg(totalNodes).arg(totalLayers));
+        return;
+    }
+
+    int visibleItems = 0;
+    if (navProxyModel_) {
+        int rootRows = navProxyModel_->rowCount();
+        for (int i = 0; i < rootRows; ++i) {
+            QModelIndex catIdx = navProxyModel_->index(i, 0);
+            visibleItems += navProxyModel_->rowCount(catIdx);
+        }
+    }
+
+    if (!searchText.isEmpty()) {
+        if (visibleItems == 0) {
+            treeStatusLabel_->setText("No matching items found");
+        } else {
+            treeStatusLabel_->setText(QString("Found %1 relevant item%2")
+                .arg(visibleItems)
+                .arg(visibleItems == 1 ? "" : "s"));
+        }
+    } else {
+        if (filterMode == 1) {
+            treeStatusLabel_->setText(QString("%1 nodes").arg(totalNodes));
+        } else if (filterMode == 2) {
+            treeStatusLabel_->setText(QString("%1 layers").arg(totalLayers));
+        }
     }
 }
 

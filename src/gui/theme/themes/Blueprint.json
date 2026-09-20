@@ -7,36 +7,90 @@
             "minorColor": "#13315c",
             "majorColor": "#134074",
             "spacing": 20,
-            "majorSpacing": 100
+            "majorSpacing": 100,
+            "lineWidth": 1
         }
     },
     "node": {
+        "minWidth": 120,
+        "minHeight": 50,
         "normal": {
-            "background": "#13315cdd",
-            "border": "#8da9c4",
+            "background": "#13315cff",
+            "border": "#8da9c4ff",
             "borderWidth": 2,
-            "radius": 4,
-            "title": { "color": "#eef4f8", "size": 14, "bold": true },
-            "body": { "color": "#8da9c4", "size": 11, "bold": false }
+            "borderStyle": "solid",
+            "radius": 8,
+            "padding": 8,
+            "title": { "color": "#eef4f8", "size": 14, "bold": true, "align": "center" },
+            "body": { "color": "#8da9c4", "size": 11, "bold": false, "align": "center" }
         },
         "hover": {
-            "background": "#134074",
-            "border": "#eef4f8",
+            "background": "#134074ff",
+            "border": "#eef4f8ff",
             "borderWidth": 3,
-            "radius": 4,
-            "title": { "color": "#ffffff", "size": 14, "bold": true },
-            "body": { "color": "#ffffff", "size": 11, "bold": false }
+            "borderStyle": "solid",
+            "radius": 8,
+            "padding": 8,
+            "title": { "color": "#ffffff", "size": 14, "bold": true, "align": "center" },
+            "body": { "color": "#ffffff", "size": 11, "bold": false, "align": "center" }
         },
         "selected": {
-            "background": "#134074",
-            "border": "#00f0ff",
+            "background": "#134074ff",
+            "border": "#00f0ffff",
             "borderWidth": 4,
-            "radius": 4,
-            "title": { "color": "#00f0ff", "size": 14, "bold": true },
-            "body": { "color": "#eef4f8", "size": 11, "bold": false }
+            "borderStyle": "solid",
+            "radius": 8,
+            "padding": 8,
+            "title": { "color": "#00f0ff", "size": 14, "bold": true, "align": "center" },
+            "body": { "color": "#eef4f8", "size": 11, "bold": false, "align": "center" }
+        }
+    },
+    "container": {
+        "minWidth": 220,
+        "minHeight": 140,
+        "normal": {
+            "background": "#13315c2d",
+            "border": "#8da9c4ff",
+            "borderWidth": 2,
+            "borderStyle": "dashed",
+            "dashPattern": [6.0, 4.0],
+            "radius": 8,
+            "padding": 8,
+            "headerBackground": "#8da9c423",
+            "headerHeightPadding": 12,
+            "title": { "color": "#eef4f8", "size": 14, "bold": true, "align": "left" }
+        },
+        "hover": {
+            "background": "#13407437",
+            "border": "#eef4f8ff",
+            "borderWidth": 2,
+            "borderStyle": "dashed",
+            "dashPattern": [6.0, 4.0],
+            "radius": 8,
+            "padding": 8,
+            "headerBackground": "#eef4f82d",
+            "headerHeightPadding": 12,
+            "title": { "color": "#ffffff", "size": 14, "bold": true, "align": "left" }
+        },
+        "selected": {
+            "background": "#1340743c",
+            "border": "#00f0ffff",
+            "borderWidth": 3,
+            "borderStyle": "dashed",
+            "dashPattern": [6.0, 4.0],
+            "radius": 8,
+            "padding": 8,
+            "headerBackground": "#00f0ff32",
+            "headerHeightPadding": 12,
+            "title": { "color": "#00f0ff", "size": 14, "bold": true, "align": "left" }
         }
     },
     "edge": {
+        "preview": {
+            "color": "#00f0ff",
+            "width": 2,
+            "style": "dashed"
+        },
         "normal": {
             "lineColor": "#8da9c4",
             "lineWidth": 2,
@@ -56,7 +110,7 @@
                 "bold": false,
                 "paddingX": 0,
                 "paddingY": 0,
-                "radius": 2,
+                "radius": 4,
                 "offset": 8
             }
         },
@@ -79,7 +133,7 @@
                 "bold": true,
                 "paddingX": 6,
                 "paddingY": 3,
-                "radius": 2,
+                "radius": 4,
                 "offset": 8
             }
         },
@@ -102,7 +156,7 @@
                 "bold": true,
                 "paddingX": 6,
                 "paddingY": 3,
-                "radius": 2,
+                "radius": 4,
                 "offset": 8
             }
         }
@@ -111,7 +165,7 @@
         "inputColor": "#00f0ff",
         "outputColor": "#8da9c4",
         "hoverColor": "#ffffff",
-        "radius": 5
+        "radius": 6
     },
     "selection": {
         "outline": "#00f0ff",

@@ -12,6 +12,7 @@
 #include <QSpinBox>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QLineEdit>
 #include <QToolButton>
 #include <QColorDialog>
 #include <QScrollArea>
@@ -271,13 +272,25 @@ ThemeEditorDock::ThemeEditorDock(QWidget* parent)
     auto* rootLayout = new QHBoxLayout(root);
     rootLayout->setContentsMargins(0, 0, 0, 0);
 
+    auto* treeContainer = new QWidget;
+    auto* treeLayout = new QVBoxLayout(treeContainer);
+    treeLayout->setContentsMargins(0, 0, 0, 0);
+    treeLayout->setSpacing(4);
+
+    m_searchEdit = new QLineEdit(treeContainer);
+    m_searchEdit->setPlaceholderText("Search settings...");
+    m_searchEdit->setClearButtonEnabled(true);
+
     m_tree = new QTreeWidget;
     m_tree->setHeaderHidden(true);
     m_tree->setMinimumWidth(240);
 
+    treeLayout->addWidget(m_searchEdit);
+    treeLayout->addWidget(m_tree, 1);
+
     m_stack = new QStackedWidget;
 
-    rootLayout->addWidget(m_tree);
+    rootLayout->addWidget(treeContainer);
     rootLayout->addWidget(m_stack, 1);
 
     setWidget(root);
@@ -441,6 +454,25 @@ void ThemeEditorDock::connectTree()
         if (index >= 0 && index < m_stack->count())
         {
             m_stack->setCurrentIndex(index);
+        }
+    });
+
+    connect(m_searchEdit, &QLineEdit::textChanged, this, [this](const QString& text) {
+        QString query = text.trimmed();
+        for (int i = 0; i < m_tree->topLevelItemCount(); ++i) {
+            auto* top = m_tree->topLevelItem(i);
+            bool topMatches = top->text(0).contains(query, Qt::CaseInsensitive);
+            bool anyChildMatches = false;
+            for (int j = 0; j < top->childCount(); ++j) {
+                auto* child = top->child(j);
+                bool childMatches = query.isEmpty() || child->text(0).contains(query, Qt::CaseInsensitive);
+                child->setHidden(!query.isEmpty() && !childMatches && !topMatches);
+                if (childMatches) anyChildMatches = true;
+            }
+            top->setHidden(!query.isEmpty() && !topMatches && !anyChildMatches);
+            if (!query.isEmpty() && (topMatches || anyChildMatches)) {
+                top->setExpanded(true);
+            }
         }
     });
 }

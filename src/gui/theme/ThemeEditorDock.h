@@ -12,6 +12,7 @@ class QTreeWidget;
 class QTreeWidgetItem;
 class QStackedWidget;
 class QComboBox;
+class QLineEdit;
 
 class ThemeEditorDock : public QDockWidget
 {
@@ -32,6 +33,7 @@ private:
     };
 
     QTreeWidget* m_tree = nullptr;
+    QLineEdit* m_searchEdit = nullptr;
     QStackedWidget* m_stack = nullptr;
     bool m_isInternalUpdate = false;
 
