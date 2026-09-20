@@ -41,13 +41,19 @@ void WelcomeWidget::setupUi()
     btnOpen_->setFixedHeight(38);
     btnOpen_->setStyleSheet("text-align: left; padding-left: 15px; font-weight: bold;");
 
+    btnConvert_ = new QPushButton("Convert Database (JSON ⇄ SQLite)...", this);
+    btnConvert_->setFixedHeight(38);
+    btnConvert_->setStyleSheet("text-align: left; padding-left: 15px; font-weight: bold;");
+
     connect(btnNew_, &QPushButton::clicked, this, &WelcomeWidget::createNewClicked);
     connect(btnOpen_, &QPushButton::clicked, this, &WelcomeWidget::openFileClicked);
+    connect(btnConvert_, &QPushButton::clicked, this, &WelcomeWidget::convertClicked);
 
     leftLayout->addWidget(titleLabel);
     leftLayout->addWidget(subLabel);
     leftLayout->addWidget(btnNew_);
     leftLayout->addWidget(btnOpen_);
+    leftLayout->addWidget(btnConvert_);
     leftLayout->addStretch();
 
     // Divider

@@ -3,6 +3,7 @@
 #include <QSplitter>
 #include <QMenuBar>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QStatusBar>
 #include <QCoreApplication>
@@ -36,6 +37,8 @@
 #include "ThemeEditorDock.h"
 #include "ShortcutManager.h"
 #include "ShortcutConfigDialog.h"
+#include "ConvertDialog.h"
+#include "db/DbConverter.h"
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -155,6 +158,9 @@ void MainWindow::showWelcome()
     if (architectureDock_) architectureDock_->hide();
     if (graphToolBar_) graphToolBar_->setEnabled(false);
     if (layoutToolBar_) layoutToolBar_->setEnabled(false);
+    currentDbPath_.clear();
+    if (actionExportJson_) actionExportJson_->setEnabled(false);
+    if (actionExportSqlite_) actionExportSqlite_->setEnabled(false);
 }
 
 void MainWindow::showCanvas()
@@ -172,6 +178,13 @@ void MainWindow::setupMenu()
     fileMenu->addAction("Open DB...", this, &MainWindow::openDatabase);
     fileMenu->addSeparator();
 
+    actionConvert_ = fileMenu->addAction("Convert Database (JSON ⇄ SQLite)...", this, &MainWindow::openConvertDialog);
+    actionExportJson_ = fileMenu->addAction("Export to JSON...", this, &MainWindow::exportCurrentAsJson);
+    actionExportSqlite_ = fileMenu->addAction("Export to SQLite...", this, &MainWindow::exportCurrentAsSqlite);
+    actionExportJson_->setEnabled(false);
+    actionExportSqlite_->setEnabled(false);
+    fileMenu->addSeparator();
+
     actionExportCurrent_ = new QAction("Export Current View", this);
     connect(actionExportCurrent_, &QAction::triggered, this, [this]() {
         graphView_->exportToSvg(GraphView::ExportMode::CurrentView);
@@ -186,7 +199,7 @@ void MainWindow::setupMenu()
 
     actionExportHtml_ = new QAction("Export Interactive HTML...", this);
     connect(actionExportHtml_, &QAction::triggered, this, [this]() {
-        graphView_->exportToInteractiveHtml();
+        exportToInteractiveHtml();
     });
     fileMenu->addAction(actionExportHtml_);
 
@@ -352,6 +365,7 @@ void MainWindow::setupConnections()
 {
     connect(welcomeWidget_, &WelcomeWidget::openFileClicked, this, &MainWindow::openDatabase);
     connect(welcomeWidget_, &WelcomeWidget::createNewClicked, this, &MainWindow::createNewDatabase);
+    connect(welcomeWidget_, &WelcomeWidget::convertClicked, this, &MainWindow::openConvertDialog);
     connect(welcomeWidget_, &WelcomeWidget::recentFileSelected, this, [this](const QString& path) {
         setDb(path.toStdString());
     });
@@ -452,6 +466,9 @@ void MainWindow::setupShortcuts()
     sm->registerAction("export.current_view", "Export Current View", "Export", QKeySequence(), actionExportCurrent_, "Export visible canvas area to SVG");
     sm->registerAction("export.whole_diagram", "Export Whole Diagram", "Export", QKeySequence(), actionExportWhole_, "Export entire architecture diagram to SVG");
     sm->registerAction("export.html", "Export Interactive HTML", "Export", QKeySequence(), actionExportHtml_, "Export architecture diagram to standalone interactive HTML");
+
+    // File
+    sm->registerAction("file.convert", "Convert Database", "File", QKeySequence(), actionConvert_, "Convert between JSON and SQLite databases");
 
     // Load saved shortcuts from QSettings and apply
     sm->loadSettings();
@@ -567,6 +584,13 @@ void MainWindow::setDb(const std::string& db_path)
         QMessageBox::critical(this, "Database Error", QString::fromStdString(r.message));
         return;
     }
+
+    currentDbPath_ = db_path;
+    bool isSqlite = qPath.endsWith(".db", Qt::CaseInsensitive) || 
+                    qPath.endsWith(".sqlite", Qt::CaseInsensitive) || 
+                    qPath.endsWith(".sqlite3", Qt::CaseInsensitive);
+    if (actionExportJson_) actionExportJson_->setEnabled(isSqlite);
+    if (actionExportSqlite_) actionExportSqlite_->setEnabled(!isSqlite);
 
     model_ = new ArchitectureModel(*db_);
 
@@ -2187,4 +2211,95 @@ void MainWindow::alignNodes(AlignType type)
     }
 
     statusBar()->showMessage("Nodes aligned", 2000);
+}
+
+void MainWindow::openConvertDialog()
+{
+    if (db_ && !currentDbPath_.empty()) {
+        saveLayout();
+    }
+
+    ConvertDialog dlg(this, QString::fromStdString(currentDbPath_));
+    connect(&dlg, &ConvertDialog::requestOpenDatabase, this, [this](const QString& path) {
+        setDb(path.toStdString());
+    });
+    dlg.exec();
+}
+
+void MainWindow::exportCurrentAsJson()
+{
+    if (!db_ || currentDbPath_.empty()) {
+        QMessageBox::warning(this, "Export Error", "No database is currently open.");
+        return;
+    }
+
+    saveLayout();
+
+    QFileInfo fi(QString::fromStdString(currentDbPath_));
+    QString defaultTarget = fi.path() + "/" + fi.completeBaseName() + ".json";
+
+    QString targetFile = QFileDialog::getSaveFileName(
+        this,
+        "Export Current Database to JSON",
+        defaultTarget,
+        "Architecture JSON (*.json);;All Files (*.*)");
+
+    if (targetFile.isEmpty())
+        return;
+
+    Result r = DbConverter::convert(currentDbPath_, targetFile.toStdString(), true);
+    if (!r.ok) {
+        QMessageBox::critical(this, "Export Failed", QString::fromStdString(r.message));
+    } else {
+        auto reply = QMessageBox::information(
+            this,
+            "Export Successful",
+            QString("Successfully exported to:\n%1\n\nWould you like to open this converted database now?").arg(targetFile),
+            QMessageBox::Yes | QMessageBox::No);
+        if (reply == QMessageBox::Yes) {
+            setDb(targetFile.toStdString());
+        }
+    }
+}
+
+void MainWindow::exportCurrentAsSqlite()
+{
+    if (!db_ || currentDbPath_.empty()) {
+        QMessageBox::warning(this, "Export Error", "No database is currently open.");
+        return;
+    }
+
+    saveLayout();
+
+    QFileInfo fi(QString::fromStdString(currentDbPath_));
+    QString defaultTarget = fi.path() + "/" + fi.completeBaseName() + ".db";
+
+    QString targetFile = QFileDialog::getSaveFileName(
+        this,
+        "Export Current Database to SQLite",
+        defaultTarget,
+        "SQLite Databases (*.db *.sqlite *.sqlite3);;All Files (*.*)");
+
+    if (targetFile.isEmpty())
+        return;
+
+    Result r = DbConverter::convert(currentDbPath_, targetFile.toStdString(), true);
+    if (!r.ok) {
+        QMessageBox::critical(this, "Export Failed", QString::fromStdString(r.message));
+    } else {
+        auto reply = QMessageBox::information(
+            this,
+            "Export Successful",
+            QString("Successfully exported to:\n%1\n\nWould you like to open this converted database now?").arg(targetFile),
+            QMessageBox::Yes | QMessageBox::No);
+        if (reply == QMessageBox::Yes) {
+            setDb(targetFile.toStdString());
+        }
+    }
+}
+
+void MainWindow::exportToInteractiveHtml(const QString& filePath)
+{
+    if (graphView_)
+        graphView_->exportToInteractiveHtml(filePath);
 }

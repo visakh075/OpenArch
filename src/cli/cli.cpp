@@ -13,6 +13,7 @@
 #include "db/DbManager.h"
 #include "db/DbManagerSQLite.h"
 #include "db/DbManagerJson.h"
+#include "db/DbConverter.h"
 
 static const char* COMMANDS[] = {
     "add_node", "update_node", "del_node", "list_nodes",
@@ -27,6 +28,7 @@ static const char* COMMANDS[] = {
     "set_edge_meta", "set_edge_attr", "review_edge",
 
     "dump_graph", "dump_graph_json",
+    "convert",
     "help", "exit",
     nullptr
 };
@@ -48,6 +50,7 @@ enum class Command {
     
     DUMP_GRAPH,
     DUMP_GRAPH_JSON,
+    CONVERT,
 
     HELP, EXIT, UNKNOWN
 };
@@ -103,6 +106,7 @@ static Command parse(const std::string& c) {
 
     CMD(DUMP_GRAPH,"dump_graph");
     CMD(DUMP_GRAPH_JSON,"dump_graph_json");
+    CMD(CONVERT,"convert");
     CMD(HELP,"help"); CMD(EXIT,"exit");
     return Command::UNKNOWN;
 }
@@ -152,6 +156,10 @@ Graph:
   dump_graph [layerId]
   dump_graph_json [layerId]
 
+Conversion:
+  convert <target_path>                 Convert current database to target (.json <-> .db)
+  convert <source_path> <target_path>   Convert between JSON and SQLite files
+
 General:
   help
   exit
@@ -162,8 +170,19 @@ General:
    Main
    ============================================================ */
 int main(int argc, char** argv) {
+    if (argc >= 2 && (std::string(argv[1]) == "convert" || std::string(argv[1]) == "--convert" || std::string(argv[1]) == "-c")) {
+        if (argc < 4) {
+            std::cerr << "Usage: openarch convert <source.json|source.db> <target.db|target.json>\n";
+            return 1;
+        }
+        Result r = DbConverter::convert(argv[2], argv[3], true);
+        printResult(r);
+        return r.ok ? 0 : 1;
+    }
+
     if (argc < 2) {
-        std::cerr << "Usage: openarch <dbfile.db|architecture.json>\n";
+        std::cerr << "Usage: openarch <dbfile.db|architecture.json>\n"
+                  << "       openarch convert <source.json|source.db> <target.db|target.json>\n";
         return 1;
     }
 
@@ -474,6 +493,23 @@ int main(int argc, char** argv) {
 
             auto snap = model.extractGraph(layer);
             std::cout << toJson(snap) << "\n";
+            break;
+        }
+
+        case Command::CONVERT: {
+            std::string arg1, arg2;
+            is >> arg1 >> arg2;
+            if (arg1.empty()) {
+                std::cout << "[ERR] Usage: convert <target_file> OR convert <source_file> <target_file>\n";
+                break;
+            }
+            if (arg2.empty()) {
+                Result cr = DbConverter::convert(dbPath, arg1, true);
+                printResult(cr);
+            } else {
+                Result cr = DbConverter::convert(arg1, arg2, true);
+                printResult(cr);
+            }
             break;
         }
 

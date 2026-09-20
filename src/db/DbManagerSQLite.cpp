@@ -77,6 +77,10 @@ static Result exec(sqlite3* db, const char* sql) {
    Lifecycle
    ============================================================ */
 
+DbManagerSQLite::~DbManagerSQLite() {
+    close();
+}
+
 Result DbManagerSQLite::open(const std::string& path) {
     if (sqlite3_open(path.c_str(), &db_) != SQLITE_OK)
         return Result::failure("Failed to open SQLite DB");

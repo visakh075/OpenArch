@@ -31,6 +31,9 @@ public:
     QPointF currentPosition() const;
     QPointF center() const;
     QRectF rect() const;
+    QRectF headerRect() const { return cachedHeaderRect_; }
+    QRectF titleRect() const { return cachedTitleRect_; }
+    QRectF bodyRect() const { return cachedBodyRect_; }
 
     NodeId nodeId() const { return nodeId_; }
     ArchitectureModel* model() const { return model_; }

@@ -34,6 +34,7 @@ add_library(openarch_core
     src/core/GraphJson.cpp
     src/db/DbManagerSQLite.cpp
     src/db/DbManagerJson.cpp
+    src/db/DbConverter.cpp
 )
 
 target_include_directories(openarch_core PUBLIC
@@ -83,6 +84,7 @@ add_executable(openarch-gui
     src/gui/MainWindow.cpp
     src/gui/ShortcutManager.cpp
     src/gui/ShortcutConfigDialog.cpp
+    src/gui/ConvertDialog.cpp
 
     src/gui/EditorDialogs/NodeEditorDialog.cpp
     src/gui/EditorDialogs/LayerEditorDialog.cpp
@@ -113,6 +115,7 @@ add_executable(test_shortcuts
     src/gui/MainWindow.cpp
     src/gui/ShortcutManager.cpp
     src/gui/ShortcutConfigDialog.cpp
+    src/gui/ConvertDialog.cpp
     src/gui/EditorDialogs/NodeEditorDialog.cpp
     src/gui/EditorDialogs/LayerEditorDialog.cpp
     src/gui/EditorDialogs/EdgeEditorDialog.cpp
@@ -126,6 +129,39 @@ add_executable(test_shortcuts
 )
 
 target_link_libraries(test_shortcuts PRIVATE
+    openarch_core
+    Qt5::Widgets
+    Qt5::Svg
+)
+
+add_executable(test_db_converter
+    tests/test_db_converter.cpp
+)
+
+target_link_libraries(test_db_converter PRIVATE
+    openarch_core
+)
+
+add_executable(test_interactive_html
+    resources.qrc
+    tests/test_interactive_html.cpp
+    src/gui/MainWindow.cpp
+    src/gui/ShortcutManager.cpp
+    src/gui/ShortcutConfigDialog.cpp
+    src/gui/ConvertDialog.cpp
+    src/gui/EditorDialogs/NodeEditorDialog.cpp
+    src/gui/EditorDialogs/LayerEditorDialog.cpp
+    src/gui/EditorDialogs/EdgeEditorDialog.cpp
+    src/gui/EditorDialogs/JsonTreeEditor.cpp
+    src/gui/WelcomeWidget.cpp
+    src/gui/GraphModules/GraphNodeItem.cpp
+    src/gui/GraphModules/GraphEdgeItem.cpp
+    src/gui/GraphView.cpp    
+    src/gui/theme/GraphThemeManager.cpp
+    src/gui/theme/ThemeEditorDock.cpp
+)
+
+target_link_libraries(test_interactive_html PRIVATE
     openarch_core
     Qt5::Widgets
     Qt5::Svg

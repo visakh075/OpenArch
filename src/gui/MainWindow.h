@@ -55,6 +55,8 @@ public:
     bool hasClipboard() const { return !clipboardNodes_.empty() || !cutNodeIds_.empty(); }
     void pasteNodesAt(const std::optional<QPointF>& targetPos = std::nullopt);
     void populateNavigator();
+    GraphView* graphView() const { return graphView_; }
+    void exportToInteractiveHtml(const QString& filePath = QString());
 
 public slots:
     void cutSelectedNodes();
@@ -76,6 +78,9 @@ private slots:
     void connectSelectedNodes();
     void openShortcutConfigDialog();
     void updateShortcutLabels();
+    void openConvertDialog();
+    void exportCurrentAsJson();
+    void exportCurrentAsSqlite();
 
 private:
     void setupUi();
@@ -145,7 +150,12 @@ private:
     QAction* actionExportCurrent_{nullptr};
     QAction* actionExportWhole_{nullptr};
     QAction* actionExportHtml_{nullptr};
+    QAction* actionConvert_{nullptr};
+    QAction* actionExportJson_{nullptr};
+    QAction* actionExportSqlite_{nullptr};
     QAction* duplicateBtn_{nullptr};
+
+    std::string currentDbPath_;
 
     QAction* actionAlignLeft_{nullptr};
     QAction* actionAlignCenterH_{nullptr};

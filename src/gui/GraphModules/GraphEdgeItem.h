@@ -47,6 +47,10 @@ public:
     void refreshPath();
     const QPainterPath& edgePath() const { return cachedPath_; }
     QString title() const { return cachedTitle_; }
+    const QRect& titleRect() const { return cachedTitleRect_; }
+    ArchitectureModel* model() const { return model_; }
+    GraphNodeItem* srcNode() const { return src_.data(); }
+    GraphNodeItem* dstNode() const { return dst_.data(); }
 
 public slots:
     void onThemeChanged();

@@ -17,6 +17,7 @@ public:
 signals:
     void createNewClicked();
     void openFileClicked();
+    void convertClicked();
     void recentFileSelected(const QString& filePath);
 
 private:
@@ -25,4 +26,5 @@ private:
     QListWidget* recentList_{nullptr};
     QPushButton* btnNew_{nullptr};
     QPushButton* btnOpen_{nullptr};
+    QPushButton* btnConvert_{nullptr};
 };

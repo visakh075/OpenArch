@@ -7,6 +7,7 @@ class DbManagerSQLite : public DbManager {
     sqlite3* db_{nullptr};
 
 public:
+    ~DbManagerSQLite() override;
     Result open(const std::string&) override;
     void close() override;
 
