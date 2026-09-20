@@ -180,6 +180,13 @@ int main(int argc, char** argv) {
         return r.ok ? 0 : 1;
     }
 
+    if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h" || std::string(argv[1]) == "help")) {
+        std::cout << "Usage: openarch <dbfile.db|architecture.json>\n"
+                  << "       openarch convert <source.json|source.db> <target.db|target.json>\n";
+        help();
+        return 0;
+    }
+
     if (argc < 2) {
         std::cerr << "Usage: openarch <dbfile.db|architecture.json>\n"
                   << "       openarch convert <source.json|source.db> <target.db|target.json>\n";
