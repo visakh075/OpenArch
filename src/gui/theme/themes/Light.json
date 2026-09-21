@@ -1,11 +1,11 @@
 {
     "name": "OpenArch Clean Light",
     "view": {
-        "background": "#f8fafc",
+        "background": "#f8fafcff",
         "grid": {
             "enabled": true,
-            "minorColor": "#e2e8f0",
-            "majorColor": "#cbd5e1",
+            "minorColor": "#e2e8f0ff",
+            "majorColor": "#cbd5e1ff",
             "spacing": 20,
             "majorSpacing": 100,
             "lineWidth": 1
@@ -21,8 +21,8 @@
             "borderStyle": "solid",
             "radius": 8,
             "padding": 8,
-            "title": { "color": "#0f172a", "size": 14, "bold": true, "align": "center" },
-            "body": { "color": "#64748b", "size": 11, "bold": false, "align": "center" }
+            "title": { "color": "#0f172aff", "size": 14, "bold": true, "align": "center" },
+            "body": { "color": "#64748bff", "size": 11, "bold": false, "align": "center" }
         },
         "hover": {
             "background": "#ffffffff",
@@ -31,8 +31,8 @@
             "borderStyle": "solid",
             "radius": 8,
             "padding": 8,
-            "title": { "color": "#1d4ed8", "size": 14, "bold": true, "align": "center" },
-            "body": { "color": "#475569", "size": 11, "bold": false, "align": "center" }
+            "title": { "color": "#1d4ed8ff", "size": 14, "bold": true, "align": "center" },
+            "body": { "color": "#475569ff", "size": 11, "bold": false, "align": "center" }
         },
         "selected": {
             "background": "#eff6ffff",
@@ -41,8 +41,8 @@
             "borderStyle": "solid",
             "radius": 8,
             "padding": 8,
-            "title": { "color": "#1e40af", "size": 14, "bold": true, "align": "center" },
-            "body": { "color": "#3b82f6", "size": 11, "bold": false, "align": "center" }
+            "title": { "color": "#1e40afff", "size": 14, "bold": true, "align": "center" },
+            "body": { "color": "#3b82f6ff", "size": 11, "bold": false, "align": "center" }
         }
     },
     "container": {
@@ -58,7 +58,7 @@
             "padding": 8,
             "headerBackground": "#cbd5e128",
             "headerHeightPadding": 12,
-            "title": { "color": "#0f172a", "size": 14, "bold": true, "align": "left" }
+            "title": { "color": "#0f172aff", "size": 14, "bold": true, "align": "left" }
         },
         "hover": {
             "background": "#3b82f61e",
@@ -70,7 +70,7 @@
             "padding": 8,
             "headerBackground": "#3b82f628",
             "headerHeightPadding": 12,
-            "title": { "color": "#1d4ed8", "size": 14, "bold": true, "align": "left" }
+            "title": { "color": "#1d4ed8ff", "size": 14, "bold": true, "align": "left" }
         },
         "selected": {
             "background": "#2563eb28",
@@ -82,29 +82,29 @@
             "padding": 8,
             "headerBackground": "#2563eb32",
             "headerHeightPadding": 12,
-            "title": { "color": "#1e40af", "size": 14, "bold": true, "align": "left" }
+            "title": { "color": "#1e40afff", "size": 14, "bold": true, "align": "left" }
         }
     },
     "edge": {
         "preview": {
-            "color": "#0284c7",
+            "color": "#0284c7ff",
             "width": 2,
             "style": "dashed"
         },
         "normal": {
-            "lineColor": "#94a3b8",
+            "lineColor": "#94a3b8ff",
             "lineWidth": 2,
             "arrow": {
-                "lineColor": "#94a3b8",
+                "lineColor": "#94a3b8ff",
                 "fillColor": "#94a3b8aa",
                 "width": 14,
                 "height": 10,
                 "lineWidth": 2
             },
             "label": {
-                "textColor": "#475569",
+                "textColor": "#475569ff",
                 "backgroundColor": "#f8fafc00",
-                "borderColor": "#cbd5e1",
+                "borderColor": "#cbd5e1ff",
                 "borderWidth": 1,
                 "fontSize": 11,
                 "bold": false,
@@ -115,19 +115,19 @@
             }
         },
         "hover": {
-            "lineColor": "#3b82f6",
+            "lineColor": "#3b82f6ff",
             "lineWidth": 3,
             "arrow": {
-                "lineColor": "#3b82f6",
-                "fillColor": "#3b82f6",
+                "lineColor": "#3b82f6ff",
+                "fillColor": "#3b82f6ff",
                 "width": 16,
                 "height": 12,
                 "lineWidth": 2
             },
             "label": {
-                "textColor": "#1d4ed8",
-                "backgroundColor": "#ffffff",
-                "borderColor": "#3b82f6",
+                "textColor": "#1d4ed8ff",
+                "backgroundColor": "#ffffffff",
+                "borderColor": "#3b82f6ff",
                 "borderWidth": 1,
                 "fontSize": 11,
                 "bold": true,
@@ -138,19 +138,19 @@
             }
         },
         "selected": {
-            "lineColor": "#2563eb",
+            "lineColor": "#2563ebff",
             "lineWidth": 4,
             "arrow": {
-                "lineColor": "#2563eb",
-                "fillColor": "#2563eb",
+                "lineColor": "#2563ebff",
+                "fillColor": "#2563ebff",
                 "width": 18,
                 "height": 14,
                 "lineWidth": 3
             },
             "label": {
-                "textColor": "#1e40af",
-                "backgroundColor": "#eff6ff",
-                "borderColor": "#2563eb",
+                "textColor": "#1e40afff",
+                "backgroundColor": "#eff6ffff",
+                "borderColor": "#2563ebff",
                 "borderWidth": 2,
                 "fontSize": 11,
                 "bold": true,
@@ -162,18 +162,18 @@
         }
     },
     "port": {
-        "inputColor": "#2563eb",
-        "outputColor": "#94a3b8",
-        "hoverColor": "#1d4ed8",
+        "inputColor": "#2563ebff",
+        "outputColor": "#94a3b8ff",
+        "hoverColor": "#1d4ed8ff",
         "radius": 6
     },
     "selection": {
-        "outline": "#2563eb",
+        "outline": "#2563ebff",
         "fill": "#2563eb18"
     },
     "interaction": {
-        "hoverOutline": "#60a5fa",
-        "invalidConnection": "#ef4444",
-        "dropTarget": "#3b82f6"
+        "hoverOutline": "#60a5faff",
+        "invalidConnection": "#ef4444ff",
+        "dropTarget": "#3b82f6ff"
     }
 }

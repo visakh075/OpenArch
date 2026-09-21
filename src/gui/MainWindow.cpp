@@ -13,6 +13,7 @@
 #include <QShortcut>
 #include <QToolButton>
 #include <QMenu>
+#include <QActionGroup>
 #include <QStyle>
 #include <QInputDialog>
 #include <QKeySequence>
@@ -149,6 +150,15 @@ void MainWindow::setupUi()
                 graphView_->viewport()->update();
         });
 
+    connect(
+        GraphThemeManager::instance(),
+        &GraphThemeManager::themeSaved,
+        this,
+        [this](const QString&)
+        {
+            populateThemeMenu();
+        });
+
     setDockNestingEnabled(true);
 }
 
@@ -270,7 +280,55 @@ void MainWindow::setupMenu()
     editMenu->addSeparator();
     editMenu->addAction("Configure Shortcuts...", this, &MainWindow::openShortcutConfigDialog);
 
-    auto* themeMenu = menuBar()->addMenu("&Theme");
+    themeMenu_ = menuBar()->addMenu("&Theme");
+
+    actionOpenTheme_ = new QAction("&Open Theme File...", this);
+    connect(actionOpenTheme_, &QAction::triggered, this, &MainWindow::loadThemeFromFile);
+
+    actionSaveTheme_ = new QAction("&Save Theme", this);
+    connect(actionSaveTheme_, &QAction::triggered, this, &MainWindow::saveTheme);
+
+    actionSaveThemeAs_ = new QAction("Save Theme &As...", this);
+    connect(actionSaveThemeAs_, &QAction::triggered, this, &MainWindow::saveThemeAs);
+
+    actionResetTheme_ = new QAction("&Reset to Default", this);
+    connect(actionResetTheme_, &QAction::triggered, this, [this]() {
+        GraphThemeManager::instance()->resetDefaults();
+        populateThemeMenu();
+    });
+
+    themeMenu_->addAction(actionOpenTheme_);
+    themeMenu_->addAction(actionSaveTheme_);
+    themeMenu_->addAction(actionSaveThemeAs_);
+    themeMenu_->addSeparator();
+    themeMenu_->addAction(actionResetTheme_);
+
+    populateThemeMenu();
+
+    auto* settingsMenu = menuBar()->addMenu("&Settings");
+    settingsMenu->addAction("Configure Shortcuts...", this, &MainWindow::openShortcutConfigDialog);
+}
+
+void MainWindow::populateThemeMenu()
+{
+    if (!themeMenu_ || !actionOpenTheme_)
+        return;
+
+    for (QAction* act : presetActions_) {
+        themeMenu_->removeAction(act);
+        delete act;
+    }
+    presetActions_.clear();
+
+    if (presetSeparator_) {
+        themeMenu_->removeAction(presetSeparator_);
+        delete presetSeparator_;
+        presetSeparator_ = nullptr;
+    }
+
+    delete presetActionGroup_;
+    presetActionGroup_ = new QActionGroup(this);
+
     QDir themeDir("themes");
     if (!themeDir.exists()) {
         themeDir = QDir(QCoreApplication::applicationDirPath() + "/themes");
@@ -281,28 +339,35 @@ void MainWindow::setupMenu()
     if (!themeDir.exists()) {
         themeDir = QDir("src/gui/theme/themes");
     }
+
     if (themeDir.exists()) {
         QStringList filters;
         filters << "*.json";
         QFileInfoList list = themeDir.entryInfoList(filters, QDir::Files);
 
+        QString activePath = GraphThemeManager::instance()->currentThemePath();
+        QFileInfo activeFi(activePath);
+
         for (const QFileInfo& fi : list) {
             QString path = fi.absoluteFilePath();
             QString name = fi.baseName();
-            themeMenu->addAction(name, this, [this, path]() {
-                GraphThemeManager::instance()->load(path);
+            QAction* act = new QAction(name, this);
+            act->setCheckable(true);
+            connect(act, &QAction::triggered, this, [this, path]() {
+                switchThemePreset(path);
             });
+            if (!activePath.isEmpty() && (fi.canonicalFilePath() == activeFi.canonicalFilePath() || path == activePath)) {
+                act->setChecked(true);
+            }
+            presetActionGroup_->addAction(act);
+            themeMenu_->insertAction(actionOpenTheme_, act);
+            presetActions_.append(act);
         }
-        themeMenu->addSeparator();
+
+        if (!presetActions_.isEmpty()) {
+            presetSeparator_ = themeMenu_->insertSeparator(actionOpenTheme_);
+        }
     }
-
-    themeMenu->addAction("Open Theme File...", this, &MainWindow::loadThemeFromFile);
-    themeMenu->addAction("Reset to Default", this, []() {
-        GraphThemeManager::instance()->resetDefaults();
-    });
-
-    auto* settingsMenu = menuBar()->addMenu("&Settings");
-    settingsMenu->addAction("Configure Shortcuts...", this, &MainWindow::openShortcutConfigDialog);
 }
 
 void MainWindow::setupToolbar()
@@ -469,6 +534,10 @@ void MainWindow::setupShortcuts()
 
     // File
     sm->registerAction("file.convert", "Convert Database", "File", QKeySequence(), actionConvert_, "Convert between JSON and SQLite databases");
+
+    // Theme
+    sm->registerAction("theme.save", "Save Theme", "Theme", QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_S), actionSaveTheme_, "Save current theme settings to file");
+    sm->registerAction("theme.save_as", "Save Theme As", "Theme", QKeySequence(), actionSaveThemeAs_, "Save current theme settings to a new file");
 
     // Load saved shortcuts from QSettings and apply
     sm->loadSettings();
@@ -2099,6 +2168,9 @@ void MainWindow::loadThemeFromFile()
 
     if (!GraphThemeManager::instance()->load(file)) {
         QMessageBox::critical(this, "Error", "Failed to load theme configuration.");
+    } else {
+        statusBar()->showMessage(QString("Loaded theme: %1").arg(QFileInfo(file).fileName()), 3000);
+        populateThemeMenu();
     }
 }
 
@@ -2106,6 +2178,68 @@ void MainWindow::switchThemePreset(const QString& path)
 {
     if (!GraphThemeManager::instance()->load(path)) {
         QMessageBox::critical(this, "Error", "Failed to load theme configuration: " + path);
+    } else {
+        statusBar()->showMessage(QString("Theme: %1").arg(QFileInfo(path).baseName()), 3000);
+        populateThemeMenu();
+    }
+}
+
+void MainWindow::saveTheme()
+{
+    QString curPath = GraphThemeManager::instance()->currentThemePath();
+    if (curPath.isEmpty()) {
+        saveThemeAs();
+        return;
+    }
+
+    if (GraphThemeManager::instance()->save(curPath)) {
+        statusBar()->showMessage(QString("Theme saved to %1").arg(curPath), 3000);
+    } else {
+        QMessageBox::critical(this, "Error", "Failed to save theme configuration to:\n" + curPath);
+    }
+}
+
+void MainWindow::saveThemeAs()
+{
+    QString defaultDir;
+    QString curPath = GraphThemeManager::instance()->currentThemePath();
+    if (!curPath.isEmpty()) {
+        defaultDir = curPath;
+    } else {
+        QDir themeDir("themes");
+        if (!themeDir.exists()) {
+            themeDir = QDir(QCoreApplication::applicationDirPath() + "/themes");
+        }
+        if (!themeDir.exists()) {
+            themeDir = QDir(QCoreApplication::applicationDirPath() + "/../src/gui/theme/themes");
+        }
+        if (!themeDir.exists()) {
+            themeDir = QDir("src/gui/theme/themes");
+        }
+        if (themeDir.exists()) {
+            defaultDir = themeDir.absoluteFilePath(GraphThemeManager::instance()->theme().name + ".json");
+        } else {
+            defaultDir = GraphThemeManager::instance()->theme().name + ".json";
+        }
+    }
+
+    QString file = QFileDialog::getSaveFileName(
+        this, "Save Theme As", defaultDir, "Theme JSON (*.json);;All Files (*.*)");
+
+    if (file.isEmpty())
+        return;
+
+    if (!file.endsWith(".json", Qt::CaseInsensitive)) {
+        file += ".json";
+    }
+
+    GraphThemeManager::instance()->mutableTheme().name = QFileInfo(file).baseName();
+
+    if (GraphThemeManager::instance()->save(file)) {
+        statusBar()->showMessage(QString("Theme saved to %1").arg(file), 3000);
+        populateThemeMenu();
+    } else {
+        QMessageBox::critical(this, "Error", "Failed to save theme configuration to:\n" + file);
     }
 }
 

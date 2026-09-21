@@ -20,6 +20,13 @@
 #include <QVector>
 #include <QPainter>
 #include <QPainterPath>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QFileInfo>
+#include <QDir>
+#include <QCoreApplication>
+#include <QMainWindow>
+#include <QStatusBar>
 #include <cmath>
 
 /*
@@ -285,8 +292,28 @@ ThemeEditorDock::ThemeEditorDock(QWidget* parent)
     m_tree->setHeaderHidden(true);
     m_tree->setMinimumWidth(240);
 
+    auto* btnContainer = new QWidget(treeContainer);
+    auto* btnLayout = new QHBoxLayout(btnContainer);
+    btnLayout->setContentsMargins(2, 4, 2, 2);
+    btnLayout->setSpacing(6);
+
+    m_saveBtn = new QPushButton("Save Theme", btnContainer);
+    m_saveBtn->setToolTip("Save theme changes to current file");
+
+    m_saveAsBtn = new QPushButton("Save As...", btnContainer);
+    m_saveAsBtn->setToolTip("Save theme changes to a new file");
+
+    btnLayout->addWidget(m_saveBtn);
+    btnLayout->addWidget(m_saveAsBtn);
+
+    m_statusLabel = new QLabel(treeContainer);
+    m_statusLabel->setStyleSheet("color: #888888; font-size: 11px; padding: 2px 4px;");
+    m_statusLabel->setWordWrap(true);
+
     treeLayout->addWidget(m_searchEdit);
     treeLayout->addWidget(m_tree, 1);
+    treeLayout->addWidget(btnContainer);
+    treeLayout->addWidget(m_statusLabel);
 
     m_stack = new QStackedWidget;
 
@@ -298,8 +325,25 @@ ThemeEditorDock::ThemeEditorDock(QWidget* parent)
     populateTree();
     connectTree();
 
+    connect(m_saveBtn, &QPushButton::clicked, this, &ThemeEditorDock::saveTheme);
+    connect(m_saveAsBtn, &QPushButton::clicked, this, &ThemeEditorDock::saveThemeAs);
+
     connect(GraphThemeManager::instance(), &GraphThemeManager::themeChanged,
             this, &ThemeEditorDock::syncFromTheme);
+    connect(GraphThemeManager::instance(), &GraphThemeManager::themeSaved,
+            this, [this](const QString& path) {
+        updateStatusDisplay(QString("Saved to %1").arg(QFileInfo(path).fileName()));
+    });
+    connect(GraphThemeManager::instance(), &GraphThemeManager::themeLoaded,
+            this, [this](const QString& path) {
+        updateStatusDisplay(QString("Loaded %1").arg(QFileInfo(path).fileName()));
+    });
+
+    if (m_tree->topLevelItemCount() > 0)
+    {
+        m_tree->setCurrentItem(m_tree->topLevelItem(0));
+    }
+    updateStatusDisplay();
 }
 
 ThemeEditorDock::InspectorPage ThemeEditorDock::createInspectorPage()
@@ -333,6 +377,13 @@ void ThemeEditorDock::populateTree()
         int index = m_stack->addWidget(page.container);
         item->setData(0, Qt::UserRole, index);
     };
+
+    // 0. General / Theme Info
+    auto* generalItem = new QTreeWidgetItem(QStringList() << "General");
+    m_tree->addTopLevelItem(generalItem);
+    addPage(generalItem, [&](QVBoxLayout* layout) {
+        buildGeneralProperties(layout);
+    });
 
     // 1. View
     auto* viewItem = new QTreeWidgetItem(QStringList() << "View");
@@ -965,6 +1016,62 @@ void ThemeEditorDock::buildInteractionProperties(QVBoxLayout* layout)
     }));
 }
 
+void ThemeEditorDock::buildGeneralProperties(QVBoxLayout* layout)
+{
+    QVBoxLayout* secLayout = nullptr;
+    auto* sec = createCollapsibleSection("Theme Details", secLayout);
+
+    // Theme Name
+    auto* nameRow = new QWidget;
+    auto* nameLayout = new QHBoxLayout(nameRow);
+    nameLayout->setContentsMargins(0, 0, 0, 0);
+    nameLayout->addWidget(new QLabel("Theme Name:"));
+    auto* nameEdit = new QLineEdit;
+    nameEdit->setText(GraphThemeManager::instance()->theme().name);
+    connect(nameEdit, &QLineEdit::textEdited, this, [this](const QString& text) {
+        GraphThemeManager::instance()->mutableTheme().name = text;
+        updateStatusDisplay("Name modified");
+    });
+    nameLayout->addWidget(nameEdit, 1);
+    secLayout->addWidget(nameRow);
+
+    // Current File
+    auto* fileRow = new QWidget;
+    auto* fileLayout = new QHBoxLayout(fileRow);
+    fileLayout->setContentsMargins(0, 0, 0, 0);
+    fileLayout->addWidget(new QLabel("File Path:"));
+    auto* fileEdit = new QLineEdit;
+    QString curPath = GraphThemeManager::instance()->currentThemePath();
+    fileEdit->setText(curPath.isEmpty() ? "(Unsaved / Custom)" : curPath);
+    fileEdit->setReadOnly(true);
+    fileLayout->addWidget(fileEdit, 1);
+    secLayout->addWidget(fileRow);
+
+    layout->addWidget(sec);
+
+    // Actions section
+    QVBoxLayout* actLayout = nullptr;
+    auto* actSec = createCollapsibleSection("Actions", actLayout);
+
+    auto* actBtnRow = new QHBoxLayout;
+    auto* saveBtn = new QPushButton("Save Theme");
+    auto* saveAsBtn = new QPushButton("Save Theme As...");
+    auto* resetBtn = new QPushButton("Reset to Defaults");
+
+    connect(saveBtn, &QPushButton::clicked, this, &ThemeEditorDock::saveTheme);
+    connect(saveAsBtn, &QPushButton::clicked, this, &ThemeEditorDock::saveThemeAs);
+    connect(resetBtn, &QPushButton::clicked, this, [this]() {
+        GraphThemeManager::instance()->resetDefaults();
+    });
+
+    actBtnRow->addWidget(saveBtn);
+    actBtnRow->addWidget(saveAsBtn);
+    actBtnRow->addWidget(resetBtn);
+    actLayout->addLayout(actBtnRow);
+
+    layout->addWidget(actSec);
+}
+
 void ThemeEditorDock::emitThemeChanged()
 {
     if (m_isInternalUpdate)
@@ -973,6 +1080,87 @@ void ThemeEditorDock::emitThemeChanged()
     m_isInternalUpdate = true;
     GraphThemeManager::instance()->notifyThemeChanged();
     m_isInternalUpdate = false;
+    updateStatusDisplay("Theme modified");
+}
+
+void ThemeEditorDock::updateStatusDisplay(const QString& message)
+{
+    if (!m_statusLabel) return;
+
+    QString themeName = GraphThemeManager::instance()->theme().name;
+    QString curPath = GraphThemeManager::instance()->currentThemePath();
+    QString fileName = curPath.isEmpty() ? "Unsaved" : QFileInfo(curPath).fileName();
+
+    if (!message.isEmpty()) {
+        m_statusLabel->setText(QString("<b>%1</b> (%2) — %3").arg(themeName, fileName, message));
+    } else {
+        m_statusLabel->setText(QString("<b>%1</b> (%2)").arg(themeName, fileName));
+    }
+    m_statusLabel->setToolTip(curPath.isEmpty() ? "Theme has not been saved to a file yet." : curPath);
+}
+
+void ThemeEditorDock::saveTheme()
+{
+    QString path = GraphThemeManager::instance()->currentThemePath();
+    if (path.isEmpty()) {
+        saveThemeAs();
+        return;
+    }
+
+    if (GraphThemeManager::instance()->save(path)) {
+        updateStatusDisplay("Saved");
+        if (auto* mw = qobject_cast<QMainWindow*>(window())) {
+            mw->statusBar()->showMessage(tr("Theme saved to %1").arg(path), 3000);
+        }
+    } else {
+        QMessageBox::critical(this, tr("Save Error"), tr("Failed to save theme to:\n%1").arg(path));
+    }
+}
+
+void ThemeEditorDock::saveThemeAs()
+{
+    QString initialDir;
+    QString curPath = GraphThemeManager::instance()->currentThemePath();
+    if (!curPath.isEmpty()) {
+        initialDir = curPath;
+    } else {
+        QDir themeDir("themes");
+        if (!themeDir.exists()) {
+            themeDir = QDir(QCoreApplication::applicationDirPath() + "/themes");
+        }
+        if (!themeDir.exists()) {
+            themeDir = QDir(QCoreApplication::applicationDirPath() + "/../src/gui/theme/themes");
+        }
+        if (!themeDir.exists()) {
+            themeDir = QDir("src/gui/theme/themes");
+        }
+        if (themeDir.exists()) {
+            initialDir = themeDir.absoluteFilePath(GraphThemeManager::instance()->theme().name + ".json");
+        } else {
+            initialDir = GraphThemeManager::instance()->theme().name + ".json";
+        }
+    }
+
+    QString file = QFileDialog::getSaveFileName(
+        this, tr("Save Theme As"), initialDir, tr("Theme JSON (*.json);;All Files (*.*)"));
+
+    if (file.isEmpty())
+        return;
+
+    if (!file.endsWith(".json", Qt::CaseInsensitive)) {
+        file += ".json";
+    }
+
+    GraphThemeManager::instance()->mutableTheme().name = QFileInfo(file).baseName();
+
+    if (GraphThemeManager::instance()->save(file)) {
+        updateStatusDisplay("Saved");
+        if (auto* mw = qobject_cast<QMainWindow*>(window())) {
+            mw->statusBar()->showMessage(tr("Theme saved to %1").arg(file), 3000);
+        }
+    } else {
+        QMessageBox::critical(this, tr("Save Error"), tr("Failed to save theme to:\n%1").arg(file));
+    }
 }
 
 void ThemeEditorDock::syncFromTheme()
@@ -996,4 +1184,5 @@ void ThemeEditorDock::syncFromTheme()
     {
         m_stack->setCurrentIndex(currentIndex);
     }
+    updateStatusDisplay();
 }

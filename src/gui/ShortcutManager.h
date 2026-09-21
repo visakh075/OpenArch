@@ -4,6 +4,7 @@
 #include <QString>
 #include <QKeySequence>
 #include <QAction>
+#include <QPointer>
 #include <vector>
 
 struct ShortcutItem
@@ -15,7 +16,7 @@ struct ShortcutItem
     QKeySequence defaultKey;    // Default key sequence
     QKeySequence currentKey;    // Currently assigned key sequence
     bool isStandard{false};     // True if standard / immutable system shortcut
-    QAction* action{nullptr};   // Associated QAction, if any
+    QPointer<QAction> action{nullptr};   // Associated QAction, if any
 };
 
 class ShortcutManager : public QObject

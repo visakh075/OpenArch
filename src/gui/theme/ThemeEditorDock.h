@@ -13,6 +13,7 @@ class QTreeWidgetItem;
 class QStackedWidget;
 class QComboBox;
 class QLineEdit;
+class QLabel;
 
 class ThemeEditorDock : public QDockWidget
 {
@@ -23,6 +24,8 @@ public:
 
 public slots:
     void syncFromTheme();
+    void saveTheme();
+    void saveThemeAs();
 
 private:
     struct InspectorPage
@@ -121,5 +124,14 @@ private:
     void buildInteractionProperties(
         QVBoxLayout* layout);
 
+    void buildGeneralProperties(
+        QVBoxLayout* layout);
+
     void emitThemeChanged();
+    void updateStatusDisplay(const QString& message = QString());
+
+private:
+    QPushButton* m_saveBtn = nullptr;
+    QPushButton* m_saveAsBtn = nullptr;
+    QLabel* m_statusLabel = nullptr;
 };

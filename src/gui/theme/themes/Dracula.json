@@ -1,11 +1,11 @@
 {
     "name": "OpenArch Dracula",
     "view": {
-        "background": "#282a36",
+        "background": "#282a36ff",
         "grid": {
             "enabled": true,
-            "minorColor": "#343746",
-            "majorColor": "#44475a",
+            "minorColor": "#343746ff",
+            "majorColor": "#44475aff",
             "spacing": 20,
             "majorSpacing": 100,
             "lineWidth": 1
@@ -21,8 +21,8 @@
             "borderStyle": "solid",
             "radius": 8,
             "padding": 8,
-            "title": { "color": "#f8f8f2", "size": 14, "bold": true, "align": "center" },
-            "body": { "color": "#6272a4", "size": 11, "bold": false, "align": "center" }
+            "title": { "color": "#f8f8f2ff", "size": 14, "bold": true, "align": "center" },
+            "body": { "color": "#6272a4ff", "size": 11, "bold": false, "align": "center" }
         },
         "hover": {
             "background": "#44475aff",
@@ -31,8 +31,8 @@
             "borderStyle": "solid",
             "radius": 8,
             "padding": 8,
-            "title": { "color": "#ffffff", "size": 14, "bold": true, "align": "center" },
-            "body": { "color": "#f8f8f2", "size": 11, "bold": false, "align": "center" }
+            "title": { "color": "#ffffffff", "size": 14, "bold": true, "align": "center" },
+            "body": { "color": "#f8f8f2ff", "size": 11, "bold": false, "align": "center" }
         },
         "selected": {
             "background": "#44475aff",
@@ -41,8 +41,8 @@
             "borderStyle": "solid",
             "radius": 8,
             "padding": 8,
-            "title": { "color": "#50fa7b", "size": 14, "bold": true, "align": "center" },
-            "body": { "color": "#f8f8f2", "size": 11, "bold": false, "align": "center" }
+            "title": { "color": "#50fa7bff", "size": 14, "bold": true, "align": "center" },
+            "body": { "color": "#f8f8f2ff", "size": 11, "bold": false, "align": "center" }
         }
     },
     "container": {
@@ -58,7 +58,7 @@
             "padding": 8,
             "headerBackground": "#bd93f923",
             "headerHeightPadding": 12,
-            "title": { "color": "#f8f8f2", "size": 14, "bold": true, "align": "left" }
+            "title": { "color": "#f8f8f2ff", "size": 14, "bold": true, "align": "left" }
         },
         "hover": {
             "background": "#44475a37",
@@ -70,7 +70,7 @@
             "padding": 8,
             "headerBackground": "#ff79c62d",
             "headerHeightPadding": 12,
-            "title": { "color": "#ffffff", "size": 14, "bold": true, "align": "left" }
+            "title": { "color": "#ffffffff", "size": 14, "bold": true, "align": "left" }
         },
         "selected": {
             "background": "#44475a3c",
@@ -82,29 +82,29 @@
             "padding": 8,
             "headerBackground": "#50fa7b32",
             "headerHeightPadding": 12,
-            "title": { "color": "#50fa7b", "size": 14, "bold": true, "align": "left" }
+            "title": { "color": "#50fa7bff", "size": 14, "bold": true, "align": "left" }
         }
     },
     "edge": {
         "preview": {
-            "color": "#8be9fd",
+            "color": "#8be9fdff",
             "width": 2,
             "style": "dashed"
         },
         "normal": {
-            "lineColor": "#8be9fd",
+            "lineColor": "#8be9fdff",
             "lineWidth": 2,
             "arrow": {
-                "lineColor": "#8be9fd",
+                "lineColor": "#8be9fdff",
                 "fillColor": "#8be9fdaa",
                 "width": 14,
                 "height": 10,
                 "lineWidth": 2
             },
             "label": {
-                "textColor": "#f8f8f2",
+                "textColor": "#f8f8f2ff",
                 "backgroundColor": "#282a3600",
-                "borderColor": "#6272a4",
+                "borderColor": "#6272a4ff",
                 "borderWidth": 1,
                 "fontSize": 11,
                 "bold": false,
@@ -115,19 +115,19 @@
             }
         },
         "hover": {
-            "lineColor": "#ff79c6",
+            "lineColor": "#ff79c6ff",
             "lineWidth": 3,
             "arrow": {
-                "lineColor": "#ff79c6",
-                "fillColor": "#ff79c6",
+                "lineColor": "#ff79c6ff",
+                "fillColor": "#ff79c6ff",
                 "width": 16,
                 "height": 12,
                 "lineWidth": 2
             },
             "label": {
-                "textColor": "#ff79c6",
-                "backgroundColor": "#343746",
-                "borderColor": "#ff79c6",
+                "textColor": "#ff79c6ff",
+                "backgroundColor": "#343746ff",
+                "borderColor": "#ff79c6ff",
                 "borderWidth": 1,
                 "fontSize": 11,
                 "bold": true,
@@ -138,19 +138,19 @@
             }
         },
         "selected": {
-            "lineColor": "#50fa7b",
+            "lineColor": "#50fa7bff",
             "lineWidth": 4,
             "arrow": {
-                "lineColor": "#50fa7b",
-                "fillColor": "#50fa7b",
+                "lineColor": "#50fa7bff",
+                "fillColor": "#50fa7bff",
                 "width": 18,
                 "height": 14,
                 "lineWidth": 3
             },
             "label": {
-                "textColor": "#50fa7b",
-                "backgroundColor": "#44475a",
-                "borderColor": "#50fa7b",
+                "textColor": "#50fa7bff",
+                "backgroundColor": "#44475aff",
+                "borderColor": "#50fa7bff",
                 "borderWidth": 2,
                 "fontSize": 11,
                 "bold": true,
@@ -162,18 +162,18 @@
         }
     },
     "port": {
-        "inputColor": "#50fa7b",
-        "outputColor": "#ffb86c",
-        "hoverColor": "#ff79c6",
+        "inputColor": "#50fa7bff",
+        "outputColor": "#ffb86cff",
+        "hoverColor": "#ff79c6ff",
         "radius": 6
     },
     "selection": {
-        "outline": "#50fa7b",
+        "outline": "#50fa7bff",
         "fill": "#50fa7b22"
     },
     "interaction": {
-        "hoverOutline": "#ff79c6",
-        "invalidConnection": "#ff5555",
-        "dropTarget": "#50fa7b"
+        "hoverOutline": "#ff79c6ff",
+        "invalidConnection": "#ff5555ff",
+        "dropTarget": "#50fa7bff"
     }
 }

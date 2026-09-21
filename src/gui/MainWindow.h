@@ -42,6 +42,8 @@ class ArchitectureFilterProxyModel;
 class QLineEdit;
 class QComboBox;
 class QLabel;
+class QMenu;
+class QAction;
 
 class MainWindow : public QMainWindow
 {
@@ -68,6 +70,8 @@ private slots:
     void saveLayout();
     void scheduleAutoSave();
     void loadThemeFromFile();
+    void saveTheme();
+    void saveThemeAs();
     void switchThemePreset(const QString& path);
     void onTreeItemDoubleClicked(const QModelIndex& index);
     void onTreeItemClicked(const QModelIndex& index);
@@ -85,6 +89,7 @@ private slots:
 private:
     void setupUi();
     void setupMenu();
+    void populateThemeMenu();
     void setupToolbar();
     void setupShortcuts();
     void setupConnections();
@@ -154,6 +159,14 @@ private:
     QAction* actionExportJson_{nullptr};
     QAction* actionExportSqlite_{nullptr};
     QAction* duplicateBtn_{nullptr};
+    QMenu*   themeMenu_{nullptr};
+    QAction* actionOpenTheme_{nullptr};
+    QAction* actionSaveTheme_{nullptr};
+    QAction* actionSaveThemeAs_{nullptr};
+    QAction* actionResetTheme_{nullptr};
+    QAction* presetSeparator_{nullptr};
+    QList<QAction*> presetActions_;
+    QActionGroup* presetActionGroup_{nullptr};
 
     std::string currentDbPath_;
 

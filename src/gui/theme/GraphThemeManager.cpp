@@ -2,6 +2,7 @@
 
 #include <QDebug>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -11,9 +12,43 @@ GraphThemeManager* GraphThemeManager::s_instance = nullptr;
 namespace
 {
 
-QColor loadColor(const QJsonObject& obj, const QString& key, const QString& fallback = "#ffffff")
+QColor parseHexColor(const QString& str, const QString& fallback = "#ffffffff")
 {
-    return QColor(obj.value(key).toString(fallback));
+    QString s = str.trimmed();
+    if (s.startsWith('#'))
+    {
+        if (s.length() == 9)
+        {
+            // Format: #RRGGBBAA
+            bool okR = false, okG = false, okB = false, okA = false;
+            int r = s.mid(1, 2).toInt(&okR, 16);
+            int g = s.mid(3, 2).toInt(&okG, 16);
+            int b = s.mid(5, 2).toInt(&okB, 16);
+            int a = s.mid(7, 2).toInt(&okA, 16);
+            if (okR && okG && okB && okA)
+                return QColor(r, g, b, a);
+        }
+        else if (s.length() == 7)
+        {
+            // Format: #RRGGBB (full opacity)
+            bool okR = false, okG = false, okB = false;
+            int r = s.mid(1, 2).toInt(&okR, 16);
+            int g = s.mid(3, 2).toInt(&okG, 16);
+            int b = s.mid(5, 2).toInt(&okB, 16);
+            if (okR && okG && okB)
+                return QColor(r, g, b, 255);
+        }
+    }
+
+    QColor c(s);
+    if (c.isValid())
+        return c;
+    return QColor(fallback);
+}
+
+QColor loadColor(const QJsonObject& obj, const QString& key, const QString& fallback = "#ffffffff")
+{
+    return parseHexColor(obj.value(key).toString(fallback), fallback);
 }
 
 int loadInt(const QJsonObject& obj, const QString& key, int fallback)
@@ -89,6 +124,15 @@ GraphTextStyle loadTextStyle(const QJsonObject& obj)
     return style;
 }
 
+QString saveColor(const QColor& color)
+{
+    return QString("#%1%2%3%4")
+        .arg(color.red(), 2, 16, QChar('0'))
+        .arg(color.green(), 2, 16, QChar('0'))
+        .arg(color.blue(), 2, 16, QChar('0'))
+        .arg(color.alpha(), 2, 16, QChar('0')).toLower();
+}
+
 QString saveAlign(Qt::Alignment align)
 {
     if (align & Qt::AlignLeft)    return "left";
@@ -100,10 +144,11 @@ QString saveAlign(Qt::Alignment align)
 QJsonObject saveTextStyle(const GraphTextStyle& style)
 {
     QJsonObject obj;
-    obj["color"] = style.color.name(QColor::HexArgb);
+    obj["color"] = saveColor(style.color);
     obj["size"] = style.size;
     obj["bold"] = style.bold;
-    obj["italic"] = style.italic;
+    if (style.italic)
+        obj["italic"] = style.italic;
     obj["align"] = saveAlign(style.align);
     return obj;
 }
@@ -157,11 +202,11 @@ GraphComponentState loadComponentState(const QJsonObject& obj, bool isContainerD
     return state;
 }
 
-QJsonObject saveComponentState(const GraphComponentState& state)
+QJsonObject saveComponentState(const GraphComponentState& state, bool isContainer = false)
 {
     QJsonObject obj;
-    obj["background"] = state.background.name(QColor::HexArgb);
-    obj["border"] = state.border.name(QColor::HexArgb);
+    obj["background"] = saveColor(state.background);
+    obj["border"] = saveColor(state.border);
     obj["borderWidth"] = state.borderWidth;
     obj["borderStyle"] = savePenStyle(state.borderStyle);
 
@@ -175,11 +220,17 @@ QJsonObject saveComponentState(const GraphComponentState& state)
     obj["radius"] = state.radius;
     obj["padding"] = state.padding;
 
-    obj["headerBackground"] = state.headerBackground.name(QColor::HexArgb);
-    obj["headerHeightPadding"] = state.headerHeightPadding;
-
-    obj["title"] = saveTextStyle(state.title);
-    obj["body"] = saveTextStyle(state.body);
+    if (isContainer)
+    {
+        obj["headerBackground"] = saveColor(state.headerBackground);
+        obj["headerHeightPadding"] = state.headerHeightPadding;
+        obj["title"] = saveTextStyle(state.title);
+    }
+    else
+    {
+        obj["title"] = saveTextStyle(state.title);
+        obj["body"] = saveTextStyle(state.body);
+    }
     return obj;
 }
 
@@ -195,14 +246,14 @@ GraphComponentTheme loadComponentTheme(const QJsonObject& obj, bool isContainer 
     return theme;
 }
 
-QJsonObject saveComponentTheme(const GraphComponentTheme& theme)
+QJsonObject saveComponentTheme(const GraphComponentTheme& theme, bool isContainer = false)
 {
     QJsonObject obj;
     obj["minWidth"] = theme.minWidth;
     obj["minHeight"] = theme.minHeight;
-    obj["normal"] = saveComponentState(theme.normal);
-    obj["hover"] = saveComponentState(theme.hover);
-    obj["selected"] = saveComponentState(theme.selected);
+    obj["normal"] = saveComponentState(theme.normal, isContainer);
+    obj["hover"] = saveComponentState(theme.hover, isContainer);
+    obj["selected"] = saveComponentState(theme.selected, isContainer);
     return obj;
 }
 
@@ -222,13 +273,11 @@ GraphArrowState loadArrowState(const QJsonObject& obj)
 QJsonObject saveArrowState(const GraphArrowState& state)
 {
     QJsonObject obj;
-    obj["lineColor"] = state.lineColor.name(QColor::HexArgb);
-    obj["fillColor"] = state.fillColor.name(QColor::HexArgb);
-    obj["borderColor"] = state.borderColor.name(QColor::HexArgb);
+    obj["lineColor"] = saveColor(state.lineColor);
+    obj["fillColor"] = saveColor(state.fillColor);
     obj["width"] = state.width;
     obj["height"] = state.height;
     obj["lineWidth"] = state.lineWidth;
-    obj["borderWidth"] = state.borderWidth;
     return obj;
 }
 
@@ -251,9 +300,9 @@ GraphEdgeLabelState loadEdgeLabelState(const QJsonObject& obj)
 QJsonObject saveEdgeLabelState(const GraphEdgeLabelState& state)
 {
     QJsonObject obj;
-    obj["textColor"] = state.textColor.name(QColor::HexArgb);
-    obj["backgroundColor"] = state.backgroundColor.name(QColor::HexArgb);
-    obj["borderColor"] = state.borderColor.name(QColor::HexArgb);
+    obj["textColor"] = saveColor(state.textColor);
+    obj["backgroundColor"] = saveColor(state.backgroundColor);
+    obj["borderColor"] = saveColor(state.borderColor);
     obj["borderWidth"] = state.borderWidth;
     obj["fontSize"] = state.fontSize;
     obj["bold"] = state.bold;
@@ -289,10 +338,12 @@ GraphEdgeState loadEdgeState(const QJsonObject& obj)
 QJsonObject saveEdgeState(const GraphEdgeState& state)
 {
     QJsonObject obj;
-    obj["lineColor"] = state.lineColor.name(QColor::HexArgb);
+    obj["lineColor"] = saveColor(state.lineColor);
     obj["lineWidth"] = state.lineWidth;
-    obj["lineStyle"] = savePenStyle(state.lineStyle);
-    obj["dashed"] = (state.lineStyle == Qt::DashLine);
+    if (state.lineStyle != Qt::SolidLine)
+    {
+        obj["lineStyle"] = savePenStyle(state.lineStyle);
+    }
 
     if (!state.dashPattern.isEmpty())
     {
@@ -318,7 +369,7 @@ GraphPreviewLineTheme loadPreviewLineTheme(const QJsonObject& obj)
 QJsonObject savePreviewLineTheme(const GraphPreviewLineTheme& preview)
 {
     QJsonObject obj;
-    obj["color"] = preview.color.name(QColor::HexArgb);
+    obj["color"] = saveColor(preview.color);
     obj["width"] = preview.width;
     obj["style"] = savePenStyle(preview.style);
     return obj;
@@ -454,6 +505,7 @@ void GraphThemeManager::initializeDefaults()
 
 void GraphThemeManager::resetDefaults()
 {
+    m_currentPath.clear();
     initializeDefaults();
     emit themeChanged();
 }
@@ -477,6 +529,7 @@ bool GraphThemeManager::load(const QString& path)
 
     QJsonObject root = doc.object();
     m_theme.name = root.value("name").toString("Unnamed Theme");
+    m_currentPath = path;
 
     // View & Grid
     {
@@ -541,24 +594,39 @@ bool GraphThemeManager::load(const QString& path)
         m_theme.interaction.dropTarget = loadColor(intObj, "dropTarget", "#00ff88");
     }
 
+    emit themeLoaded(path);
     emit themeChanged();
     return true;
 }
 
-bool GraphThemeManager::save(const QString& path) const
+bool GraphThemeManager::save()
 {
+    if (m_currentPath.isEmpty())
+        return false;
+    return save(m_currentPath);
+}
+
+bool GraphThemeManager::save(const QString& path)
+{
+    if (path.isEmpty())
+        return false;
+
+    if (m_theme.name.isEmpty()) {
+        m_theme.name = QFileInfo(path).baseName();
+    }
+
     QJsonObject root;
     root["name"] = m_theme.name;
 
     // View
     {
         QJsonObject viewObj;
-        viewObj["background"] = m_theme.view.background.name(QColor::HexArgb);
+        viewObj["background"] = saveColor(m_theme.view.background);
 
         QJsonObject gridObj;
         gridObj["enabled"] = m_theme.view.grid.enabled;
-        gridObj["minorColor"] = m_theme.view.grid.minorColor.name(QColor::HexArgb);
-        gridObj["majorColor"] = m_theme.view.grid.majorColor.name(QColor::HexArgb);
+        gridObj["minorColor"] = saveColor(m_theme.view.grid.minorColor);
+        gridObj["majorColor"] = saveColor(m_theme.view.grid.majorColor);
         gridObj["spacing"] = m_theme.view.grid.spacing;
         gridObj["majorSpacing"] = m_theme.view.grid.majorSpacing;
         gridObj["lineWidth"] = m_theme.view.grid.lineWidth;
@@ -567,8 +635,8 @@ bool GraphThemeManager::save(const QString& path) const
         root["view"] = viewObj;
     }
 
-    root["node"] = saveComponentTheme(m_theme.node);
-    root["container"] = saveComponentTheme(m_theme.container);
+    root["node"] = saveComponentTheme(m_theme.node, false);
+    root["container"] = saveComponentTheme(m_theme.container, true);
 
     // Edge
     {
@@ -583,9 +651,9 @@ bool GraphThemeManager::save(const QString& path) const
     // Port
     {
         QJsonObject portObj;
-        portObj["inputColor"] = m_theme.port.normal.inputColor.name(QColor::HexArgb);
-        portObj["outputColor"] = m_theme.port.normal.outputColor.name(QColor::HexArgb);
-        portObj["hoverColor"] = m_theme.port.normal.hoverColor.name(QColor::HexArgb);
+        portObj["inputColor"] = saveColor(m_theme.port.normal.inputColor);
+        portObj["outputColor"] = saveColor(m_theme.port.normal.outputColor);
+        portObj["hoverColor"] = saveColor(m_theme.port.normal.hoverColor);
         portObj["radius"] = m_theme.port.normal.radius;
         root["port"] = portObj;
     }
@@ -593,17 +661,17 @@ bool GraphThemeManager::save(const QString& path) const
     // Selection
     {
         QJsonObject selObj;
-        selObj["outline"] = m_theme.selection.outline.name(QColor::HexArgb);
-        selObj["fill"] = m_theme.selection.fill.name(QColor::HexArgb);
+        selObj["outline"] = saveColor(m_theme.selection.outline);
+        selObj["fill"] = saveColor(m_theme.selection.fill);
         root["selection"] = selObj;
     }
 
     // Interaction
     {
         QJsonObject intObj;
-        intObj["hoverOutline"] = m_theme.interaction.hoverOutline.name(QColor::HexArgb);
-        intObj["invalidConnection"] = m_theme.interaction.invalidConnection.name(QColor::HexArgb);
-        intObj["dropTarget"] = m_theme.interaction.dropTarget.name(QColor::HexArgb);
+        intObj["hoverOutline"] = saveColor(m_theme.interaction.hoverOutline);
+        intObj["invalidConnection"] = saveColor(m_theme.interaction.invalidConnection);
+        intObj["dropTarget"] = saveColor(m_theme.interaction.dropTarget);
         root["interaction"] = intObj;
     }
 
@@ -613,7 +681,19 @@ bool GraphThemeManager::save(const QString& path) const
         return false;
 
     file.write(doc.toJson(QJsonDocument::Indented));
+    m_currentPath = path;
+    emit themeSaved(path);
     return true;
+}
+
+const QString& GraphThemeManager::currentThemePath() const
+{
+    return m_currentPath;
+}
+
+void GraphThemeManager::setCurrentThemePath(const QString& path)
+{
+    m_currentPath = path;
 }
 
 const GraphTheme& GraphThemeManager::theme() const

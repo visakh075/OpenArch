@@ -76,6 +76,8 @@ void ShortcutConfigDialog::setupUi()
     categoryCombo_->addItem("Layout", "Layout");
     categoryCombo_->addItem("Alignment", "Alignment");
     categoryCombo_->addItem("Export", "Export");
+    categoryCombo_->addItem("File", "File");
+    categoryCombo_->addItem("Theme", "Theme");
 
     filterLayout->addWidget(new QLabel("Filter:", this));
     filterLayout->addWidget(searchEdit_, 2);

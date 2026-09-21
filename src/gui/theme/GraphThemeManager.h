@@ -36,7 +36,12 @@ public:
         const QString& path);
 
     bool save(
-        const QString& path) const;
+        const QString& path);
+
+    bool save();
+
+    const QString& currentThemePath() const;
+    void setCurrentThemePath(const QString& path);
 
     /*
      * ACCESS
@@ -57,6 +62,8 @@ public:
 signals:
 
     void themeChanged();
+    void themeLoaded(const QString& path);
+    void themeSaved(const QString& path);
 
 private:
 
@@ -71,4 +78,5 @@ private:
     static GraphThemeManager* s_instance;
 
     GraphTheme m_theme;
+    QString m_currentPath;
 };
