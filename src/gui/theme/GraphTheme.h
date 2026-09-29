@@ -65,6 +65,7 @@ struct GraphComponentState
 
     GraphTextStyle title;
     GraphTextStyle body;
+    GraphTextStyle tertiary{QColor(160, 160, 160, 170), 9, false, true, 5, 5, 5, 5, Qt::AlignCenter};
 };
 
 using GraphNodeState = GraphComponentState;

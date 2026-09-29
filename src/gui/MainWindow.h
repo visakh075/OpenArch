@@ -85,6 +85,12 @@ private slots:
     void openConvertDialog();
     void exportCurrentAsJson();
     void exportCurrentAsSqlite();
+    void reviewSelected();
+    void approveSelected();
+    void markSelectedChanged();
+    void markSelectedInvalid();
+    void verifyModelIntegrity();
+    void onNavigatorContextMenu(const QPoint& pos);
 
 private:
     void setupUi();
@@ -167,6 +173,13 @@ private:
     QAction* presetSeparator_{nullptr};
     QList<QAction*> presetActions_;
     QActionGroup* presetActionGroup_{nullptr};
+    QMenu*   governanceMenu_{nullptr};
+    QAction* actionReview_{nullptr};
+    QAction* actionApprove_{nullptr};
+    QAction* actionMarkChanged_{nullptr};
+    QAction* actionMarkInvalid_{nullptr};
+    QAction* actionVerifyIntegrity_{nullptr};
+    QAction* actionShowBadges_{nullptr};
 
     std::string currentDbPath_;
 

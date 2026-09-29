@@ -34,6 +34,7 @@ public:
     QRectF headerRect() const { return cachedHeaderRect_; }
     QRectF titleRect() const { return cachedTitleRect_; }
     QRectF bodyRect() const { return cachedBodyRect_; }
+    QRectF tertiaryRect() const { return cachedTertiaryRect_; }
 
     NodeId nodeId() const { return nodeId_; }
     ArchitectureModel* model() const { return model_; }
@@ -51,11 +52,26 @@ public:
     void setManualContainerSize(qreal w, qreal h);
     void setContainerSizing(ContainerSizing mode);
 
+    bool isFolded() const { return isFolded_; }
+    void setFolded(bool folded);
+    void toggleFold();
+    GraphNodeItem* effectiveVisibleNode() const;
+    QRectF foldToggleRect() const;
+    void updateChildrenVisibility();
+    void updateAllConnectedEdges();
+
     void addEdge(GraphEdgeItem* e);
     void removeEdge(GraphEdgeItem* e);
     const std::vector<GraphEdgeItem*>& edges() const { return edges_; }
 
     void onThemeChanged();
+
+    QRectF nodeRect() const { return cachedRect_; }
+
+    static bool showGovernanceBadges();
+    static void setShowGovernanceBadges(bool show);
+    static QColor governanceStatusColor(Status s);
+    static QColor governanceStatusBgColor(Status s);
 
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
@@ -92,11 +108,15 @@ private:
     qreal manualWidth_{320.0};
     qreal manualHeight_{220.0};
     QRectF cachedHeaderRect_;
+    bool isFolded_{false};
 
     // Cached layout metrics
     QRectF cachedRect_;
     QRectF cachedTitleRect_;
     QRectF cachedBodyRect_;
+    QRectF cachedTertiaryRect_;
+    QRectF cachedBadgeRect_;
     QFont  cachedTitleFont_;
     QFont  cachedBodyFont_;
+    QFont  cachedTertiaryFont_;
 };

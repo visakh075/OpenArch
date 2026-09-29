@@ -8,6 +8,9 @@
 #include <unordered_set>
 #include <optional>
 
+class QLabel;
+class QCheckBox;
+
 #include "JsonTreeEditor.h"
 #include "ArchitectureModel.h"
 
@@ -45,4 +48,11 @@ private:
 
     std::unordered_set<LayerId> stagedLayers_;
     std::unordered_set<LayerId> originalLayers_;
+
+    // Governance
+    QComboBox* statusCombo_{nullptr};
+    QLineEdit* reviewerEdit_{nullptr};
+    QLabel* checksumValLabel_{nullptr};
+    QLabel* integrityBadgeLabel_{nullptr};
+    QCheckBox* cascadeChildrenCheck_{nullptr};
 };

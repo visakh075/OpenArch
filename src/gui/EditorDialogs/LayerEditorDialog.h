@@ -3,8 +3,10 @@
 #include <QDialog>
 #include <QLineEdit>
 #include <QListWidget>
-#include <QTabWidget>
+#include <QComboBox>
 #include <unordered_set>
+
+class QLabel;
 
 #include "JsonTreeEditor.h"
 #include "ArchitectureModel.h"
@@ -40,4 +42,10 @@ private:
 
     std::unordered_set<NodeId> stagedNodes_;
     std::unordered_set<NodeId> originalNodes_;
+
+    // Governance
+    QComboBox* statusCombo_{nullptr};
+    QLineEdit* reviewerEdit_{nullptr};
+    QLabel* checksumValLabel_{nullptr};
+    QLabel* integrityBadgeLabel_{nullptr};
 };

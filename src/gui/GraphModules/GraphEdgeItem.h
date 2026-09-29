@@ -6,6 +6,8 @@
 #include <QPainterPath>
 #include <QPointer>
 #include <QGraphicsSceneContextMenuEvent>
+#include <QStringList>
+#include <vector>
 
 #include "core/ArchitectureModel.h"
 
@@ -51,6 +53,14 @@ public:
     ArchitectureModel* model() const { return model_; }
     GraphNodeItem* srcNode() const { return src_.data(); }
     GraphNodeItem* dstNode() const { return dst_.data(); }
+    GraphNodeItem* effectiveSrcNode() const;
+    GraphNodeItem* effectiveDstNode() const;
+
+    bool isConsolidated() const { return isConsolidated_; }
+    const std::vector<EdgeId>& consolidatedEdgeIds() const { return consolidatedEdgeIds_; }
+    void setConsolidatedEdges(const std::vector<GraphEdgeItem*>& edges);
+
+    static void updateSceneEdges(QGraphicsScene* scene);
 
 public slots:
     void onThemeChanged();
@@ -85,6 +95,12 @@ private:
     QPen highlightPen_;
 
     bool hovered_{false};
+
+    bool isConsolidated_{false};
+    std::vector<EdgeId> consolidatedEdgeIds_;
+    QStringList consolidatedTypes_;
+    Status consolidatedStatus_{Status::Approved};
+    bool consolidatedHasIssues_{false};
 };
 
 #endif

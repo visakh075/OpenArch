@@ -78,6 +78,7 @@ void ShortcutConfigDialog::setupUi()
     categoryCombo_->addItem("Export", "Export");
     categoryCombo_->addItem("File", "File");
     categoryCombo_->addItem("Theme", "Theme");
+    categoryCombo_->addItem("Governance", "Governance");
 
     filterLayout->addWidget(new QLabel("Filter:", this));
     filterLayout->addWidget(searchEdit_, 2);

@@ -7,6 +7,9 @@
 #include "JsonTreeEditor.h"
 #include "ArchitectureModel.h"
 
+class QComboBox;
+class QLabel;
+
 class EdgeEditorDialog : public QDialog
 {
     Q_OBJECT
@@ -26,4 +29,10 @@ private:
     QLineEdit* typeEdit_{nullptr};
     JsonTreeEditor* metadataEditor_{nullptr};
     JsonTreeEditor* attributesEditor_{nullptr};
+
+    // Governance
+    QComboBox* statusCombo_{nullptr};
+    QLineEdit* reviewerEdit_{nullptr};
+    QLabel* checksumValLabel_{nullptr};
+    QLabel* integrityBadgeLabel_{nullptr};
 };

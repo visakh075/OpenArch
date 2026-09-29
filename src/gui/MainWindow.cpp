@@ -305,6 +305,22 @@ void MainWindow::setupMenu()
 
     populateThemeMenu();
 
+    governanceMenu_ = menuBar()->addMenu("&Governance");
+    actionReview_ = governanceMenu_->addAction("&Review Selected...", this, &MainWindow::reviewSelected);
+    actionApprove_ = governanceMenu_->addAction("&Approve Selected...", this, &MainWindow::approveSelected);
+    actionMarkChanged_ = governanceMenu_->addAction("Mark Selected as &Changed", this, &MainWindow::markSelectedChanged);
+    actionMarkInvalid_ = governanceMenu_->addAction("Mark Selected as &Invalid", this, &MainWindow::markSelectedInvalid);
+    governanceMenu_->addSeparator();
+    actionVerifyIntegrity_ = governanceMenu_->addAction("&Verify Architecture Integrity...", this, &MainWindow::verifyModelIntegrity);
+    governanceMenu_->addSeparator();
+    actionShowBadges_ = governanceMenu_->addAction("Show Governance &Badges on Canvas", this, [this](bool checked) {
+        GraphNodeItem::setShowGovernanceBadges(checked);
+        if (scene_) scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+        if (graphView_) graphView_->viewport()->update();
+    });
+    actionShowBadges_->setCheckable(true);
+    actionShowBadges_->setChecked(GraphNodeItem::showGovernanceBadges());
+
     auto* settingsMenu = menuBar()->addMenu("&Settings");
     settingsMenu->addAction("Configure Shortcuts...", this, &MainWindow::openShortcutConfigDialog);
 }
@@ -437,6 +453,8 @@ void MainWindow::setupConnections()
 
     connect(navigator_, &QTreeView::doubleClicked, this, &MainWindow::onTreeItemDoubleClicked);
     connect(navigator_, &QTreeView::clicked, this, &MainWindow::onTreeItemClicked);
+    navigator_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(navigator_, &QTreeView::customContextMenuRequested, this, &MainWindow::onNavigatorContextMenu);
 
     connect(treeSearchEdit_, &QLineEdit::textChanged, this, [this](const QString& text) {
         if (navProxyModel_) {
@@ -538,6 +556,11 @@ void MainWindow::setupShortcuts()
     // Theme
     sm->registerAction("theme.save", "Save Theme", "Theme", QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_S), actionSaveTheme_, "Save current theme settings to file");
     sm->registerAction("theme.save_as", "Save Theme As", "Theme", QKeySequence(), actionSaveThemeAs_, "Save current theme settings to a new file");
+
+    // Governance
+    sm->registerAction("gov.review", "Review Selected", "Governance", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), actionReview_, "Mark selected architecture elements as formally reviewed");
+    sm->registerAction("gov.approve", "Approve Selected", "Governance", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A), actionApprove_, "Commit formal governance approval on selected elements");
+    sm->registerAction("gov.verify", "Verify Architecture Integrity", "Governance", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I), actionVerifyIntegrity_, "Run cryptographic checksum integrity audit across all architecture elements");
 
     // Load saved shortcuts from QSettings and apply
     sm->loadSettings();
@@ -1013,6 +1036,10 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
                     nodeItem->setPos(obj["x"].toDouble(), obj["y"].toDouble());
                     restored = true;
                 }
+                if (obj.contains("folded") && obj["folded"].toBool())
+                {
+                    nodeItem->setFolded(true);
+                }
             }
         }
 
@@ -1045,6 +1072,8 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
         }
     }
 
+    GraphEdgeItem::updateSceneEdges(scene_);
+
     scene_->blockSignals(false);
     graphView_->setUpdatesEnabled(true);
     isRendering_ = false;
@@ -1069,6 +1098,10 @@ void MainWindow::saveLayout()
         QJsonObject obj;
         obj["x"] = p.x();
         obj["y"] = p.y();
+        if (nodeItem->isFolded())
+        {
+            obj["folded"] = true;
+        }
 
         QJsonDocument doc(obj);
         model_->setNodeMetadata(id, doc.toJson(QJsonDocument::Compact).toStdString());
@@ -1237,6 +1270,8 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
         QMessageBox::critical(this, "Error", QString::fromStdString(r.message));
         return;
     }
+
+    populateNavigator();
 
     if (currentIndex.isValid() &&
         static_cast<ItemType>(currentIndex.data(NavRole::Type).toInt()) == ItemType::Layer)
@@ -2436,4 +2471,687 @@ void MainWindow::exportToInteractiveHtml(const QString& filePath)
 {
     if (graphView_)
         graphView_->exportToInteractiveHtml(filePath);
+}
+
+void MainWindow::reviewSelected()
+{
+    if (!model_) return;
+
+    bool hasCanvasSelection = scene_ && !scene_->selectedItems().isEmpty();
+    QModelIndex navIdx = navigator_ ? navigator_->currentIndex() : QModelIndex();
+
+    if (!hasCanvasSelection && !navIdx.isValid())
+    {
+        statusBar()->showMessage("Select one or more elements to review", 2500);
+        return;
+    }
+
+    QString defUser = QString::fromLocal8Bit(qgetenv("USER"));
+    if (defUser.isEmpty()) defUser = QString::fromLocal8Bit(qgetenv("USERNAME"));
+    if (defUser.isEmpty()) defUser = "architect";
+
+    bool ok = false;
+    QString reviewer = QInputDialog::getText(
+        this, "Review Selected", "Enter Reviewer ID / Name:",
+        QLineEdit::Normal, defUser, &ok);
+
+    if (!ok || reviewer.trimmed().isEmpty()) return;
+    std::string revStr = reviewer.trimmed().toStdString();
+
+    int count = 0;
+    if (hasCanvasSelection)
+    {
+        for (auto* item : scene_->selectedItems())
+        {
+            if (auto* nodeItem = dynamic_cast<GraphNodeItem*>(item))
+            {
+                auto s = model_->getContainerGovernanceSummary(nodeItem->nodeId());
+                if (s.totalChildren > 0)
+                {
+                    auto nOpt = model_->getNodeById(nodeItem->nodeId());
+                    QString name = nOpt ? QString::fromStdString(nOpt->name) : QString("Node #%1").arg(nodeItem->nodeId());
+                    auto reply = QMessageBox::question(
+                        this, "Cascade to Child Components?",
+                        QString("Container '%1' has %2 child node(s) and %3 internal edge(s).\n\n"
+                                "Do you want to cascade this review to all child components?")
+                            .arg(name).arg(s.totalChildren).arg(s.totalInternalEdges),
+                        QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+
+                    if (reply == QMessageBox::Yes)
+                    {
+                        model_->cascadeNodeGovernance(nodeItem->nodeId(), Status::Reviewed, revStr);
+                        count += (1 + s.totalChildren + s.totalInternalEdges);
+                        continue;
+                    }
+                }
+                model_->setNodeGovernance(nodeItem->nodeId(), Status::Reviewed, revStr);
+                count++;
+            }
+            else if (auto* edgeItem = dynamic_cast<GraphEdgeItem*>(item))
+            {
+                model_->setEdgeGovernance(edgeItem->edgeId(), Status::Reviewed, revStr);
+                count++;
+            }
+        }
+
+        for (auto* item : scene_->items())
+        {
+            if (auto* ni = dynamic_cast<GraphNodeItem*>(item))
+            {
+                ni->refreshGeometry();
+                ni->update();
+            }
+            else if (auto* ei = dynamic_cast<GraphEdgeItem*>(item))
+            {
+                ei->refreshLayout();
+                ei->update();
+            }
+        }
+    }
+    else if (navIdx.isValid())
+    {
+        QModelIndex srcIndex = navProxyModel_ ? navProxyModel_->mapToSource(navIdx) : navIdx;
+        auto* item = navModel_->itemFromIndex(srcIndex);
+        if (item)
+        {
+            auto type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
+            qulonglong id = item->data(NavRole::Id).toULongLong();
+            if (type == ItemType::Node)
+            {
+                auto s = model_->getContainerGovernanceSummary(id);
+                if (s.totalChildren > 0)
+                {
+                    auto nOpt = model_->getNodeById(id);
+                    QString name = nOpt ? QString::fromStdString(nOpt->name) : QString("Node #%1").arg(id);
+                    auto reply = QMessageBox::question(
+                        this, "Cascade to Child Components?",
+                        QString("Container '%1' has %2 child node(s) and %3 internal edge(s).\n\n"
+                                "Do you want to cascade this review to all child components?")
+                            .arg(name).arg(s.totalChildren).arg(s.totalInternalEdges),
+                        QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+
+                    if (reply == QMessageBox::Yes)
+                    {
+                        model_->cascadeNodeGovernance(id, Status::Reviewed, revStr);
+                        count += (1 + s.totalChildren + s.totalInternalEdges);
+                    }
+                    else
+                    {
+                        model_->setNodeGovernance(id, Status::Reviewed, revStr);
+                        count++;
+                    }
+                }
+                else
+                {
+                    model_->setNodeGovernance(id, Status::Reviewed, revStr);
+                    count++;
+                }
+            }
+            else if (type == ItemType::Layer)
+            {
+                model_->setLayerGovernance(id, Status::Reviewed, revStr);
+                count++;
+            }
+        }
+    }
+
+    populateNavigator();
+    if (scene_) scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+    if (graphView_) graphView_->viewport()->update();
+    statusBar()->showMessage(QString("Marked %1 item(s) as Reviewed by %2").arg(count).arg(reviewer), 3000);
+}
+
+void MainWindow::approveSelected()
+{
+    if (!model_) return;
+
+    bool hasCanvasSelection = scene_ && !scene_->selectedItems().isEmpty();
+    QModelIndex navIdx = navigator_ ? navigator_->currentIndex() : QModelIndex();
+
+    if (!hasCanvasSelection && !navIdx.isValid())
+    {
+        statusBar()->showMessage("Select one or more elements to approve", 2500);
+        return;
+    }
+
+    QString defUser = QString::fromLocal8Bit(qgetenv("USER"));
+    if (defUser.isEmpty()) defUser = QString::fromLocal8Bit(qgetenv("USERNAME"));
+    if (defUser.isEmpty()) defUser = "architect";
+
+    bool ok = false;
+    QString reviewer = QInputDialog::getText(
+        this, "Approve Selected", "Enter Reviewer ID / Name:",
+        QLineEdit::Normal, defUser, &ok);
+
+    if (!ok || reviewer.trimmed().isEmpty()) return;
+    std::string revStr = reviewer.trimmed().toStdString();
+
+    int count = 0;
+    if (hasCanvasSelection)
+    {
+        for (auto* item : scene_->selectedItems())
+        {
+            if (auto* nodeItem = dynamic_cast<GraphNodeItem*>(item))
+            {
+                auto s = model_->getContainerGovernanceSummary(nodeItem->nodeId());
+                if (s.totalChildren > 0)
+                {
+                    auto nOpt = model_->getNodeById(nodeItem->nodeId());
+                    QString name = nOpt ? QString::fromStdString(nOpt->name) : QString("Node #%1").arg(nodeItem->nodeId());
+                    auto reply = QMessageBox::question(
+                        this, "Cascade to Child Components?",
+                        QString("Container '%1' has %2 child node(s) and %3 internal edge(s).\n\n"
+                                "Do you want to cascade this approval to all child components?")
+                            .arg(name).arg(s.totalChildren).arg(s.totalInternalEdges),
+                        QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+
+                    if (reply == QMessageBox::Yes)
+                    {
+                        model_->cascadeNodeGovernance(nodeItem->nodeId(), Status::Approved, revStr);
+                        count += (1 + s.totalChildren + s.totalInternalEdges);
+                        continue;
+                    }
+                }
+                model_->setNodeGovernance(nodeItem->nodeId(), Status::Approved, revStr);
+                count++;
+            }
+            else if (auto* edgeItem = dynamic_cast<GraphEdgeItem*>(item))
+            {
+                model_->setEdgeGovernance(edgeItem->edgeId(), Status::Approved, revStr);
+                count++;
+            }
+        }
+
+        for (auto* item : scene_->items())
+        {
+            if (auto* ni = dynamic_cast<GraphNodeItem*>(item))
+            {
+                ni->refreshGeometry();
+                ni->update();
+            }
+            else if (auto* ei = dynamic_cast<GraphEdgeItem*>(item))
+            {
+                ei->refreshLayout();
+                ei->update();
+            }
+        }
+    }
+    else if (navIdx.isValid())
+    {
+        QModelIndex srcIndex = navProxyModel_ ? navProxyModel_->mapToSource(navIdx) : navIdx;
+        auto* item = navModel_->itemFromIndex(srcIndex);
+        if (item)
+        {
+            auto type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
+            qulonglong id = item->data(NavRole::Id).toULongLong();
+            if (type == ItemType::Node)
+            {
+                auto s = model_->getContainerGovernanceSummary(id);
+                if (s.totalChildren > 0)
+                {
+                    auto nOpt = model_->getNodeById(id);
+                    QString name = nOpt ? QString::fromStdString(nOpt->name) : QString("Node #%1").arg(id);
+                    auto reply = QMessageBox::question(
+                        this, "Cascade to Child Components?",
+                        QString("Container '%1' has %2 child node(s) and %3 internal edge(s).\n\n"
+                                "Do you want to cascade this approval to all child components?")
+                            .arg(name).arg(s.totalChildren).arg(s.totalInternalEdges),
+                        QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+
+                    if (reply == QMessageBox::Yes)
+                    {
+                        model_->cascadeNodeGovernance(id, Status::Approved, revStr);
+                        count += (1 + s.totalChildren + s.totalInternalEdges);
+                    }
+                    else
+                    {
+                        model_->setNodeGovernance(id, Status::Approved, revStr);
+                        count++;
+                    }
+                }
+                else
+                {
+                    model_->setNodeGovernance(id, Status::Approved, revStr);
+                    count++;
+                }
+            }
+            else if (type == ItemType::Layer)
+            {
+                model_->setLayerGovernance(id, Status::Approved, revStr);
+                count++;
+            }
+        }
+    }
+
+    populateNavigator();
+    if (scene_) scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+    if (graphView_) graphView_->viewport()->update();
+    statusBar()->showMessage(QString("Marked %1 item(s) as Approved by %2").arg(count).arg(reviewer), 3000);
+}
+
+void MainWindow::markSelectedChanged()
+{
+    if (!model_) return;
+
+    int count = 0;
+    if (scene_ && !scene_->selectedItems().isEmpty())
+    {
+        for (auto* item : scene_->selectedItems())
+        {
+            if (auto* nodeItem = dynamic_cast<GraphNodeItem*>(item))
+            {
+                model_->setNodeGovernance(nodeItem->nodeId(), Status::Changed, "");
+                nodeItem->refreshGeometry();
+                nodeItem->update();
+                count++;
+            }
+            else if (auto* edgeItem = dynamic_cast<GraphEdgeItem*>(item))
+            {
+                model_->setEdgeGovernance(edgeItem->edgeId(), Status::Changed, "");
+                edgeItem->refreshLayout();
+                count++;
+            }
+        }
+    }
+    else if (navigator_ && navigator_->currentIndex().isValid())
+    {
+        QModelIndex srcIndex = navProxyModel_ ? navProxyModel_->mapToSource(navigator_->currentIndex()) : navigator_->currentIndex();
+        auto* item = navModel_->itemFromIndex(srcIndex);
+        if (item)
+        {
+            auto type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
+            qulonglong id = item->data(NavRole::Id).toULongLong();
+            if (type == ItemType::Node)
+            {
+                model_->setNodeGovernance(id, Status::Changed, "");
+                count++;
+            }
+            else if (type == ItemType::Layer)
+            {
+                model_->setLayerGovernance(id, Status::Changed, "");
+                count++;
+            }
+        }
+    }
+
+    populateNavigator();
+    if (scene_)
+    {
+        for (auto* it : scene_->items())
+        {
+            if (auto* ni = dynamic_cast<GraphNodeItem*>(it))
+            {
+                ni->refreshGeometry();
+                ni->update();
+            }
+            else if (auto* ei = dynamic_cast<GraphEdgeItem*>(it))
+            {
+                ei->refreshLayout();
+                ei->update();
+            }
+        }
+        scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+    }
+    if (graphView_) graphView_->viewport()->update();
+    statusBar()->showMessage(QString("Reset %1 item(s) to Changed status").arg(count), 2500);
+}
+
+void MainWindow::markSelectedInvalid()
+{
+    if (!model_) return;
+
+    int count = 0;
+    if (scene_ && !scene_->selectedItems().isEmpty())
+    {
+        for (auto* item : scene_->selectedItems())
+        {
+            if (auto* nodeItem = dynamic_cast<GraphNodeItem*>(item))
+            {
+                model_->setNodeGovernance(nodeItem->nodeId(), Status::Invalid, "");
+                count++;
+            }
+            else if (auto* edgeItem = dynamic_cast<GraphEdgeItem*>(item))
+            {
+                model_->setEdgeGovernance(edgeItem->edgeId(), Status::Invalid, "");
+                count++;
+            }
+        }
+    }
+    else if (navigator_ && navigator_->currentIndex().isValid())
+    {
+        QModelIndex srcIndex = navProxyModel_ ? navProxyModel_->mapToSource(navigator_->currentIndex()) : navigator_->currentIndex();
+        auto* item = navModel_->itemFromIndex(srcIndex);
+        if (item)
+        {
+            auto type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
+            qulonglong id = item->data(NavRole::Id).toULongLong();
+            if (type == ItemType::Node)
+            {
+                model_->setNodeGovernance(id, Status::Invalid, "");
+                count++;
+            }
+            else if (type == ItemType::Layer)
+            {
+                model_->setLayerGovernance(id, Status::Invalid, "");
+                count++;
+            }
+        }
+    }
+
+    populateNavigator();
+    if (scene_)
+    {
+        for (auto* it : scene_->items())
+        {
+            if (auto* ni = dynamic_cast<GraphNodeItem*>(it))
+            {
+                ni->refreshGeometry();
+                ni->update();
+            }
+            else if (auto* ei = dynamic_cast<GraphEdgeItem*>(it))
+            {
+                ei->refreshLayout();
+                ei->update();
+            }
+        }
+        scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+    }
+    if (graphView_) graphView_->viewport()->update();
+    statusBar()->showMessage(QString("Marked %1 item(s) as Invalid").arg(count), 2500);
+}
+
+void MainWindow::verifyModelIntegrity()
+{
+    if (!model_) return;
+
+    auto report = model_->auditGovernance();
+
+    QString statusSummary = QString(
+        "<h3>Architecture Governance & Integrity Audit</h3>"
+        "<b>Model Inventory:</b><br>"
+        "&nbsp;&nbsp;• <b>Nodes:</b> %1<br>"
+        "&nbsp;&nbsp;• <b>Layers:</b> %2<br>"
+        "&nbsp;&nbsp;• <b>Edges:</b> %3<br><br>"
+        "<b>Lifecycle Status Distribution:</b><br>"
+        "&nbsp;&nbsp;• <span style='color:#a3be8c;font-weight:bold;'>Approved:</span> %4<br>"
+        "&nbsp;&nbsp;• <span style='color:#b48ead;font-weight:bold;'>Reviewed:</span> %5<br>"
+        "&nbsp;&nbsp;• <span style='color:#ebcb8b;font-weight:bold;'>Changed:</span> %6<br>"
+        "&nbsp;&nbsp;• <span style='color:#88c0d0;font-weight:bold;'>New:</span> %7<br>"
+        "&nbsp;&nbsp;• <span style='color:#bf616a;font-weight:bold;'>Invalid:</span> %8<br><br>")
+        .arg(report.totalNodes)
+        .arg(report.totalLayers)
+        .arg(report.totalEdges)
+        .arg(report.approvedCount)
+        .arg(report.reviewedCount)
+        .arg(report.changedCount)
+        .arg(report.newCount)
+        .arg(report.invalidCount);
+
+    size_t totalTampered = report.tamperedNodes + report.tamperedLayers + report.tamperedEdges;
+    if (totalTampered == 0)
+    {
+        statusSummary += "<b style='color:#a3be8c;'>✓ Tamper Verification Passed:</b> All cryptographic checksums match database records.";
+        QMessageBox::information(this, "Architecture Integrity Audit", statusSummary);
+    }
+    else
+    {
+        statusSummary += QString("<b style='color:#bf616a;'>⚠ Tamper Verification Warning:</b> Detected %1 integrity violation(s)!<br><br>").arg(totalTampered);
+        for (const auto& issue : report.issues)
+        {
+            statusSummary += QString("• %1<br>").arg(QString::fromStdString(issue).toHtmlEscaped());
+        }
+        QMessageBox::warning(this, "Architecture Integrity Warning", statusSummary);
+    }
+}
+
+void MainWindow::onNavigatorContextMenu(const QPoint& pos)
+{
+    QModelIndex index = navigator_->indexAt(pos);
+    if (!index.isValid() || !model_) return;
+
+    QModelIndex srcIndex = navProxyModel_ ? navProxyModel_->mapToSource(index) : index;
+    auto* item = navModel_->itemFromIndex(srcIndex);
+    if (!item) return;
+
+    auto type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
+    qulonglong id = item->data(NavRole::Id).toULongLong();
+
+    QMenu menu(this);
+    if (type == ItemType::Node)
+    {
+        QAction* editAct = menu.addAction("Edit Node...");
+        menu.addSeparator();
+        auto* govMenu = menu.addMenu("Governance");
+        QAction* reviewAct  = govMenu->addAction("Mark as Reviewed...");
+        QAction* approveAct = govMenu->addAction("Mark as Approved...");
+        QAction* changeAct  = govMenu->addAction("Mark as Changed");
+        QAction* invalidAct = govMenu->addAction("Mark as Invalid");
+
+        auto summary = model_->getContainerGovernanceSummary(id);
+        QAction* cascadeApproveAct = nullptr;
+        QAction* cascadeReviewAct  = nullptr;
+        if (summary.totalChildren > 0)
+        {
+            govMenu->addSeparator();
+            cascadeApproveAct = govMenu->addAction(QString("Cascade Approve (%1 Children, %2 Edges)...").arg(summary.totalChildren).arg(summary.totalInternalEdges));
+            cascadeReviewAct  = govMenu->addAction(QString("Cascade Review (%1 Children, %2 Edges)...").arg(summary.totalChildren).arg(summary.totalInternalEdges));
+        }
+
+        govMenu->addSeparator();
+        QAction* verifyAct  = govMenu->addAction("Verify Checksum Integrity");
+        menu.addSeparator();
+        QAction* delAct = menu.addAction("Delete Node");
+
+        QAction* chosen = menu.exec(navigator_->viewport()->mapToGlobal(pos));
+        if (chosen == editAct)
+        {
+            NodeEditorDialog dlg(model_, id, this);
+            if (dlg.exec() == QDialog::Accepted)
+            {
+                populateNavigator();
+                renderGraph(model_->extractGraph(std::nullopt));
+            }
+        }
+        else if (chosen == delAct)
+        {
+            deleteSelected();
+        }
+        else if (chosen == reviewAct || chosen == approveAct)
+        {
+            bool isApprove = (chosen == approveAct);
+            QString defUser = QString::fromLocal8Bit(qgetenv("USER"));
+            if (defUser.isEmpty()) defUser = "architect";
+
+            bool ok = false;
+            QString reviewer = QInputDialog::getText(
+                this, isApprove ? "Approve Node" : "Review Node",
+                "Enter Reviewer ID / Name:", QLineEdit::Normal, defUser, &ok);
+
+            if (ok && !reviewer.trimmed().isEmpty())
+            {
+                Status newStatus = isApprove ? Status::Approved : Status::Reviewed;
+                std::string revStr = reviewer.trimmed().toStdString();
+
+                bool didCascade = false;
+                if (summary.totalChildren > 0)
+                {
+                    auto nOpt = model_->getNodeById(id);
+                    QString name = nOpt ? QString::fromStdString(nOpt->name) : QString("Node #%1").arg(id);
+                    auto reply = QMessageBox::question(
+                        this,
+                        "Cascade to Child Components?",
+                        QString("Container '%1' has %2 child node(s) and %3 internal edge(s).\n\n"
+                                "Do you want to cascade this %4 to all child components?")
+                            .arg(name)
+                            .arg(summary.totalChildren)
+                            .arg(summary.totalInternalEdges)
+                            .arg(isApprove ? "approval" : "review"),
+                        QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel,
+                        QMessageBox::Yes);
+
+                    if (reply == QMessageBox::Cancel)
+                        return;
+
+                    if (reply == QMessageBox::Yes)
+                    {
+                        model_->cascadeNodeGovernance(id, newStatus, revStr);
+                        didCascade = true;
+                    }
+                }
+
+                if (!didCascade)
+                {
+                    model_->setNodeGovernance(id, newStatus, revStr);
+                }
+
+                populateNavigator();
+                if (scene_) scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+                if (graphView_) graphView_->viewport()->update();
+            }
+        }
+        else if (chosen == cascadeApproveAct || chosen == cascadeReviewAct)
+        {
+            bool isApprove = (chosen == cascadeApproveAct);
+            QString defUser = QString::fromLocal8Bit(qgetenv("USER"));
+            if (defUser.isEmpty()) defUser = "architect";
+
+            bool ok = false;
+            QString reviewer = QInputDialog::getText(
+                this, isApprove ? "Cascade Approve Container" : "Cascade Review Container",
+                "Enter Reviewer ID / Name:", QLineEdit::Normal, defUser, &ok);
+
+            if (ok && !reviewer.trimmed().isEmpty())
+            {
+                Status newStatus = isApprove ? Status::Approved : Status::Reviewed;
+                model_->cascadeNodeGovernance(id, newStatus, reviewer.trimmed().toStdString());
+                populateNavigator();
+                if (scene_) scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+                if (graphView_) graphView_->viewport()->update();
+            }
+        }
+        else if (chosen == changeAct)
+        {
+            model_->setNodeGovernance(id, Status::Changed, "");
+            populateNavigator();
+            if (scene_) scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+            if (graphView_) graphView_->viewport()->update();
+        }
+        else if (chosen == invalidAct)
+        {
+            model_->setNodeGovernance(id, Status::Invalid, "");
+            populateNavigator();
+            if (scene_) scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+            if (graphView_) graphView_->viewport()->update();
+        }
+        else if (chosen == verifyAct)
+        {
+            auto nodeOpt = model_->getNodeById(id);
+            if (nodeOpt)
+            {
+                uint32_t expected = model_->computeNodeChecksum(*nodeOpt);
+                bool match = (expected == nodeOpt->checksum);
+                QString msg = QString("<b>Node:</b> %1 (ID %2)<br><b>Status:</b> %3<br><b>Reviewer:</b> %4<br><br><b>Stored Checksum:</b> 0x%5<br><b>Calculated Checksum:</b> 0x%6<br><br><b>Integrity:</b> %7")
+                    .arg(QString::fromStdString(nodeOpt->name).toHtmlEscaped())
+                    .arg(id)
+                    .arg(QString::fromStdString(to_string(nodeOpt->status)).toUpper())
+                    .arg(nodeOpt->reviewer.empty() ? "<i>(None)</i>" : QString::fromStdString(nodeOpt->reviewer).toHtmlEscaped())
+                    .arg(QString::number(nodeOpt->checksum, 16).toUpper())
+                    .arg(QString::number(expected, 16).toUpper())
+                    .arg(match ? "<span style='color:#a3be8c;font-weight:bold;'>✓ Valid (Tamper-Free)</span>" : "<span style='color:#bf616a;font-weight:bold;'>⚠ CHECKSUM MISMATCH (TAMPER DETECTED)</span>");
+
+                if (summary.totalChildren > 0)
+                {
+                    msg += QString("<hr><b>Child Components Summary:</b><br>"
+                                   "• Child Nodes (%1): %2 approved, %3 changed, %4 new, %5 invalid<br>"
+                                   "• Internal Edges (%6): %7 approved, %8 changed, %9 new, %10 invalid<br>"
+                                   "<b>Rollup Status:</b> %11")
+                        .arg(summary.totalChildren).arg(summary.approvedChildren).arg(summary.changedChildren).arg(summary.newChildren).arg(summary.invalidChildren)
+                        .arg(summary.totalInternalEdges).arg(summary.approvedEdges).arg(summary.changedEdges).arg(summary.newEdges).arg(summary.invalidEdges)
+                        .arg(QString::fromStdString(to_string(summary.rollupStatus)).toUpper());
+                }
+
+                QMessageBox::information(this, "Governance Integrity Verification", msg);
+            }
+        }
+    }
+    else if (type == ItemType::Layer)
+    {
+        QAction* editAct = menu.addAction("Edit Layer...");
+        menu.addSeparator();
+        auto* govMenu = menu.addMenu("Governance");
+        QAction* reviewAct  = govMenu->addAction("Mark as Reviewed...");
+        QAction* approveAct = govMenu->addAction("Mark as Approved...");
+        QAction* changeAct  = govMenu->addAction("Mark as Changed");
+        QAction* invalidAct = govMenu->addAction("Mark as Invalid");
+        govMenu->addSeparator();
+        QAction* verifyAct  = govMenu->addAction("Verify Checksum Integrity");
+        menu.addSeparator();
+        QAction* delAct = menu.addAction("Delete Layer");
+
+        QAction* chosen = menu.exec(navigator_->viewport()->mapToGlobal(pos));
+        if (chosen == editAct)
+        {
+            LayerEditorDialog dlg(model_, id, this);
+            if (dlg.exec() == QDialog::Accepted)
+            {
+                populateNavigator();
+                renderGraph(model_->extractGraph(id));
+            }
+        }
+        else if (chosen == delAct)
+        {
+            auto reply = QMessageBox::question(this, "Delete Layer", "Are you sure you want to delete this layer?", QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            if (reply == QMessageBox::Yes)
+            {
+                model_->deleteLayer(id);
+                populateNavigator();
+                renderGraph(model_->extractGraph(std::nullopt));
+            }
+        }
+        else if (chosen == reviewAct || chosen == approveAct)
+        {
+            bool isApprove = (chosen == approveAct);
+            QString defUser = QString::fromLocal8Bit(qgetenv("USER"));
+            if (defUser.isEmpty()) defUser = "architect";
+
+            bool ok = false;
+            QString reviewer = QInputDialog::getText(
+                this, isApprove ? "Approve Layer" : "Review Layer",
+                "Enter Reviewer ID / Name:", QLineEdit::Normal, defUser, &ok);
+
+            if (ok && !reviewer.trimmed().isEmpty())
+            {
+                model_->setLayerGovernance(id, isApprove ? Status::Approved : Status::Reviewed, reviewer.trimmed().toStdString());
+                populateNavigator();
+            }
+        }
+        else if (chosen == changeAct)
+        {
+            model_->setLayerGovernance(id, Status::Changed, "");
+            populateNavigator();
+        }
+        else if (chosen == invalidAct)
+        {
+            model_->setLayerGovernance(id, Status::Invalid, "");
+            populateNavigator();
+        }
+        else if (chosen == verifyAct)
+        {
+            auto layerOpt = model_->getLayerById(id);
+            if (layerOpt)
+            {
+                uint32_t expected = model_->computeLayerChecksum(*layerOpt);
+                bool match = (expected == layerOpt->checksum);
+                QString msg = QString("<b>Layer:</b> %1 (ID %2)<br><b>Status:</b> %3<br><b>Reviewer:</b> %4<br><br><b>Stored Checksum:</b> 0x%5<br><b>Calculated Checksum:</b> 0x%6<br><br><b>Integrity:</b> %7")
+                    .arg(QString::fromStdString(layerOpt->name).toHtmlEscaped())
+                    .arg(id)
+                    .arg(QString::fromStdString(to_string(layerOpt->status)).toUpper())
+                    .arg(layerOpt->reviewer.empty() ? "<i>(None)</i>" : QString::fromStdString(layerOpt->reviewer).toHtmlEscaped())
+                    .arg(QString::number(layerOpt->checksum, 16).toUpper())
+                    .arg(QString::number(expected, 16).toUpper())
+                    .arg(match ? "<span style='color:#a3be8c;font-weight:bold;'>✓ Valid (Tamper-Free)</span>" : "<span style='color:#bf616a;font-weight:bold;'>⚠ CHECKSUM MISMATCH (TAMPER DETECTED)</span>");
+                QMessageBox::information(this, "Governance Integrity Verification", msg);
+            }
+        }
+    }
 }

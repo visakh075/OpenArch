@@ -96,6 +96,23 @@ protected:
             p.setFont(titleFont);
             p.setPen(state->title.color);
             p.drawText(headerRect.adjusted(8, 0, -8, 0), Qt::AlignVCenter | Qt::AlignLeft, "Container Title");
+
+            QRectF bodyArea(card.left(), headerRect.bottom(), card.width(), card.bottom() - headerHeight);
+            QFont bodyFont;
+            bodyFont.setPointSize(state->body.size > 0 ? state->body.size : 11);
+            bodyFont.setBold(state->body.bold);
+            bodyFont.setItalic(state->body.italic);
+            p.setFont(bodyFont);
+            p.setPen(state->body.color);
+            p.drawText(bodyArea.adjusted(0, 4, 0, -18), state->body.align, "Container Type");
+
+            QFont tertFont;
+            tertFont.setPointSize(state->tertiary.size > 0 ? state->tertiary.size : 9);
+            tertFont.setBold(state->tertiary.bold);
+            tertFont.setItalic(state->tertiary.italic);
+            p.setFont(tertFont);
+            p.setPen(state->tertiary.color);
+            p.drawText(bodyArea.adjusted(0, 22, 0, -2), state->tertiary.align, "(3 components hidden)");
         }
         else
         {
@@ -848,11 +865,8 @@ void ThemeEditorDock::buildComponentStateProperties(GraphComponentState& state, 
     }
 
     buildTextStyleSection("Title Text", state.title, layout, updatePreview);
-
-    if (!isContainer)
-    {
-        buildTextStyleSection("Body Text", state.body, layout, updatePreview);
-    }
+    buildTextStyleSection("Body Text", state.body, layout, updatePreview);
+    buildTextStyleSection("Tertiary Text", state.tertiary, layout, updatePreview);
 }
 
 void ThemeEditorDock::buildEdgeStateProperties(GraphEdgeState& state, QVBoxLayout* layout, int kindInt)

@@ -3,10 +3,13 @@
 #include "gui/GraphView.h"
 #include "gui/EditorDialogs/EdgeEditorDialog.h"
 #include "gui/theme/GraphThemeManager.h"
+#include "gui/MainWindow.h"
 
 #include <QPainter>
 #include <QString>
 #include <QMenu>
+#include <QMessageBox>
+#include <QInputDialog>
 #include <QGraphicsScene>
 #include <QGraphicsSceneHoverEvent>
 #include <QGraphicsSceneMouseEvent>
@@ -14,6 +17,7 @@
 #include <QtMath>
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 GraphEdgeItem::GraphEdgeItem(
     ArchitectureModel* model,
@@ -71,9 +75,135 @@ void GraphEdgeItem::onThemeChanged()
     update();
 }
 
+GraphNodeItem* GraphEdgeItem::effectiveSrcNode() const
+{
+    return src_ ? src_->effectiveVisibleNode() : nullptr;
+}
+
+GraphNodeItem* GraphEdgeItem::effectiveDstNode() const
+{
+    return dst_ ? dst_->effectiveVisibleNode() : nullptr;
+}
+
+void GraphEdgeItem::setConsolidatedEdges(const std::vector<GraphEdgeItem*>& edges)
+{
+    consolidatedEdgeIds_.clear();
+    consolidatedTypes_.clear();
+
+    if (edges.size() <= 1)
+    {
+        isConsolidated_ = false;
+        refreshLayout();
+        return;
+    }
+
+    isConsolidated_ = true;
+    bool hasInvalid = false;
+    bool hasChanged = false;
+    bool hasNew = false;
+    bool allApproved = true;
+    bool allReviewed = true;
+
+    for (auto* e : edges)
+    {
+        if (!e) continue;
+        consolidatedEdgeIds_.push_back(e->edgeId());
+
+        if (e->model())
+        {
+            auto edgeOpt = e->model()->getEdgeById(e->edgeId());
+            if (edgeOpt)
+            {
+                QString t = QString::fromStdString(edgeOpt->edgeType).trimmed();
+                if (!t.isEmpty() && !consolidatedTypes_.contains(t))
+                {
+                    consolidatedTypes_.append(t);
+                }
+
+                Status s = edgeOpt->status;
+                if (s == Status::Invalid) hasInvalid = true;
+                if (s == Status::Changed) hasChanged = true;
+                if (s == Status::New) hasNew = true;
+                if (s != Status::Approved) allApproved = false;
+                if (s != Status::Reviewed) allReviewed = false;
+            }
+        }
+    }
+
+    if (hasInvalid)
+        consolidatedStatus_ = Status::Invalid;
+    else if (hasChanged)
+        consolidatedStatus_ = Status::Changed;
+    else if (hasNew)
+        consolidatedStatus_ = Status::New;
+    else if (allApproved)
+        consolidatedStatus_ = Status::Approved;
+    else if (allReviewed)
+        consolidatedStatus_ = Status::Reviewed;
+    else
+        consolidatedStatus_ = Status::New;
+
+    consolidatedHasIssues_ = (hasInvalid || hasChanged);
+
+    refreshLayout();
+}
+
+void GraphEdgeItem::updateSceneEdges(QGraphicsScene* scene)
+{
+    if (!scene)
+        return;
+
+    std::vector<GraphEdgeItem*> allEdges;
+    for (QGraphicsItem* item : scene->items())
+    {
+        if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+        {
+            allEdges.push_back(edge);
+        }
+    }
+
+    std::map<std::pair<GraphNodeItem*, GraphNodeItem*>, std::vector<GraphEdgeItem*>> groups;
+
+    for (auto* edge : allEdges)
+    {
+        GraphNodeItem* s = edge->effectiveSrcNode();
+        GraphNodeItem* d = edge->effectiveDstNode();
+
+        if (!s || !d || s == d)
+        {
+            edge->setConsolidatedEdges({});
+            edge->setVisible(false);
+            continue;
+        }
+
+        groups[{s, d}].push_back(edge);
+    }
+
+    for (auto& pair : groups)
+    {
+        auto& edgeList = pair.second;
+        if (edgeList.empty())
+            continue;
+
+        GraphEdgeItem* primary = edgeList.front();
+        primary->setConsolidatedEdges(edgeList);
+        primary->setVisible(true);
+        primary->updateEndpoints();
+
+        for (size_t i = 1; i < edgeList.size(); ++i)
+        {
+            edgeList[i]->setConsolidatedEdges({});
+            edgeList[i]->setVisible(false);
+        }
+    }
+}
+
 QPointF GraphEdgeItem::portScenePosition(GraphNodeItem* node, Port port) const
 {
-    QRectF rect = node->mapToScene(node->boundingRect()).boundingRect();
+    if (!node)
+        return QPointF();
+
+    QRectF rect = node->mapToScene(node->nodeRect()).boundingRect();
     QPointF c = rect.center();
 
     switch (port)
@@ -88,8 +218,13 @@ QPointF GraphEdgeItem::portScenePosition(GraphNodeItem* node, Port port) const
 
 void GraphEdgeItem::autoSelectPorts(Port& srcPort, Port& dstPort) const
 {
-    QRectF srcRect = src_->mapToScene(src_->boundingRect()).boundingRect();
-    QRectF dstRect = dst_->mapToScene(dst_->boundingRect()).boundingRect();
+    GraphNodeItem* sNode = effectiveSrcNode();
+    GraphNodeItem* dNode = effectiveDstNode();
+    if (!sNode || !dNode)
+        return;
+
+    QRectF srcRect = sNode->mapToScene(sNode->nodeRect()).boundingRect();
+    QRectF dstRect = dNode->mapToScene(dNode->nodeRect()).boundingRect();
 
     QPointF srcCenter = srcRect.center();
     QPointF dstCenter = dstRect.center();
@@ -112,11 +247,13 @@ void GraphEdgeItem::autoSelectPorts(Port& srcPort, Port& dstPort) const
 QPainterPath GraphEdgeItem::buildPath() const
 {
     QPainterPath path;
-    if (!src_ || !dst_)
+    GraphNodeItem* sNode = effectiveSrcNode();
+    GraphNodeItem* dNode = effectiveDstNode();
+    if (!sNode || !dNode || sNode == dNode)
         return path;
 
-    QRectF srcRect = src_->mapToScene(src_->boundingRect()).boundingRect();
-    QRectF dstRect = dst_->mapToScene(dst_->boundingRect()).boundingRect();
+    QRectF srcRect = sNode->mapToScene(sNode->nodeRect()).boundingRect();
+    QRectF dstRect = dNode->mapToScene(dNode->nodeRect()).boundingRect();
 
     QPointF srcCenter = srcRect.center();
     QPointF dstCenter = dstRect.center();
@@ -234,7 +371,9 @@ QRectF GraphEdgeItem::boundingRect() const
 
 void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
 {
-    if (!src_ || !dst_)
+    GraphNodeItem* sNode = effectiveSrcNode();
+    GraphNodeItem* dNode = effectiveDstNode();
+    if (!sNode || !dNode || sNode == dNode)
         return;
 
     const auto& theme = GraphThemeManager::instance()->theme();
@@ -287,7 +426,8 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     }
 
     QPen edgePen(State->lineColor);
-    edgePen.setWidth(State->lineWidth);
+    qreal effectiveLineWidth = (isConsolidated_ && consolidatedEdgeIds_.size() > 1) ? (State->lineWidth + 1.5) : State->lineWidth;
+    edgePen.setWidthF(effectiveLineWidth);
     edgePen.setStyle(State->lineStyle);
     if (State->lineStyle == Qt::CustomDashLine && !State->dashPattern.isEmpty())
     {
@@ -312,12 +452,8 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     painter->drawPolygon(arrowHead);
 
     QString title = cachedTitle_;
-    QFont font;
-    font.setPointSize(label.fontSize);
-    font.setBold(label.bold);
-    painter->setFont(font);
+    bool hasTitle = !title.isEmpty();
 
-    QRect textRect = cachedTitleRect_;
     qreal t = 0.5;
     QPointF p1 = fullPath.pointAtPercent(t);
     QPointF p2 = fullPath.pointAtPercent(t + 0.01);
@@ -328,26 +464,96 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     if (degrees > 90 || degrees < -90)
         degrees += 180.0;
 
-    painter->save();
-    painter->translate(p1);
-    painter->rotate(degrees);
+    qreal verticalDistance = 0.0;
+    if (hasTitle)
+    {
+        QFont font;
+        font.setPointSize(label.fontSize);
+        font.setBold(label.bold);
+        painter->setFont(font);
 
-    qreal badgeHalfHeight = (textRect.height() / 2.0) + label.paddingY;
-    qreal verticalDistance = (State->lineWidth / 2.0) + label.offset + badgeHalfHeight;
+        QRect textRect = cachedTitleRect_;
+        qreal badgeHalfHeight = (textRect.height() / 2.0) + label.paddingY;
+        verticalDistance = (effectiveLineWidth / 2.0) + label.offset + badgeHalfHeight;
 
-    QRect bgRect = textRect.adjusted(-label.paddingX, -label.paddingY, label.paddingX, label.paddingY);
-    bgRect.moveCenter(QPoint(0, static_cast<int>(-verticalDistance)));
+        QRect bgRect = textRect.adjusted(-label.paddingX, -label.paddingY, label.paddingX, label.paddingY);
+        bgRect.moveCenter(QPoint(0, static_cast<int>(-verticalDistance)));
 
-    QPen bgPen(label.borderColor);
-    bgPen.setWidth(label.borderWidth);
+        painter->save();
+        painter->translate(p1);
+        painter->rotate(degrees);
 
-    painter->setPen(bgPen);
-    painter->setBrush(label.backgroundColor);
-    painter->drawRoundedRect(bgRect, label.radius, label.radius);
+        QPen bgPen(label.borderColor);
+        bgPen.setWidth(label.borderWidth);
 
-    painter->setPen(label.textColor);
-    painter->drawText(bgRect, Qt::AlignCenter, title);
-    painter->restore();
+        painter->setPen(bgPen);
+        painter->setBrush(label.backgroundColor);
+        painter->drawRoundedRect(bgRect, label.radius, label.radius);
+
+        painter->setPen(label.textColor);
+        painter->drawText(bgRect, Qt::AlignCenter, title);
+        painter->restore();
+    }
+
+    // Governance Status Badge (outside the edge line)
+    if (GraphNodeItem::showGovernanceBadges() && model_)
+    {
+        auto edgeOpt = model_->getEdgeById(e_id);
+        if (edgeOpt || isConsolidated_)
+        {
+            Status status = edgeOpt ? edgeOpt->status : Status::New;
+            QString statusText;
+            if (isConsolidated_ && consolidatedEdgeIds_.size() > 1)
+            {
+                status = consolidatedStatus_;
+                statusText = QString::fromStdString(to_string(status)).toUpper();
+                if (consolidatedHasIssues_)
+                    statusText += " ⚠";
+            }
+            else if (edgeOpt)
+            {
+                statusText = QString::fromStdString(to_string(status)).toUpper();
+            }
+
+            if (!statusText.isEmpty())
+            {
+                QFont badgeFont;
+                badgeFont.setPointSize(7);
+                badgeFont.setBold(true);
+                QFontMetrics bFm(badgeFont);
+
+                qreal badgeW = std::max(42.0, (qreal)bFm.horizontalAdvance(statusText) + 10.0);
+                qreal badgeH = 14.0;
+
+                qreal govDist = (effectiveLineWidth / 2.0) + label.offset + (badgeH / 2.0);
+                qreal govY = hasTitle ? govDist : -govDist;
+                QRectF govBadgeRect(-badgeW / 2.0, govY - (badgeH / 2.0), badgeW, badgeH);
+
+                QColor badgeColor = GraphNodeItem::governanceStatusColor(status);
+                QColor badgeBg    = GraphNodeItem::governanceStatusBgColor(status);
+
+                painter->save();
+                painter->translate(p1);
+                painter->rotate(degrees);
+
+                QPainterPath badgePath;
+                badgePath.addRoundedRect(govBadgeRect, 3.0, 3.0);
+
+                // Dark base background for crisp contrast against any canvas background
+                painter->fillPath(badgePath, QColor(36, 40, 52, 230));
+                painter->fillPath(badgePath, badgeBg);
+
+                QPen badgePen(badgeColor, 1.0);
+                painter->setPen(badgePen);
+                painter->drawPath(badgePath);
+
+                painter->setFont(badgeFont);
+                painter->setPen(badgeColor);
+                painter->drawText(govBadgeRect, Qt::AlignCenter, statusText);
+                painter->restore();
+            }
+        }
+    }
 }
 
 QPainterPath GraphEdgeItem::shape() const
@@ -367,10 +573,11 @@ QPainterPath GraphEdgeItem::shape() const
     result.addPath(stroker.createStroke(cachedPath_));
 
     QString title = cachedTitle_;
-    if (!title.isEmpty())
-    {
-        const auto& label = State->label;
+    bool hasTitle = !title.isEmpty();
+    const auto& label = State->label;
 
+    if (hasTitle)
+    {
         QFont font;
         font.setPointSize(label.fontSize);
         font.setBold(label.bold);
@@ -390,15 +597,49 @@ QPainterPath GraphEdgeItem::shape() const
         result.addPath(labelPath);
     }
 
+    if (GraphNodeItem::showGovernanceBadges() && model_)
+    {
+        auto edgeOpt = model_->getEdgeById(e_id);
+        if (edgeOpt)
+        {
+            QString statusText = QString::fromStdString(to_string(edgeOpt->status)).toUpper();
+            QFont badgeFont;
+            badgeFont.setPointSize(7);
+            badgeFont.setBold(true);
+            QFontMetrics bFm(badgeFont);
+
+            qreal badgeW = std::max(42.0, (qreal)bFm.horizontalAdvance(statusText) + 10.0);
+            qreal badgeH = 14.0;
+
+            QPointF p = cachedPath_.pointAtPercent(0.5);
+            qreal govDist = (State->lineWidth / 2.0) + label.offset + (badgeH / 2.0);
+            qreal govY = hasTitle ? govDist : -govDist;
+
+            QRectF govBadgeRect(-badgeW / 2.0, -badgeH / 2.0, badgeW, badgeH);
+            govBadgeRect.moveCenter(QPointF(p.x(), p.y() + govY));
+
+            QPainterPath badgePath;
+            badgePath.addRoundedRect(govBadgeRect, 3.0, 3.0);
+            result.addPath(badgePath);
+        }
+    }
+
     return result;
 }
 
 void GraphEdgeItem::updateEndpoints()
 {
-    if (!src_ || !dst_)
+    GraphNodeItem* sNode = effectiveSrcNode();
+    GraphNodeItem* dNode = effectiveDstNode();
+    if (!sNode || !dNode || sNode == dNode)
+    {
+        prepareGeometryChange();
+        cachedPath_ = QPainterPath();
+        cachedBounds_ = QRectF();
         return;
+    }
 
-    if (!src_->scene() || !dst_->scene())
+    if (!sNode->scene() || !dNode->scene())
         return;
 
     prepareGeometryChange();
@@ -438,6 +679,22 @@ void GraphEdgeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
     if (dlg.exec() == QDialog::Accepted)
     {
         refreshLayout();
+        if (scene())
+        {
+            for (auto* it : scene()->items())
+            {
+                if (auto* ni = dynamic_cast<GraphNodeItem*>(it))
+                {
+                    ni->refreshGeometry();
+                    ni->update();
+                }
+            }
+            if (!scene()->views().isEmpty())
+            {
+                if (auto* mainWin = dynamic_cast<MainWindow*>(scene()->views().first()->window()))
+                    mainWin->populateNavigator();
+            }
+        }
     }
 }
 
@@ -450,16 +707,46 @@ void GraphEdgeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
 {
     setSelected(true);
 
+    MainWindow* mainWin = nullptr;
+    if (scene() && !scene()->views().isEmpty())
+    {
+        mainWin = dynamic_cast<MainWindow*>(scene()->views().first()->window());
+    }
+
     QMenu menu;
     QAction* editAct = menu.addAction("Edit");
     QAction* delAct = menu.addAction("Delete");
+
+    menu.addSeparator();
+    auto* govMenu = menu.addMenu("Governance");
+    QAction* reviewAct  = govMenu->addAction("Mark as Reviewed...");
+    QAction* approveAct = govMenu->addAction("Mark as Approved...");
+    QAction* changeAct  = govMenu->addAction("Mark as Changed");
+    QAction* invalidAct = govMenu->addAction("Mark as Invalid");
+    govMenu->addSeparator();
+    QAction* verifyAct  = govMenu->addAction("Verify Checksum Integrity");
 
     QAction* selected = menu.exec(event->screenPos());
     if (selected == editAct)
     {
         EdgeEditorDialog dlg(model_, e_id);
         if (dlg.exec() == QDialog::Accepted)
+        {
             refreshLayout();
+            if (scene())
+            {
+                for (auto* it : scene()->items())
+                {
+                    if (auto* ni = dynamic_cast<GraphNodeItem*>(it))
+                    {
+                        ni->refreshGeometry();
+                        ni->update();
+                    }
+                }
+            }
+            if (mainWin)
+                mainWin->populateNavigator();
+        }
     }
     else if (selected == delAct)
     {
@@ -467,6 +754,190 @@ void GraphEdgeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         {
             if (auto* view = dynamic_cast<GraphView*>(scene()->views().first()))
                 emit view->deleteRequested();
+        }
+    }
+    else if (selected == reviewAct || selected == approveAct)
+    {
+        bool isApprove = (selected == approveAct);
+        QString defUser = QString::fromLocal8Bit(qgetenv("USER"));
+        if (defUser.isEmpty()) defUser = QString::fromLocal8Bit(qgetenv("USERNAME"));
+        if (defUser.isEmpty()) defUser = "architect";
+
+        bool ok = false;
+        QWidget* parentWidget = (!scene()->views().isEmpty()) ? scene()->views().first() : nullptr;
+        QString reviewer = QInputDialog::getText(
+            parentWidget,
+            isApprove ? "Approve Edge(s)" : "Review Edge(s)",
+            "Enter Reviewer ID / Name:",
+            QLineEdit::Normal,
+            defUser,
+            &ok);
+
+        if (ok && !reviewer.trimmed().isEmpty())
+        {
+            Status newStatus = isApprove ? Status::Approved : Status::Reviewed;
+            std::string revStr = reviewer.trimmed().toStdString();
+
+            for (auto* item : scene()->selectedItems())
+            {
+                if (auto* edgeItem = dynamic_cast<GraphEdgeItem*>(item))
+                {
+                    if (edgeItem->isConsolidated() && edgeItem->consolidatedEdgeIds().size() > 1)
+                    {
+                        for (EdgeId cid : edgeItem->consolidatedEdgeIds())
+                        {
+                            model_->setEdgeGovernance(cid, newStatus, revStr);
+                        }
+                    }
+                    else
+                    {
+                        model_->setEdgeGovernance(edgeItem->edgeId(), newStatus, revStr);
+                    }
+                    edgeItem->refreshLayout();
+                }
+            }
+
+            if (scene())
+            {
+                for (auto* it : scene()->items())
+                {
+                    if (auto* ni = dynamic_cast<GraphNodeItem*>(it))
+                    {
+                        ni->refreshGeometry();
+                        ni->update();
+                    }
+                }
+            }
+            if (mainWin)
+                mainWin->populateNavigator();
+        }
+    }
+    else if (selected == changeAct)
+    {
+        for (auto* item : scene()->selectedItems())
+        {
+            if (auto* edgeItem = dynamic_cast<GraphEdgeItem*>(item))
+            {
+                if (edgeItem->isConsolidated() && edgeItem->consolidatedEdgeIds().size() > 1)
+                {
+                    for (EdgeId cid : edgeItem->consolidatedEdgeIds())
+                    {
+                        model_->setEdgeGovernance(cid, Status::Changed, "");
+                    }
+                }
+                else
+                {
+                    model_->setEdgeGovernance(edgeItem->edgeId(), Status::Changed, "");
+                }
+                edgeItem->refreshLayout();
+            }
+        }
+        if (scene())
+        {
+            for (auto* it : scene()->items())
+            {
+                if (auto* ni = dynamic_cast<GraphNodeItem*>(it))
+                {
+                    ni->refreshGeometry();
+                    ni->update();
+                }
+            }
+        }
+        if (mainWin)
+            mainWin->populateNavigator();
+    }
+    else if (selected == invalidAct)
+    {
+        for (auto* item : scene()->selectedItems())
+        {
+            if (auto* edgeItem = dynamic_cast<GraphEdgeItem*>(item))
+            {
+                if (edgeItem->isConsolidated() && edgeItem->consolidatedEdgeIds().size() > 1)
+                {
+                    for (EdgeId cid : edgeItem->consolidatedEdgeIds())
+                    {
+                        model_->setEdgeGovernance(cid, Status::Invalid, "");
+                    }
+                }
+                else
+                {
+                    model_->setEdgeGovernance(edgeItem->edgeId(), Status::Invalid, "");
+                }
+                edgeItem->refreshLayout();
+            }
+        }
+        if (scene())
+        {
+            for (auto* it : scene()->items())
+            {
+                if (auto* ni = dynamic_cast<GraphNodeItem*>(it))
+                {
+                    ni->refreshGeometry();
+                    ni->update();
+                }
+            }
+        }
+        if (mainWin)
+            mainWin->populateNavigator();
+    }
+    else if (selected == verifyAct)
+    {
+        if (isConsolidated_ && consolidatedEdgeIds_.size() > 1)
+        {
+            QString msg = QString("<b>Consolidated Edge (%1 Bundled Edges)</b><br><br>").arg(consolidatedEdgeIds_.size());
+            for (EdgeId cid : consolidatedEdgeIds_)
+            {
+                auto edgeOpt = model_->getEdgeById(cid);
+                if (edgeOpt)
+                {
+                    uint32_t expected = model_->computeEdgeChecksum(*edgeOpt);
+                    bool match = (expected == edgeOpt->checksum);
+                    msg += QString("<b>Edge #%1</b> (%2) — %3<br>"
+                                   "Status: %4 | Reviewer: %5<br>"
+                                   "Stored: 0x%6 | Calculated: 0x%7<br><br>")
+                        .arg(cid)
+                        .arg(QString::fromStdString(edgeOpt->edgeType).toHtmlEscaped())
+                        .arg(match ? "<span style='color:#a3be8c;font-weight:bold;'>✓ Valid</span>"
+                                   : "<span style='color:#bf616a;font-weight:bold;'>⚠ MISMATCH</span>")
+                        .arg(QString::fromStdString(to_string(edgeOpt->status)).toUpper())
+                        .arg(edgeOpt->reviewer.empty() ? "<i>(None)</i>" : QString::fromStdString(edgeOpt->reviewer).toHtmlEscaped())
+                        .arg(QString::number(edgeOpt->checksum, 16).toUpper())
+                        .arg(QString::number(expected, 16).toUpper());
+                }
+            }
+
+            QWidget* parentWidget = (!scene()->views().isEmpty()) ? scene()->views().first() : nullptr;
+            QMessageBox::information(parentWidget, "Governance Integrity Verification", msg);
+        }
+        else
+        {
+            auto edgeOpt = model_->getEdgeById(e_id);
+            if (edgeOpt)
+            {
+                uint32_t expected = model_->computeEdgeChecksum(*edgeOpt);
+                bool match = (expected == edgeOpt->checksum);
+
+                QString msg = QString("<b>Edge:</b> ID %1 (%2)<br>"
+                                      "<b>Status:</b> %3<br>"
+                                      "<b>Reviewer:</b> %4<br><br>"
+                                      "<b>Stored Checksum:</b> 0x%5<br>"
+                                      "<b>Calculated Checksum:</b> 0x%6<br><br>"
+                                      "<b>Integrity:</b> %7")
+                    .arg(e_id)
+                    .arg(QString::fromStdString(edgeOpt->edgeType).toHtmlEscaped())
+                    .arg(QString::fromStdString(to_string(edgeOpt->status)).toUpper())
+                    .arg(edgeOpt->reviewer.empty() ? "<i>(None)</i>" : QString::fromStdString(edgeOpt->reviewer).toHtmlEscaped())
+                    .arg(QString::number(edgeOpt->checksum, 16).toUpper())
+                    .arg(QString::number(expected, 16).toUpper())
+                    .arg(match ? "<span style='color:#a3be8c;font-weight:bold;'>✓ Valid (Tamper-Free)</span>"
+                               : "<span style='color:#bf616a;font-weight:bold;'>⚠ CHECKSUM MISMATCH (TAMPER DETECTED)</span>");
+
+                QWidget* parentWidget = (!scene()->views().isEmpty()) ? scene()->views().first() : nullptr;
+                QMessageBox::information(
+                    parentWidget,
+                    "Governance Integrity Verification",
+                    msg);
+            }
         }
     }
 }
@@ -488,12 +959,49 @@ void GraphEdgeItem::refreshPath()
 
 void GraphEdgeItem::refreshLayout()
 {
-    auto edge = model_->getEdgeById(e_id);
-    if (!edge)
+    auto edge = model_ ? model_->getEdgeById(e_id) : std::nullopt;
+    if (!edge && !isConsolidated_)
         return;
 
     const auto& theme = GraphThemeManager::instance()->theme();
-    cachedTitle_ = QString::fromStdString(edge->edgeType);
+
+    if (isConsolidated_ && consolidatedEdgeIds_.size() > 1)
+    {
+        QString typesStr = consolidatedTypes_.isEmpty() ? "Edge" : consolidatedTypes_.join(", ");
+        cachedTitle_ = QString("%1 (%2)").arg(typesStr).arg(consolidatedEdgeIds_.size());
+
+        QString tip = QString("<b>Consolidated Edge (%1 edges)</b><br>").arg(consolidatedEdgeIds_.size());
+        for (EdgeId id : consolidatedEdgeIds_)
+        {
+            if (model_)
+            {
+                auto subEdge = model_->getEdgeById(id);
+                if (subEdge)
+                {
+                    tip += QString("<br>• <b>Edge #%1</b> (%2): %3")
+                        .arg(id)
+                        .arg(QString::fromStdString(subEdge->edgeType).toHtmlEscaped())
+                        .arg(QString::fromStdString(to_string(subEdge->status)).toUpper());
+                }
+            }
+        }
+        setToolTip(tip);
+    }
+    else if (edge)
+    {
+        cachedTitle_ = QString::fromStdString(edge->edgeType);
+        QString tip = QString("<b>Edge #%1</b> (%2)<br>"
+                              "Status: <b>%3</b><br>"
+                              "Reviewer: %4<br>"
+                              "Checksum: 0x%5")
+            .arg(e_id)
+            .arg(QString::fromStdString(edge->edgeType).toHtmlEscaped())
+            .arg(QString::fromStdString(to_string(edge->status)).toUpper())
+            .arg(edge->reviewer.empty() ? "<i>(None)</i>" : QString::fromStdString(edge->reviewer).toHtmlEscaped())
+            .arg(QString::number(edge->checksum, 16).toUpper());
+        setToolTip(tip);
+    }
+
     QFont font;
     font.setPointSize(theme.edge.normal.label.fontSize);
     font.setBold(theme.edge.normal.label.bold);
