@@ -3,6 +3,8 @@
 #include <QGraphicsView>
 #include <QPointF>
 #include <QContextMenuEvent>
+#include <QPushButton>
+#include <QButtonGroup>
 
 class GraphNodeItem;
 
@@ -32,8 +34,10 @@ public:
     void exportToSvg(ExportMode mode);
     void moveSelectionTo(const QPointF& target);
     void exportToInteractiveHtml(const QString& filePath = QString());
+    void updateOverlayShortcutHints();
 
 signals:
+    void modeChanged(GraphView::Mode mode);
     void requestAddNode(QPointF scenePos);
     void requestAddLayer();
     void requestConnectNodes(qulonglong srcId, qulonglong dstId);
@@ -47,11 +51,25 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
+    void scrollContentsBy(int dx, int dy) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
+    void setupModeOverlay();
+    void updateOverlayPosition();
+    void updateOverlayStyle();
+    void updateOverlayActiveState();
+
     bool isPanning_{false};
     bool spacePressed_{false};
     QPoint lastPanPoint_;
 
     Mode mode_{Mode::View};
+
+    QWidget* modeOverlay_{nullptr};
+    QPushButton* btnView_{nullptr};
+    QPushButton* btnEdit_{nullptr};
+    QButtonGroup* modeButtonGroup_{nullptr};
 };

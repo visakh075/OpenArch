@@ -27,6 +27,7 @@ private:
     EdgeId edgeId_{0};
 
     QLineEdit* typeEdit_{nullptr};
+    QComboBox* routingCombo_{nullptr};
     JsonTreeEditor* metadataEditor_{nullptr};
     JsonTreeEditor* attributesEditor_{nullptr};
 

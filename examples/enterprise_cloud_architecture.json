@@ -1,0 +1,778 @@
+{
+  "layers": [
+    {
+      "id": 1,
+      "name": "Ingress & Edge CDN",
+      "kind": "Network",
+      "attributes": "{}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "NetOps"
+    },
+    {
+      "id": 2,
+      "name": "Microservices Cluster",
+      "kind": "Application",
+      "attributes": "{}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DevOps"
+    },
+    {
+      "id": 3,
+      "name": "Event Mesh & Async Workers",
+      "kind": "Middleware",
+      "attributes": "{}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DataEng"
+    },
+    {
+      "id": 4,
+      "name": "Data & Persistence",
+      "kind": "Persistence",
+      "attributes": "{}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DBA"
+    }
+  ],
+  "nodes": [
+    {
+      "id": 1,
+      "name": "Single Page Web App",
+      "type": "WebClient",
+      "parent_id": null,
+      "attributes": "{\"client\": \"React 19 / Vite\", \"traffic\": \"45k req/s\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Frontend"
+    },
+    {
+      "id": 2,
+      "name": "Mobile Client (iOS/Android)",
+      "type": "MobileClient",
+      "parent_id": null,
+      "attributes": "{\"client\": \"Swift / Kotlin\", \"traffic\": \"25k req/s\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "MobileTeam"
+    },
+    {
+      "id": 3,
+      "name": "Public Ingress DMZ",
+      "type": "Container",
+      "parent_id": null,
+      "attributes": "{\"vpc\": \"vpc-dmz-01\", \"region\": \"us-east-1\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 4,
+      "name": "Cloudflare Edge CDN",
+      "type": "CDN / Edge",
+      "parent_id": 3,
+      "attributes": "{\"caching\": \"TLS Terminated + Anycast\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 5,
+      "name": "WAF & DDoS Shield",
+      "type": "Security Appliance",
+      "parent_id": 3,
+      "attributes": "{\"ruleset\": \"OWASP Top 10 + Bot Shield\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 6,
+      "name": "Traefik Ingress Gateway",
+      "type": "API Gateway",
+      "parent_id": 3,
+      "attributes": "{\"routing\": \"L7 Path Routing + Canary\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "NetOps"
+    },
+    {
+      "id": 7,
+      "name": "Kubernetes Microservices Mesh",
+      "type": "Container",
+      "parent_id": null,
+      "attributes": "{\"k8s_version\": \"1.30\", \"mesh\": \"Istio Ambient\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DevOps"
+    },
+    {
+      "id": 8,
+      "name": "Authentication (OIDC)",
+      "type": "Microservice",
+      "parent_id": 7,
+      "attributes": "{\"protocol\": \"OAuth 2.1 / OIDC\", \"tokens\": \"RS256 JWT\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Security"
+    },
+    {
+      "id": 9,
+      "name": "Product Catalog Service",
+      "type": "Microservice",
+      "parent_id": 7,
+      "attributes": "{\"cache_ttl\": \"300s\", \"replicas\": 6}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DevOps"
+    },
+    {
+      "id": 10,
+      "name": "Order Orchestration",
+      "type": "Microservice",
+      "parent_id": 7,
+      "attributes": "{\"pattern\": \"Saga Orchestrator\", \"tx\": \"ACID\"}",
+      "checksum": 100,
+      "status": "changed",
+      "reviewer": "DevOps"
+    },
+    {
+      "id": 11,
+      "name": "Payment Vault Service",
+      "type": "Microservice",
+      "parent_id": 7,
+      "attributes": "{\"compliance\": \"PCI-DSS Level 1\"}",
+      "checksum": 100,
+      "status": "reviewed",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 12,
+      "name": "Event Mesh & Worker Cluster",
+      "type": "Container",
+      "parent_id": null,
+      "attributes": "{\"streaming\": \"Distributed Event Mesh\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DataEng"
+    },
+    {
+      "id": 13,
+      "name": "Kafka Event Broker",
+      "type": "MessageBroker",
+      "parent_id": 12,
+      "attributes": "{\"partitions\": 32, \"retention\": \"7 days\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DataEng"
+    },
+    {
+      "id": 14,
+      "name": "Notification Dispatcher",
+      "type": "Worker",
+      "parent_id": 12,
+      "attributes": "{\"channels\": \"Email / Push / SMS\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DevOps"
+    },
+    {
+      "id": 15,
+      "name": "Inventory Sync Worker",
+      "type": "Worker",
+      "parent_id": 12,
+      "attributes": "{\"dedup\": \"Exact-Once Semantics\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DevOps"
+    },
+    {
+      "id": 16,
+      "name": "Persistence & Cache Tier",
+      "type": "Container",
+      "parent_id": null,
+      "attributes": "{\"storage\": \"NVMe EBS Multi-AZ\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DBA"
+    },
+    {
+      "id": 17,
+      "name": "PostgreSQL Primary (RW)",
+      "type": "Database",
+      "parent_id": 16,
+      "attributes": "{\"version\": \"PostgreSQL 16\", \"mode\": \"Read/Write Master\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DBA"
+    },
+    {
+      "id": 18,
+      "name": "PostgreSQL Standby (RO)",
+      "type": "Database",
+      "parent_id": 16,
+      "attributes": "{\"replication\": \"Sync Streaming Standby\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DBA"
+    },
+    {
+      "id": 19,
+      "name": "Redis Cluster (L2 Cache)",
+      "type": "DistributedCache",
+      "parent_id": 16,
+      "attributes": "{\"memory\": \"64GB In-Memory Cache\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DBA"
+    },
+    {
+      "id": 20,
+      "name": "Elasticsearch Search Engine",
+      "type": "SearchCluster",
+      "parent_id": 16,
+      "attributes": "{\"shards\": \"12 Shards / Distributed Vector\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DataEng"
+    },
+    {
+      "id": 21,
+      "name": "Stripe Payment Cloud",
+      "type": "ExternalCloud",
+      "parent_id": null,
+      "attributes": "{\"api\": \"Stripe REST v2024\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 22,
+      "name": "Datadog / OpenTelemetry",
+      "type": "Observability",
+      "parent_id": null,
+      "attributes": "{\"protocol\": \"OTLP / gRPC\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SRE"
+    }
+  ],
+  "node_layers": [
+    {
+      "node_id": 1,
+      "layer_id": 1
+    },
+    {
+      "node_id": 2,
+      "layer_id": 1
+    },
+    {
+      "node_id": 3,
+      "layer_id": 1
+    },
+    {
+      "node_id": 4,
+      "layer_id": 1
+    },
+    {
+      "node_id": 5,
+      "layer_id": 1
+    },
+    {
+      "node_id": 6,
+      "layer_id": 1
+    },
+    {
+      "node_id": 7,
+      "layer_id": 2
+    },
+    {
+      "node_id": 8,
+      "layer_id": 2
+    },
+    {
+      "node_id": 9,
+      "layer_id": 2
+    },
+    {
+      "node_id": 10,
+      "layer_id": 2
+    },
+    {
+      "node_id": 11,
+      "layer_id": 2
+    },
+    {
+      "node_id": 12,
+      "layer_id": 3
+    },
+    {
+      "node_id": 13,
+      "layer_id": 3
+    },
+    {
+      "node_id": 14,
+      "layer_id": 3
+    },
+    {
+      "node_id": 15,
+      "layer_id": 3
+    },
+    {
+      "node_id": 16,
+      "layer_id": 4
+    },
+    {
+      "node_id": 17,
+      "layer_id": 4
+    },
+    {
+      "node_id": 18,
+      "layer_id": 4
+    },
+    {
+      "node_id": 19,
+      "layer_id": 4
+    },
+    {
+      "node_id": 20,
+      "layer_id": 4
+    },
+    {
+      "node_id": 21,
+      "layer_id": 1
+    },
+    {
+      "node_id": 22,
+      "layer_id": 3
+    }
+  ],
+  "edges": [
+    {
+      "id": 1,
+      "src_node_id": 1,
+      "src_layer_id": 1,
+      "dst_node_id": 4,
+      "dst_layer_id": 1,
+      "edge_type": "HTTPS / TLS 1.3",
+      "attributes": "{\"ciphers\": \"TLS_AES_256_GCM_SHA384\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 2,
+      "src_node_id": 2,
+      "src_layer_id": 1,
+      "dst_node_id": 4,
+      "dst_layer_id": 1,
+      "edge_type": "HTTP/3 QUIC (UDP)",
+      "attributes": "{\"protocol\": \"QUIC / UDP 443\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 3,
+      "src_node_id": 4,
+      "src_layer_id": 1,
+      "dst_node_id": 5,
+      "dst_layer_id": 1,
+      "edge_type": "mTLS Proxy Stream",
+      "attributes": "{\"inspection\": \"Deep Packet Inspection\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 4,
+      "src_node_id": 5,
+      "src_layer_id": 1,
+      "dst_node_id": 6,
+      "dst_layer_id": 1,
+      "edge_type": "Internal HTTP/2",
+      "attributes": "{\"proxy\": \"Reverse Proxy\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "NetOps"
+    },
+    {
+      "id": 5,
+      "src_node_id": 6,
+      "src_layer_id": 1,
+      "dst_node_id": 8,
+      "dst_layer_id": 2,
+      "edge_type": "gRPC / Auth Verify",
+      "attributes": "{\"rpc\": \"VerifySessionToken\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Security"
+    },
+    {
+      "id": 6,
+      "src_node_id": 6,
+      "src_layer_id": 1,
+      "dst_node_id": 9,
+      "dst_layer_id": 2,
+      "edge_type": "REST / Catalog Query",
+      "attributes": "{\"method\": \"GET /api/v2/products\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DevOps"
+    },
+    {
+      "id": 7,
+      "src_node_id": 6,
+      "src_layer_id": 1,
+      "dst_node_id": 10,
+      "dst_layer_id": 2,
+      "edge_type": "REST / Checkout API",
+      "attributes": "{\"method\": \"POST /api/v2/orders\"}",
+      "checksum": 100,
+      "status": "changed",
+      "reviewer": "DevOps"
+    },
+    {
+      "id": 8,
+      "src_node_id": 10,
+      "src_layer_id": 2,
+      "dst_node_id": 11,
+      "dst_layer_id": 2,
+      "edge_type": "Direct mTLS Payment Auth",
+      "attributes": "{\"auth\": \"Zero-Trust SPIFFE/SPIRE\"}",
+      "checksum": 100,
+      "status": "reviewed",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 9,
+      "src_node_id": 11,
+      "src_layer_id": 2,
+      "dst_node_id": 21,
+      "dst_layer_id": 1,
+      "edge_type": "Stripe HTTPS Charge",
+      "attributes": "{\"endpoint\": \"https://api.stripe.com/v1/charges\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 10,
+      "src_node_id": 10,
+      "src_layer_id": 2,
+      "dst_node_id": 13,
+      "dst_layer_id": 3,
+      "edge_type": "Kafka Topic: OrderCreated",
+      "attributes": "{\"topic\": \"orders.v1.created\", \"acks\": \"all\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DataEng"
+    },
+    {
+      "id": 11,
+      "src_node_id": 13,
+      "src_layer_id": 3,
+      "dst_node_id": 14,
+      "dst_layer_id": 3,
+      "edge_type": "Consumer Group: EmailReceipt",
+      "attributes": "{\"group\": \"notifications-worker-cg\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DevOps"
+    },
+    {
+      "id": 12,
+      "src_node_id": 13,
+      "src_layer_id": 3,
+      "dst_node_id": 15,
+      "dst_layer_id": 3,
+      "edge_type": "Consumer Group: InventoryAlloc",
+      "attributes": "{\"group\": \"inventory-sync-cg\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DevOps"
+    },
+    {
+      "id": 13,
+      "src_node_id": 9,
+      "src_layer_id": 2,
+      "dst_node_id": 19,
+      "dst_layer_id": 4,
+      "edge_type": "RESP / Redis Cache Read",
+      "attributes": "{\"cmd\": \"MGET products:hot\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DBA"
+    },
+    {
+      "id": 14,
+      "src_node_id": 9,
+      "src_layer_id": 2,
+      "dst_node_id": 20,
+      "dst_layer_id": 4,
+      "edge_type": "Elasticsearch 45\u00b0 Query",
+      "attributes": "{\"query\": \"MatchQuery + KNN Vector Search\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DataEng"
+    },
+    {
+      "id": 15,
+      "src_node_id": 10,
+      "src_layer_id": 2,
+      "dst_node_id": 17,
+      "dst_layer_id": 4,
+      "edge_type": "PostgreSQL Write Pool (5432)",
+      "attributes": "{\"pool_size\": 40, \"isolation\": \"SERIALIZABLE\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DBA"
+    },
+    {
+      "id": 16,
+      "src_node_id": 10,
+      "src_layer_id": 2,
+      "dst_node_id": 17,
+      "dst_layer_id": 4,
+      "edge_type": "PostgreSQL Analytics Read Channel",
+      "attributes": "{\"pool_size\": 20, \"isolation\": \"READ COMMITTED\"}",
+      "checksum": 100,
+      "status": "reviewed",
+      "reviewer": "DBA"
+    },
+    {
+      "id": 17,
+      "src_node_id": 17,
+      "src_layer_id": 4,
+      "dst_node_id": 18,
+      "dst_layer_id": 4,
+      "edge_type": "WAL Sync Streaming Replication",
+      "attributes": "{\"lag_budget\": \"0ms\", \"wal_level\": \"replica\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "DBA"
+    },
+    {
+      "id": 18,
+      "src_node_id": 15,
+      "src_layer_id": 3,
+      "dst_node_id": 17,
+      "dst_layer_id": 4,
+      "edge_type": "Inventory SQL Batch Update",
+      "attributes": "{\"batch_size\": 500, \"hop\": \"Crossing Jump\"}",
+      "checksum": 100,
+      "status": "changed",
+      "reviewer": "DBA"
+    },
+    {
+      "id": 19,
+      "src_node_id": 7,
+      "src_layer_id": 2,
+      "dst_node_id": 22,
+      "dst_layer_id": 3,
+      "edge_type": "OTLP Distributed Tracing & Metrics",
+      "attributes": "{\"rate\": \"100% Errors / 10% Spans\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SRE"
+    }
+  ],
+  "layout": {
+    "nodes": {
+      "1": {
+        "x": -260.0,
+        "y": 80.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "2": {
+        "x": -260.0,
+        "y": 200.0,
+        "w": 190.0,
+        "h": 60.0
+      },
+      "3": {
+        "x": 40.0,
+        "y": 60.0,
+        "w": 680.0,
+        "h": 160.0
+      },
+      "4": {
+        "x": 30.0,
+        "y": 55.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "5": {
+        "x": 250.0,
+        "y": 55.0,
+        "w": 170.0,
+        "h": 60.0
+      },
+      "6": {
+        "x": 460.0,
+        "y": 55.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "7": {
+        "x": 40.0,
+        "y": 280.0,
+        "w": 700.0,
+        "h": 260.0
+      },
+      "8": {
+        "x": 30.0,
+        "y": 55.0,
+        "w": 170.0,
+        "h": 60.0
+      },
+      "9": {
+        "x": 240.0,
+        "y": 55.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "10": {
+        "x": 460.0,
+        "y": 55.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "11": {
+        "x": 460.0,
+        "y": 160.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "12": {
+        "x": 40.0,
+        "y": 590.0,
+        "w": 700.0,
+        "h": 170.0
+      },
+      "13": {
+        "x": 30.0,
+        "y": 60.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "14": {
+        "x": 250.0,
+        "y": 60.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "15": {
+        "x": 470.0,
+        "y": 60.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "16": {
+        "x": 860.0,
+        "y": 280.0,
+        "w": 520.0,
+        "h": 320.0
+      },
+      "17": {
+        "x": 30.0,
+        "y": 60.0,
+        "w": 190.0,
+        "h": 60.0
+      },
+      "18": {
+        "x": 30.0,
+        "y": 180.0,
+        "w": 190.0,
+        "h": 60.0
+      },
+      "19": {
+        "x": 270.0,
+        "y": 60.0,
+        "w": 190.0,
+        "h": 60.0
+      },
+      "20": {
+        "x": 270.0,
+        "y": 180.0,
+        "w": 190.0,
+        "h": 60.0
+      },
+      "21": {
+        "x": 920.0,
+        "y": 80.0,
+        "w": 190.0,
+        "h": 60.0
+      },
+      "22": {
+        "x": 920.0,
+        "y": 680.0,
+        "w": 200.0,
+        "h": 60.0
+      }
+    },
+    "layers": {},
+    "edges": {
+      "1": {
+        "routing": "bezier"
+      },
+      "2": {
+        "routing": "bezier"
+      },
+      "3": {
+        "routing": "straight"
+      },
+      "4": {
+        "routing": "straight"
+      },
+      "5": {
+        "routing": "smart"
+      },
+      "6": {
+        "routing": "smart"
+      },
+      "7": {
+        "routing": "smart"
+      },
+      "8": {
+        "routing": "circuit"
+      },
+      "9": {
+        "routing": "smart"
+      },
+      "10": {
+        "routing": "bus"
+      },
+      "11": {
+        "routing": "bus"
+      },
+      "12": {
+        "routing": "bus"
+      },
+      "13": {
+        "routing": "direct"
+      },
+      "14": {
+        "routing": "octilinear"
+      },
+      "15": {
+        "routing": "smart"
+      },
+      "16": {
+        "routing": "smart"
+      },
+      "17": {
+        "routing": "straight"
+      },
+      "18": {
+        "routing": "direct"
+      },
+      "19": {
+        "routing": "octilinear"
+      }
+    }
+  }
+}

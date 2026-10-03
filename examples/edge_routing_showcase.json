@@ -1,0 +1,696 @@
+{
+  "layers": [
+    {
+      "id": 1,
+      "name": "Routing Comparison Gallery",
+      "kind": "Showcase",
+      "attributes": "{}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Lead Architect"
+    }
+  ],
+  "nodes": [
+    {
+      "id": 1,
+      "name": "Client App",
+      "type": "Microservice",
+      "parent_id": null,
+      "attributes": "{\"protocol\": \"HTTP/2\", \"zone\": \"Zone 1 - Smart Orthogonal\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Alice"
+    },
+    {
+      "id": 2,
+      "name": "Firewall Proxy",
+      "type": "Obstacle Gateway",
+      "parent_id": null,
+      "attributes": "{\"role\": \"Obstacle Node To Avoid\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 3,
+      "name": "Secure Core API",
+      "type": "Microservice",
+      "parent_id": null,
+      "attributes": "{\"zone\": \"Zone 1 - Destination\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Alice"
+    },
+    {
+      "id": 4,
+      "name": "Order Service",
+      "type": "Microservice",
+      "parent_id": null,
+      "attributes": "{\"zone\": \"Zone 2 - Direct Orthogonal\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Bob"
+    },
+    {
+      "id": 5,
+      "name": "Billing Database",
+      "type": "Database",
+      "parent_id": null,
+      "attributes": "{\"engine\": \"PostgreSQL\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Bob"
+    },
+    {
+      "id": 6,
+      "name": "MCU Microcontroller",
+      "type": "Hardware",
+      "parent_id": null,
+      "attributes": "{\"zone\": \"Zone 3 - Circuit Board (PCB 90\\u00b0)\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "HardwareTeam"
+    },
+    {
+      "id": 7,
+      "name": "SPI Flash Memory",
+      "type": "Hardware",
+      "parent_id": null,
+      "attributes": "{\"bus\": \"Quad-SPI\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "HardwareTeam"
+    },
+    {
+      "id": 8,
+      "name": "Telemetry Ingest",
+      "type": "StreamProcessor",
+      "parent_id": null,
+      "attributes": "{\"zone\": \"Zone 4 - Smooth Bezier Spline\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Charlie"
+    },
+    {
+      "id": 9,
+      "name": "Realtime Dashboard",
+      "type": "UI Gateway",
+      "parent_id": null,
+      "attributes": "{\"framerate\": \"60fps\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Charlie"
+    },
+    {
+      "id": 10,
+      "name": "Ultra-Low Latency Trader",
+      "type": "TradingEngine",
+      "parent_id": null,
+      "attributes": "{\"zone\": \"Zone 5 - Straight Line Vector\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "FinTech"
+    },
+    {
+      "id": 11,
+      "name": "Stock Exchange Gateway",
+      "type": "ExchangeGateway",
+      "parent_id": null,
+      "attributes": "{\"latency\": \"850ns\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "FinTech"
+    },
+    {
+      "id": 12,
+      "name": "Subway Station Alpha",
+      "type": "TransitNode",
+      "parent_id": null,
+      "attributes": "{\"zone\": \"Zone 6 - Octilinear (45\\u00b0 Transit)\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "TransitOps"
+    },
+    {
+      "id": 13,
+      "name": "Central Metro Hub",
+      "type": "TransitNode",
+      "parent_id": null,
+      "attributes": "{\"line\": \"Blue Line Interchange\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "TransitOps"
+    },
+    {
+      "id": 14,
+      "name": "Telemetry Node Alpha",
+      "type": "Sensor",
+      "parent_id": null,
+      "attributes": "{\"zone\": \"Zone 7 - Bus Highway Trunk\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "IoT Team"
+    },
+    {
+      "id": 15,
+      "name": "Telemetry Node Beta",
+      "type": "Sensor",
+      "parent_id": null,
+      "attributes": "{\"zone\": \"Zone 7 - Bus Highway Trunk\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "IoT Team"
+    },
+    {
+      "id": 16,
+      "name": "Data Collector Primary",
+      "type": "Collector",
+      "parent_id": null,
+      "attributes": "{\"spine\": \"Highway Trunk\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "IoT Team"
+    },
+    {
+      "id": 17,
+      "name": "Data Collector Secondary",
+      "type": "Collector",
+      "parent_id": null,
+      "attributes": "{\"spine\": \"Highway Trunk\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "IoT Team"
+    },
+    {
+      "id": 18,
+      "name": "Crossing Node West",
+      "type": "Service",
+      "parent_id": null,
+      "attributes": "{\"zone\": \"Zone 8 - Crossing Bridge Hops\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "QA"
+    },
+    {
+      "id": 19,
+      "name": "Crossing Node East",
+      "type": "Service",
+      "parent_id": null,
+      "attributes": "{\"line\": \"Horizontal Vector\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "QA"
+    },
+    {
+      "id": 20,
+      "name": "Crossing Node North",
+      "type": "Service",
+      "parent_id": null,
+      "attributes": "{\"line\": \"Vertical Vector\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "QA"
+    },
+    {
+      "id": 21,
+      "name": "Crossing Node South",
+      "type": "Service",
+      "parent_id": null,
+      "attributes": "{\"line\": \"Vertical Vector\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "QA"
+    },
+    {
+      "id": 22,
+      "name": "Payment Gateway",
+      "type": "Gateway",
+      "parent_id": null,
+      "attributes": "{\"zone\": \"Zone 9 - Parallel Separation\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 23,
+      "name": "Banking Settlement",
+      "type": "BankNetwork",
+      "parent_id": null,
+      "attributes": "{\"encryption\": \"TLS 1.3 + HSM\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    }
+  ],
+  "node_layers": [
+    {
+      "node_id": 1,
+      "layer_id": 1
+    },
+    {
+      "node_id": 2,
+      "layer_id": 1
+    },
+    {
+      "node_id": 3,
+      "layer_id": 1
+    },
+    {
+      "node_id": 4,
+      "layer_id": 1
+    },
+    {
+      "node_id": 5,
+      "layer_id": 1
+    },
+    {
+      "node_id": 6,
+      "layer_id": 1
+    },
+    {
+      "node_id": 7,
+      "layer_id": 1
+    },
+    {
+      "node_id": 8,
+      "layer_id": 1
+    },
+    {
+      "node_id": 9,
+      "layer_id": 1
+    },
+    {
+      "node_id": 10,
+      "layer_id": 1
+    },
+    {
+      "node_id": 11,
+      "layer_id": 1
+    },
+    {
+      "node_id": 12,
+      "layer_id": 1
+    },
+    {
+      "node_id": 13,
+      "layer_id": 1
+    },
+    {
+      "node_id": 14,
+      "layer_id": 1
+    },
+    {
+      "node_id": 15,
+      "layer_id": 1
+    },
+    {
+      "node_id": 16,
+      "layer_id": 1
+    },
+    {
+      "node_id": 17,
+      "layer_id": 1
+    },
+    {
+      "node_id": 18,
+      "layer_id": 1
+    },
+    {
+      "node_id": 19,
+      "layer_id": 1
+    },
+    {
+      "node_id": 20,
+      "layer_id": 1
+    },
+    {
+      "node_id": 21,
+      "layer_id": 1
+    },
+    {
+      "node_id": 22,
+      "layer_id": 1
+    },
+    {
+      "node_id": 23,
+      "layer_id": 1
+    }
+  ],
+  "edges": [
+    {
+      "id": 1,
+      "src_node_id": 1,
+      "src_layer_id": 1,
+      "dst_node_id": 3,
+      "dst_layer_id": 1,
+      "edge_type": "Smart A* Avoidance",
+      "attributes": "{\"pathfinding\": \"A* Grid Obstacle Avoidance\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Alice"
+    },
+    {
+      "id": 2,
+      "src_node_id": 4,
+      "src_layer_id": 1,
+      "dst_node_id": 5,
+      "dst_layer_id": 1,
+      "edge_type": "Direct Manhattan (L/Z)",
+      "attributes": "{\"style\": \"Classic Stepped Orthogonal\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Bob"
+    },
+    {
+      "id": 3,
+      "src_node_id": 6,
+      "src_layer_id": 1,
+      "dst_node_id": 7,
+      "dst_layer_id": 1,
+      "edge_type": "Circuit Board (90\u00b0 PCB)",
+      "attributes": "{\"trace\": \"Sharp Rectilinear 90\\u00b0\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "HardwareTeam"
+    },
+    {
+      "id": 4,
+      "src_node_id": 8,
+      "src_layer_id": 1,
+      "dst_node_id": 9,
+      "dst_layer_id": 1,
+      "edge_type": "Smooth Bezier Spline",
+      "attributes": "{\"curve\": \"Cubic Bezier Spline\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Charlie"
+    },
+    {
+      "id": 5,
+      "src_node_id": 10,
+      "src_layer_id": 1,
+      "dst_node_id": 11,
+      "dst_layer_id": 1,
+      "edge_type": "Straight Vector Line",
+      "attributes": "{\"type\": \"Direct Point-to-Point Vector\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "FinTech"
+    },
+    {
+      "id": 6,
+      "src_node_id": 12,
+      "src_layer_id": 1,
+      "dst_node_id": 13,
+      "dst_layer_id": 1,
+      "edge_type": "Octilinear (45\u00b0 Transit)",
+      "attributes": "{\"angle\": \"45-degree Chamfered Transit\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "TransitOps"
+    },
+    {
+      "id": 7,
+      "src_node_id": 14,
+      "src_layer_id": 1,
+      "dst_node_id": 16,
+      "dst_layer_id": 1,
+      "edge_type": "Bus Highway Trunk A",
+      "attributes": "{\"bus_role\": \"Shared Highway Backbone\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "IoT Team"
+    },
+    {
+      "id": 8,
+      "src_node_id": 15,
+      "src_layer_id": 1,
+      "dst_node_id": 17,
+      "dst_layer_id": 1,
+      "edge_type": "Bus Highway Trunk B",
+      "attributes": "{\"bus_role\": \"Shared Highway Backbone\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "IoT Team"
+    },
+    {
+      "id": 9,
+      "src_node_id": 14,
+      "src_layer_id": 1,
+      "dst_node_id": 17,
+      "dst_layer_id": 1,
+      "edge_type": "Bus Cross Trunk",
+      "attributes": "{\"bus_role\": \"Highway Diagonal Cross\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "IoT Team"
+    },
+    {
+      "id": 10,
+      "src_node_id": 18,
+      "src_layer_id": 1,
+      "dst_node_id": 19,
+      "dst_layer_id": 1,
+      "edge_type": "Horizontal Bus",
+      "attributes": "{\"orientation\": \"Horizontal Line\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "QA"
+    },
+    {
+      "id": 11,
+      "src_node_id": 20,
+      "src_layer_id": 1,
+      "dst_node_id": 21,
+      "dst_layer_id": 1,
+      "edge_type": "Vertical Bridge Jump",
+      "attributes": "{\"hop\": \"Bridge Hop on Crossing\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "QA"
+    },
+    {
+      "id": 12,
+      "src_node_id": 22,
+      "src_layer_id": 1,
+      "dst_node_id": 23,
+      "dst_layer_id": 1,
+      "edge_type": "Primary Realtime Settlement",
+      "attributes": "{\"channel\": \"Primary Feed 10Gbps\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 13,
+      "src_node_id": 22,
+      "src_layer_id": 1,
+      "dst_node_id": 23,
+      "dst_layer_id": 1,
+      "edge_type": "Heartbeat & Keepalive",
+      "attributes": "{\"channel\": \"Secondary Heartbeat 1s\"}",
+      "checksum": 100,
+      "status": "reviewed",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 14,
+      "src_node_id": 22,
+      "src_layer_id": 1,
+      "dst_node_id": 23,
+      "dst_layer_id": 1,
+      "edge_type": "Audit & Compliance Batch",
+      "attributes": "{\"channel\": \"Batch Reconciliation\"}",
+      "checksum": 100,
+      "status": "changed",
+      "reviewer": "Compliance"
+    }
+  ],
+  "layout": {
+    "nodes": {
+      "1": {
+        "x": 60.0,
+        "y": 80.0,
+        "w": 160.0,
+        "h": 60.0
+      },
+      "2": {
+        "x": 280.0,
+        "y": 65.0,
+        "w": 160.0,
+        "h": 90.0
+      },
+      "3": {
+        "x": 500.0,
+        "y": 80.0,
+        "w": 160.0,
+        "h": 60.0
+      },
+      "4": {
+        "x": 60.0,
+        "y": 280.0,
+        "w": 160.0,
+        "h": 60.0
+      },
+      "5": {
+        "x": 380.0,
+        "y": 380.0,
+        "w": 160.0,
+        "h": 60.0
+      },
+      "6": {
+        "x": 60.0,
+        "y": 520.0,
+        "w": 170.0,
+        "h": 60.0
+      },
+      "7": {
+        "x": 380.0,
+        "y": 620.0,
+        "w": 160.0,
+        "h": 60.0
+      },
+      "8": {
+        "x": 750.0,
+        "y": 80.0,
+        "w": 170.0,
+        "h": 60.0
+      },
+      "9": {
+        "x": 1100.0,
+        "y": 200.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "10": {
+        "x": 750.0,
+        "y": 340.0,
+        "w": 190.0,
+        "h": 60.0
+      },
+      "11": {
+        "x": 1100.0,
+        "y": 340.0,
+        "w": 190.0,
+        "h": 60.0
+      },
+      "12": {
+        "x": 750.0,
+        "y": 500.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "13": {
+        "x": 1100.0,
+        "y": 680.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "14": {
+        "x": 1380.0,
+        "y": 80.0,
+        "w": 170.0,
+        "h": 60.0
+      },
+      "15": {
+        "x": 1380.0,
+        "y": 180.0,
+        "w": 170.0,
+        "h": 60.0
+      },
+      "16": {
+        "x": 1750.0,
+        "y": 80.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "17": {
+        "x": 1750.0,
+        "y": 180.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "18": {
+        "x": 1380.0,
+        "y": 380.0,
+        "w": 160.0,
+        "h": 50.0
+      },
+      "19": {
+        "x": 1760.0,
+        "y": 380.0,
+        "w": 160.0,
+        "h": 50.0
+      },
+      "20": {
+        "x": 1570.0,
+        "y": 280.0,
+        "w": 160.0,
+        "h": 50.0
+      },
+      "21": {
+        "x": 1570.0,
+        "y": 480.0,
+        "w": 160.0,
+        "h": 50.0
+      },
+      "22": {
+        "x": 1380.0,
+        "y": 620.0,
+        "w": 170.0,
+        "h": 60.0
+      },
+      "23": {
+        "x": 1760.0,
+        "y": 620.0,
+        "w": 170.0,
+        "h": 60.0
+      }
+    },
+    "layers": {},
+    "edges": {
+      "1": {
+        "routing": "smart"
+      },
+      "2": {
+        "routing": "direct"
+      },
+      "3": {
+        "routing": "circuit"
+      },
+      "4": {
+        "routing": "bezier"
+      },
+      "5": {
+        "routing": "straight"
+      },
+      "6": {
+        "routing": "octilinear"
+      },
+      "7": {
+        "routing": "bus"
+      },
+      "8": {
+        "routing": "bus"
+      },
+      "9": {
+        "routing": "bus"
+      },
+      "10": {
+        "routing": "direct"
+      },
+      "11": {
+        "routing": "direct"
+      },
+      "12": {
+        "routing": "direct"
+      },
+      "13": {
+        "routing": "direct"
+      },
+      "14": {
+        "routing": "direct"
+      }
+    }
+  }
+}

@@ -18,6 +18,13 @@
 #include <QGraphicsScene>
 #include <QMenu>
 #include <QAction>
+#include <QSettings>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QButtonGroup>
+#include <QResizeEvent>
+#include <QShowEvent>
+#include "ShortcutManager.h"
 #include "core/Types.h"
 #include <cmath>
 
@@ -48,12 +55,245 @@ GraphView::GraphView(QWidget* parent)
 {
     setCacheMode(QGraphicsView::CacheNone);
     setTransformationAnchor(QGraphicsView::AnchorViewCenter);
-    setDragMode(QGraphicsView::RubberBandDrag);
+    setDragMode(QGraphicsView::ScrollHandDrag);
     setFocusPolicy(Qt::StrongFocus);
+
+    setupModeOverlay();
+}
+
+void GraphView::setupModeOverlay()
+{
+    modeOverlay_ = new QWidget(viewport());
+    modeOverlay_->setObjectName("modeOverlay");
+    modeOverlay_->setFocusPolicy(Qt::NoFocus);
+
+    auto* layout = new QHBoxLayout(modeOverlay_);
+    layout->setContentsMargins(4, 4, 4, 4);
+    layout->setSpacing(2);
+
+    btnView_ = new QPushButton("View", modeOverlay_);
+    btnView_->setObjectName("modeBtnView");
+    btnView_->setCheckable(true);
+    btnView_->setFocusPolicy(Qt::NoFocus);
+    btnView_->setCursor(Qt::PointingHandCursor);
+
+    btnEdit_ = new QPushButton("Edit", modeOverlay_);
+    btnEdit_->setObjectName("modeBtnEdit");
+    btnEdit_->setCheckable(true);
+    btnEdit_->setFocusPolicy(Qt::NoFocus);
+    btnEdit_->setCursor(Qt::PointingHandCursor);
+
+    modeButtonGroup_ = new QButtonGroup(modeOverlay_);
+    modeButtonGroup_->setExclusive(true);
+    modeButtonGroup_->addButton(btnView_, 0);
+    modeButtonGroup_->addButton(btnEdit_, 1);
+
+    btnView_->setChecked(true);
+
+    layout->addWidget(btnView_);
+    layout->addWidget(btnEdit_);
+
+    connect(btnView_, &QPushButton::clicked, this, [this]() {
+        setMode(Mode::View);
+    });
+    connect(btnEdit_, &QPushButton::clicked, this, [this]() {
+        setMode(Mode::Edit);
+    });
+
+    if (viewport())
+    {
+        viewport()->installEventFilter(this);
+    }
+
+    if (verticalScrollBar())
+    {
+        connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this](int, int) {
+            updateOverlayPosition();
+        });
+    }
+    if (horizontalScrollBar())
+    {
+        connect(horizontalScrollBar(), &QScrollBar::rangeChanged, this, [this](int, int) {
+            updateOverlayPosition();
+        });
+    }
+
+    if (auto* tm = GraphThemeManager::instance())
+    {
+        connect(tm, &GraphThemeManager::themeChanged, this, &GraphView::updateOverlayStyle);
+    }
+
+    updateOverlayStyle();
+    updateOverlayShortcutHints();
+    modeOverlay_->adjustSize();
+    updateOverlayPosition();
+}
+
+void GraphView::updateOverlayPosition()
+{
+    if (!modeOverlay_ || !viewport()) return;
+
+    modeOverlay_->adjustSize();
+    const int margin = 16;
+    int x = viewport()->width() - modeOverlay_->width() - margin;
+    int y = viewport()->height() - modeOverlay_->height() - margin;
+
+    if (x < margin) x = margin;
+    if (y < margin) y = margin;
+
+    modeOverlay_->move(x, y);
+    modeOverlay_->raise();
+}
+
+void GraphView::updateOverlayActiveState()
+{
+    if (!btnView_ || !btnEdit_) return;
+
+    if (modeButtonGroup_)
+    {
+        if (mode_ == Mode::View)
+        {
+            btnView_->setChecked(true);
+        }
+        else if (mode_ == Mode::Edit)
+        {
+            btnEdit_->setChecked(true);
+        }
+        else
+        {
+            modeButtonGroup_->setExclusive(false);
+            btnView_->setChecked(false);
+            btnEdit_->setChecked(false);
+            modeButtonGroup_->setExclusive(true);
+        }
+    }
+}
+
+void GraphView::updateOverlayStyle()
+{
+    if (!modeOverlay_) return;
+
+    const auto& theme = GraphThemeManager::instance()->theme();
+    bool isLight = (theme.view.background.lightness() > 140);
+
+    QString sheet;
+    if (isLight)
+    {
+        sheet =
+            "#modeOverlay {"
+            "  background-color: rgba(255, 255, 255, 0.95);"
+            "  border: 1px solid rgba(0, 0, 0, 0.16);"
+            "  border-radius: 14px;"
+            "}"
+            "#modeOverlay QPushButton {"
+            "  background-color: transparent;"
+            "  color: #475569;"
+            "  border: none;"
+            "  border-radius: 11px;"
+            "  padding: 4px 14px;"
+            "  font-size: 11px;"
+            "  font-weight: 600;"
+            "}"
+            "#modeOverlay QPushButton:hover {"
+            "  background-color: rgba(0, 0, 0, 0.06);"
+            "  color: #0f172a;"
+            "}"
+            "#modeOverlay QPushButton:checked {"
+            "  background-color: #2563eb;"
+            "  color: #ffffff;"
+            "  font-weight: bold;"
+            "}";
+    }
+    else
+    {
+        sheet =
+            "#modeOverlay {"
+            "  background-color: rgba(26, 28, 34, 0.92);"
+            "  border: 1px solid rgba(255, 255, 255, 0.18);"
+            "  border-radius: 14px;"
+            "}"
+            "#modeOverlay QPushButton {"
+            "  background-color: transparent;"
+            "  color: rgba(255, 255, 255, 0.70);"
+            "  border: none;"
+            "  border-radius: 11px;"
+            "  padding: 4px 14px;"
+            "  font-size: 11px;"
+            "  font-weight: 600;"
+            "}"
+            "#modeOverlay QPushButton:hover {"
+            "  background-color: rgba(255, 255, 255, 0.12);"
+            "  color: #ffffff;"
+            "}"
+            "#modeOverlay QPushButton:checked {"
+            "  background-color: #3b82f6;"
+            "  color: #ffffff;"
+            "  font-weight: bold;"
+            "}";
+    }
+
+    modeOverlay_->setStyleSheet(sheet);
+}
+
+void GraphView::updateOverlayShortcutHints()
+{
+    if (!btnView_ || !btnEdit_) return;
+
+    QString viewShortcut = "V";
+    QString editShortcut = "L";
+
+    if (auto* sm = ShortcutManager::instance())
+    {
+        QKeySequence vk = sm->getShortcut("mode.view");
+        if (!vk.isEmpty()) viewShortcut = vk.toString(QKeySequence::NativeText);
+        QKeySequence ek = sm->getShortcut("mode.edit");
+        if (!ek.isEmpty()) editShortcut = ek.toString(QKeySequence::NativeText);
+    }
+
+    btnView_->setToolTip(viewShortcut.isEmpty()
+        ? QString("View Mode\nPan canvas and select items without moving them")
+        : QString("View Mode (%1)\nPan canvas and select items without moving them").arg(viewShortcut));
+
+    btnEdit_->setToolTip(editShortcut.isEmpty()
+        ? QString("Edit Mode\nSelect and freely reposition nodes on canvas")
+        : QString("Edit Mode (%1)\nSelect and freely reposition nodes on canvas").arg(editShortcut));
+}
+
+void GraphView::resizeEvent(QResizeEvent* event)
+{
+    QGraphicsView::resizeEvent(event);
+    updateOverlayPosition();
+}
+
+void GraphView::showEvent(QShowEvent* event)
+{
+    QGraphicsView::showEvent(event);
+    updateOverlayPosition();
+}
+
+void GraphView::scrollContentsBy(int dx, int dy)
+{
+    QGraphicsView::scrollContentsBy(dx, dy);
+    updateOverlayPosition();
+}
+
+bool GraphView::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == viewport() && event->type() == QEvent::Resize)
+    {
+        updateOverlayPosition();
+    }
+    return QGraphicsView::eventFilter(watched, event);
 }
 
 void GraphView::setMode(Mode m)
 {
+    if (mode_ == m)
+    {
+        updateOverlayActiveState();
+        return;
+    }
+
     mode_ = m;
 
     switch (mode_)
@@ -83,6 +323,9 @@ void GraphView::setMode(Mode m)
         setInteractive(true);
         break;
     }
+
+    updateOverlayActiveState();
+    emit modeChanged(mode_);
 }
 
 void GraphView::wheelEvent(QWheelEvent* event)
@@ -190,6 +433,37 @@ void GraphView::contextMenuEvent(QContextMenuEvent* event)
     pasteAct->setEnabled(mainWin && mainWin->hasClipboard());
 
     QAction* addNodeAct = menu.addAction("Add Node Here");
+
+    menu.addSeparator();
+    auto* routingSub = menu.addMenu("Routing Algorithm");
+    auto* rGrp = new QActionGroup(&menu);
+    auto currentAlgo = GraphEdgeItem::globalRoutingAlgorithm();
+    for (auto algo : GraphEdgeItem::availableRoutingAlgorithms())
+    {
+        auto* act = routingSub->addAction(GraphEdgeItem::routingAlgorithmName(algo));
+        act->setCheckable(true);
+        rGrp->addAction(act);
+        if (algo == currentAlgo) act->setChecked(true);
+        connect(act, &QAction::triggered, this, [mainWin, algo]() {
+            if (mainWin) mainWin->setGlobalRoutingAlgorithm(algo);
+        });
+    }
+
+    routingSub->addSeparator();
+    auto* jumpAct = routingSub->addAction("Bridge Hops on Crossings");
+    jumpAct->setCheckable(true);
+    jumpAct->setChecked(GraphEdgeItem::lineJumpsEnabled());
+    connect(jumpAct, &QAction::toggled, this, [this](bool checked) {
+        GraphEdgeItem::setLineJumpsEnabled(checked);
+        QSettings s;
+        s.setValue("Routing/LineJumps", checked);
+        if (scene())
+        {
+            GraphEdgeItem::updateSceneEdges(scene());
+            scene()->invalidate(QRectF(), QGraphicsScene::AllLayers);
+        }
+        viewport()->update();
+    });
 
     QAction* chosen = menu.exec(event->globalPos());
     if (chosen == pasteAct && mainWin)
@@ -335,6 +609,9 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
 
     for (QGraphicsItem* item : scene()->items())
     {
+        if (!item->isVisible())
+            continue;
+
         if (auto* node = dynamic_cast<GraphNodeItem*>(item))
         {
             if (node->isContainer())
@@ -344,6 +621,8 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         }
         else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
         {
+            if (edge->srcNode() && !edge->srcNode()->isVisible()) continue;
+            if (edge->dstNode() && !edge->dstNode()->isVisible()) continue;
             edges.push_back(edge);
         }
     }
@@ -405,6 +684,19 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         << "; pointer-events: none; transition: fill 0.15s ease; }\n";
     out << "  .graph-container:hover text.header-title { fill: " << toCssRgba(cHover.title.color) << "; }\n";
     out << "  .graph-container.selected text.header-title { fill: " << toCssRgba(cSelected.title.color) << "; font-weight: bold; }\n";
+
+    out << "  .graph-container text.container-body { fill: " << toCssRgba(cNormal.body.color)
+        << "; font-size: " << cNormal.body.size
+        << "px; pointer-events: none; transition: fill 0.15s ease; }\n";
+    out << "  .graph-container:hover text.container-body { fill: " << toCssRgba(cHover.body.color) << "; }\n";
+    out << "  .graph-container.selected text.container-body { fill: " << toCssRgba(cSelected.body.color) << "; }\n";
+
+    out << "  .graph-container text.container-tertiary { fill: " << toCssRgba(cNormal.tertiary.color)
+        << "; font-size: " << cNormal.tertiary.size
+        << "px; font-style: " << (cNormal.tertiary.italic ? "italic" : "normal")
+        << "; pointer-events: none; transition: fill 0.15s ease; }\n";
+    out << "  .graph-container:hover text.container-tertiary { fill: " << toCssRgba(cHover.tertiary.color) << "; }\n";
+    out << "  .graph-container.selected text.container-tertiary { fill: " << toCssRgba(cSelected.tertiary.color) << "; }\n";
 
     // --- Leaf Nodes ---
     const auto& nNormal = theme.node.normal;
@@ -615,6 +907,22 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         out << "        <rect class=\"box\" width=\"" << bounds.width() << "\" height=\"" << bounds.height() << "\"/>\n";
         out << "        <rect class=\"header\" width=\"" << bounds.width() << "\" height=\"" << headerH << "\"/>\n";
         out << "        <text class=\"header-title\" x=\"14\" y=\"" << headerTitleY << "\" dominant-baseline=\"middle\">" << title << "</text>\n";
+        if (node->isFolded())
+        {
+            if (!node->bodyRect().isNull() && !node->bodyRect().isEmpty())
+            {
+                qreal bodyY = node->bodyRect().center().y();
+                out << "        <text class=\"container-body\" x=\"" << (bounds.width() / 2.0) << "\" y=\"" << bodyY
+                    << "\" text-anchor=\"middle\" dominant-baseline=\"middle\">" << type << "</text>\n";
+            }
+            QString tert = node->tertiaryText();
+            if (!node->tertiaryRect().isNull() && !node->tertiaryRect().isEmpty() && !tert.isEmpty())
+            {
+                qreal tertY = node->tertiaryRect().center().y();
+                out << "        <text class=\"container-tertiary\" x=\"" << (bounds.width() / 2.0) << "\" y=\"" << tertY
+                    << "\" text-anchor=\"middle\" dominant-baseline=\"middle\">" << tert.toHtmlEscaped() << "</text>\n";
+            }
+        }
         out << "      </g>\n";
     }
     out << "    </g>\n";
@@ -632,6 +940,11 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         QPointF last = edge->mapToScene(QPointF(e1.x, e1.y));
         QPointF prev = edge->mapToScene(QPointF(e2.x, e2.y));
         QLineF lastSegment(prev, last);
+        if (lastSegment.length() < 1e-4 && fullPath.length() > 0)
+        {
+            prev = edge->mapToScene(fullPath.pointAtPercent(std::max(0.0, 1.0 - 5.0 / fullPath.length())));
+            lastSegment = QLineF(prev, last);
+        }
 
         double angle = std::atan2(-lastSegment.dy(), lastSegment.dx());
         double arrowWidth = theme.edge.normal.arrow.width;
@@ -650,14 +963,33 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         for (int i = 0; i < fullPath.elementCount(); ++i)
         {
             auto elem = fullPath.elementAt(i);
-            QPointF p = edge->mapToScene(QPointF(elem.x, elem.y));
-            if (i == fullPath.elementCount() - 1)
-                p = arrowBase;
-
             if (elem.isMoveTo() || i == 0)
+            {
+                QPointF p = edge->mapToScene(QPointF(elem.x, elem.y));
                 d += QString("M %1 %2 ").arg(p.x()).arg(p.y());
+            }
+            else if (elem.isCurveTo() && i + 2 < fullPath.elementCount())
+            {
+                QPointF cp1 = edge->mapToScene(QPointF(elem.x, elem.y));
+                auto eNext1 = fullPath.elementAt(i + 1);
+                QPointF cp2 = edge->mapToScene(QPointF(eNext1.x, eNext1.y));
+                auto eNext2 = fullPath.elementAt(i + 2);
+                QPointF ep = edge->mapToScene(QPointF(eNext2.x, eNext2.y));
+                if (i + 2 == fullPath.elementCount() - 1)
+                    ep = arrowBase;
+                i += 2;
+                d += QString("C %1 %2, %3 %4, %5 %6 ")
+                    .arg(cp1.x()).arg(cp1.y())
+                    .arg(cp2.x()).arg(cp2.y())
+                    .arg(ep.x()).arg(ep.y());
+            }
             else
+            {
+                QPointF p = edge->mapToScene(QPointF(elem.x, elem.y));
+                if (i == fullPath.elementCount() - 1)
+                    p = arrowBase;
                 d += QString("L %1 %2 ").arg(p.x()).arg(p.y());
+            }
         }
 
         auto* m = edge->model();
@@ -668,7 +1000,9 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         QString dstTitle = edge->dstNode() ? edge->dstNode()->displayTitle().toHtmlEscaped() : "Unknown";
         NodeId srcId = opt ? opt->srcNode : (edge->srcNode() ? edge->srcNode()->nodeId() : 0);
         NodeId dstId = opt ? opt->dstNode : (edge->dstNode() ? edge->dstNode()->nodeId() : 0);
-        QString status = opt ? QString::fromStdString(to_string(opt->status)) : "new";
+        QString status = (edge->isConsolidated() && edge->consolidatedEdgeIds().size() > 1)
+            ? QString::fromStdString(to_string(edge->consolidatedStatus()))
+            : (opt ? QString::fromStdString(to_string(opt->status)) : "new");
         QString reviewer = opt ? QString::fromStdString(opt->reviewer).toHtmlEscaped() : "";
         QString checksum = opt ? QString::number(opt->checksum) : "0";
         QString meta = opt ? QString::fromStdString(opt->metadata).toHtmlEscaped() : "{}";

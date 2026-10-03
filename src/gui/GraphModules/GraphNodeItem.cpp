@@ -181,6 +181,12 @@ void GraphNodeItem::updateChildrenVisibility()
 
 void GraphNodeItem::updateAllConnectedEdges()
 {
+    if (scene())
+    {
+        GraphEdgeItem::updateSceneEdges(scene());
+        return;
+    }
+
     for (const auto& e : edges_)
     {
         if (e && e->scene())
@@ -594,6 +600,22 @@ QString GraphNodeItem::displayType() const
     return QString::fromStdString(n->type);
 }
 
+QString GraphNodeItem::tertiaryText() const
+{
+    if (isContainer() && isFolded_)
+    {
+        int childCount = 0;
+        for (auto* item : childItems())
+        {
+            if (dynamic_cast<GraphNodeItem*>(item))
+                childCount++;
+        }
+        if (childCount > 0)
+            return QString("(%1 %2 hidden)").arg(childCount).arg(childCount == 1 ? "component" : "components");
+    }
+    return QString();
+}
+
 void GraphNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
 {
     painter->setRenderHint(QPainter::Antialiasing);
@@ -834,7 +856,14 @@ QVariant GraphNodeItem::itemChange(QGraphicsItem::GraphicsItemChange change, con
     if (change == QGraphicsItem::ItemPositionHasChanged ||
         change == QGraphicsItem::ItemScenePositionHasChanged)
     {
-        updateAllConnectedEdges();
+        if (scene())
+        {
+            GraphEdgeItem::updateSceneEdges(scene());
+        }
+        else
+        {
+            updateAllConnectedEdges();
+        }
 
         if (auto* parentContainer = dynamic_cast<GraphNodeItem*>(parentItem()))
         {
@@ -1605,10 +1634,17 @@ void GraphNodeItem::refreshGeometry()
 
     update();
 
-    for (const auto& e : edges_)
+    if (scene())
     {
-        if (e)
-            e->refreshPath();
+        GraphEdgeItem::updateSceneEdges(scene());
+    }
+    else
+    {
+        for (const auto& e : edges_)
+        {
+            if (e)
+                e->refreshPath();
+        }
     }
 
     if (auto* parentContainer = dynamic_cast<GraphNodeItem*>(parentItem()))

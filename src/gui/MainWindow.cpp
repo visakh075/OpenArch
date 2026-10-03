@@ -18,6 +18,8 @@
 #include <QInputDialog>
 #include <QKeySequence>
 #include <QScrollBar>
+#include <QSettings>
+#include <QSignalBlocker>
 #include <algorithm>
 #include <unordered_set>
 #include <unordered_map>
@@ -44,6 +46,9 @@
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
+    resize(1280, 800);
+    setMinimumSize(900, 600);
+
     setupUi();
     setupMenu();
     setupToolbar();
@@ -168,6 +173,7 @@ void MainWindow::showWelcome()
     if (architectureDock_) architectureDock_->hide();
     if (graphToolBar_) graphToolBar_->setEnabled(false);
     if (layoutToolBar_) layoutToolBar_->setEnabled(false);
+    if (routingToolBar_) routingToolBar_->setEnabled(false);
     currentDbPath_.clear();
     if (actionExportJson_) actionExportJson_->setEnabled(false);
     if (actionExportSqlite_) actionExportSqlite_->setEnabled(false);
@@ -179,6 +185,7 @@ void MainWindow::showCanvas()
     if (architectureDock_) architectureDock_->show();
     if (graphToolBar_) graphToolBar_->setEnabled(true);
     if (layoutToolBar_) layoutToolBar_->setEnabled(true);
+    if (routingToolBar_) routingToolBar_->setEnabled(true);
 }
 
 void MainWindow::setupMenu()
@@ -321,6 +328,9 @@ void MainWindow::setupMenu()
     actionShowBadges_->setCheckable(true);
     actionShowBadges_->setChecked(GraphNodeItem::showGovernanceBadges());
 
+    routingMenu_ = menuBar()->addMenu("&Routing");
+    setupRoutingMenuAndControls();
+
     auto* settingsMenu = menuBar()->addMenu("&Settings");
     settingsMenu->addAction("Configure Shortcuts...", this, &MainWindow::openShortcutConfigDialog);
 }
@@ -386,19 +396,134 @@ void MainWindow::populateThemeMenu()
     }
 }
 
+void MainWindow::setupRoutingMenuAndControls()
+{
+    if (!routingMenu_) return;
+
+    routingActionGroup_ = new QActionGroup(this);
+
+    routingCombo_ = new QComboBox(this);
+    routingCombo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    routingCombo_->setMaxVisibleItems(15);
+    if (routingCombo_->view())
+    {
+        routingCombo_->view()->setMinimumWidth(260);
+        routingCombo_->view()->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    }
+    routingCombo_->setToolTip("Select Global Edge Routing Algorithm");
+
+    const auto& algos = GraphEdgeItem::availableRoutingAlgorithms();
+    for (auto algo : algos)
+    {
+        QString name = GraphEdgeItem::routingAlgorithmName(algo);
+        auto* act = routingMenu_->addAction(name);
+        act->setCheckable(true);
+        act->setData(static_cast<int>(algo));
+        routingActionGroup_->addAction(act);
+
+        routingCombo_->addItem(name, static_cast<int>(algo));
+
+        connect(act, &QAction::triggered, this, [this, algo]() {
+            setGlobalRoutingAlgorithm(algo);
+        });
+    }
+
+    routingMenu_->addSeparator();
+
+    actionLineJumps_ = routingMenu_->addAction("Bridge Hops on Crossings");
+    actionLineJumps_->setCheckable(true);
+    actionLineJumps_->setToolTip("Draw bridge hop arcs where edges cross so they never collide or overlap");
+
+    QSettings settings;
+    bool lineJumps = settings.value("Routing/LineJumps", true).toBool();
+    GraphEdgeItem::setLineJumpsEnabled(lineJumps);
+    actionLineJumps_->setChecked(lineJumps);
+
+    connect(actionLineJumps_, &QAction::toggled, this, [this](bool checked) {
+        GraphEdgeItem::setLineJumpsEnabled(checked);
+        QSettings s;
+        s.setValue("Routing/LineJumps", checked);
+        if (scene_)
+        {
+            GraphEdgeItem::updateSceneEdges(scene_);
+            scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+        }
+        if (graphView_)
+        {
+            graphView_->viewport()->update();
+        }
+        statusBar()->showMessage(checked ? "Bridge hops enabled" : "Bridge hops disabled", 2000);
+    });
+
+    connect(routingCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        if (index < 0) return;
+        auto algo = static_cast<EdgeRoutingAlgorithm>(routingCombo_->itemData(index).toInt());
+        setGlobalRoutingAlgorithm(algo);
+        for (auto* act : routingActionGroup_->actions()) {
+            if (act->data().toInt() == static_cast<int>(algo)) {
+                act->setChecked(true);
+                break;
+            }
+        }
+    });
+
+    int saved = settings.value("Routing/Algorithm", static_cast<int>(EdgeRoutingAlgorithm::SmartOrthogonal)).toInt();
+    auto currentAlgo = static_cast<EdgeRoutingAlgorithm>(saved);
+    GraphEdgeItem::setGlobalRoutingAlgorithm(currentAlgo);
+
+    int idx = routingCombo_->findData(saved);
+    if (idx >= 0) routingCombo_->setCurrentIndex(idx);
+
+    for (auto* act : routingActionGroup_->actions()) {
+        if (act->data().toInt() == saved) {
+            act->setChecked(true);
+            break;
+        }
+    }
+}
+
+void MainWindow::setGlobalRoutingAlgorithm(EdgeRoutingAlgorithm algo)
+{
+    GraphEdgeItem::setGlobalRoutingAlgorithm(algo);
+
+    QSettings settings;
+    settings.setValue("Routing/Algorithm", static_cast<int>(algo));
+
+    if (routingCombo_ && routingCombo_->currentData().toInt() != static_cast<int>(algo)) {
+        int idx = routingCombo_->findData(static_cast<int>(algo));
+        if (idx >= 0) routingCombo_->setCurrentIndex(idx);
+    }
+
+    if (scene_)
+    {
+        GraphEdgeItem::updateSceneEdges(scene_);
+        scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
+    }
+    if (graphView_)
+    {
+        graphView_->viewport()->update();
+    }
+
+    statusBar()->showMessage(QString("Routing algorithm: %1").arg(GraphEdgeItem::routingAlgorithmName(algo)), 2500);
+}
+
 void MainWindow::setupToolbar()
 {
-    graphToolBar_ = addToolBar("Graph Modes");
-    actionView_ = graphToolBar_->addAction("View");
-    actionEdit_ = graphToolBar_->addAction("Edit");    
+    // Mode toggle is displayed as a sleek floating segmented pill at the bottom-right corner of GraphView.
+    // Window actions are preserved for keyboard shortcuts and ShortcutManager registration.
+    actionView_ = new QAction("View", this);
+    actionEdit_ = new QAction("Edit", this);
 
     actionView_->setCheckable(true);
-    actionEdit_->setCheckable(true); 
+    actionEdit_->setCheckable(true);
 
     auto* group = new QActionGroup(this);
     group->addAction(actionView_);
     group->addAction(actionEdit_);
     actionView_->setChecked(true);
+
+    addAction(actionView_);
+    addAction(actionEdit_);
 
     connect(actionView_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::View); });
     connect(actionEdit_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::Edit); });
@@ -440,6 +565,24 @@ void MainWindow::setupToolbar()
 
     duplicateBtn_ = layoutToolBar_->addAction(QIcon(":/icons/copy.svg"), "Duplicate");
     connect(duplicateBtn_, &QAction::triggered, this, &MainWindow::copySelectedNode);
+
+    routingToolBar_ = addToolBar("Routing");
+    routingToolBar_->setObjectName("RoutingToolBar");
+    routingToolBar_->setIconSize(QSize(20, 20));
+
+    auto* routingLabel = new QLabel(" Routing: ", this);
+    routingToolBar_->addWidget(routingLabel);
+
+    if (routingCombo_)
+    {
+        routingToolBar_->addWidget(routingCombo_);
+    }
+
+    if (actionLineJumps_)
+    {
+        routingToolBar_->addSeparator();
+        routingToolBar_->addAction(actionLineJumps_);
+    }
 }
 
 void MainWindow::setupConnections()
@@ -484,6 +627,7 @@ void MainWindow::setupConnections()
     connect(graphView_, &GraphView::requestAddLayer, this, &MainWindow::createNewLayer);
     connect(graphView_, &GraphView::requestConnectNodes, this, &MainWindow::handleConnectNodes);
     connect(graphView_, &GraphView::deleteRequested, this, &MainWindow::deleteSelected);
+    connect(graphView_, &GraphView::modeChanged, this, &MainWindow::setGraphMode);
     connect(scene_, &QGraphicsScene::selectionChanged, this, &MainWindow::onSelectionChanged);
 
     auto* deleteShortcut = new QShortcut(QKeySequence::Delete, this);
@@ -595,6 +739,10 @@ void MainWindow::updateShortcutLabels()
         QKeySequence dupKey = sm->getShortcut("edit.duplicate");
         QString dupStr = dupKey.toString(QKeySequence::NativeText);
         duplicateBtn_->setToolTip(dupStr.isEmpty() ? "Duplicate selected node" : QString("Duplicate selected node (%1)").arg(dupStr));
+    }
+
+    if (graphView_) {
+        graphView_->updateOverlayShortcutHints();
     }
 }
 
@@ -2001,7 +2149,18 @@ void MainWindow::setGraphMode(GraphView::Mode mode)
 {
     if (!graphView_) return;
 
-    graphView_->setMode(mode);
+    if (actionView_ && actionView_->isChecked() != (mode == GraphView::Mode::View)) {
+        QSignalBlocker blocker(actionView_);
+        actionView_->setChecked(mode == GraphView::Mode::View);
+    }
+    if (actionEdit_ && actionEdit_->isChecked() != (mode == GraphView::Mode::Edit)) {
+        QSignalBlocker blocker(actionEdit_);
+        actionEdit_->setChecked(mode == GraphView::Mode::Edit);
+    }
+
+    if (graphView_->mode() != mode) {
+        graphView_->setMode(mode);
+    }
 
     QString text;
     switch (mode) {
@@ -2014,16 +2173,19 @@ void MainWindow::setGraphMode(GraphView::Mode mode)
 
     bool movable = (mode == GraphView::Mode::Edit);
 
-    for (auto* item : scene_->items())
+    if (scene_)
     {
-        if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+        for (auto* item : scene_->items())
         {
-            node->setFlag(QGraphicsItem::ItemIsSelectable, true);
-            node->setFlag(QGraphicsItem::ItemIsMovable, movable);
-        }
-        else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
-        {
-            edge->setFlag(QGraphicsItem::ItemIsSelectable, true);
+            if (auto* node = dynamic_cast<GraphNodeItem*>(item))
+            {
+                node->setFlag(QGraphicsItem::ItemIsSelectable, true);
+                node->setFlag(QGraphicsItem::ItemIsMovable, movable);
+            }
+            else if (auto* edge = dynamic_cast<GraphEdgeItem*>(item))
+            {
+                edge->setFlag(QGraphicsItem::ItemIsSelectable, true);
+            }
         }
     }
     statusBar()->showMessage(text);

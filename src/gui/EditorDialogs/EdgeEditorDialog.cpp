@@ -1,4 +1,5 @@
 #include "EdgeEditorDialog.h"
+#include "gui/GraphModules/GraphEdgeItem.h"
 
 #include <QFormLayout>
 #include <QVBoxLayout>
@@ -10,6 +11,7 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QGroupBox>
+#include <QJsonObject>
 
 EdgeEditorDialog::EdgeEditorDialog(ArchitectureModel* model,
                                    EdgeId edgeId,
@@ -36,6 +38,40 @@ EdgeEditorDialog::EdgeEditorDialog(ArchitectureModel* model,
     typeEdit_ = new QLineEdit(QString::fromStdString(edge.edgeType));
     auto* form = new QFormLayout;
     form->addRow("Connection / Protocol Type", typeEdit_);
+
+    routingCombo_ = new QComboBox(this);
+    routingCombo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    routingCombo_->setMaxVisibleItems(15);
+    if (routingCombo_->view())
+    {
+        routingCombo_->view()->setMinimumWidth(260);
+    }
+    routingCombo_->addItem("Default (Follow Global Setting)", -1);
+    for (auto algo : GraphEdgeItem::availableRoutingAlgorithms())
+    {
+        routingCombo_->addItem(GraphEdgeItem::routingAlgorithmName(algo), static_cast<int>(algo));
+    }
+
+    if (!edge.metadata.empty())
+    {
+        QJsonDocument doc = QJsonDocument::fromJson(QString::fromStdString(edge.metadata).toUtf8());
+        if (doc.isObject() && doc.object().contains("routing"))
+        {
+            QString r = doc.object()["routing"].toString();
+            int targetVal = -1;
+            if (r == "smart") targetVal = static_cast<int>(EdgeRoutingAlgorithm::SmartOrthogonal);
+            else if (r == "direct") targetVal = static_cast<int>(EdgeRoutingAlgorithm::DirectOrthogonal);
+            else if (r == "circuit") targetVal = static_cast<int>(EdgeRoutingAlgorithm::CircuitBoard);
+            else if (r == "bezier") targetVal = static_cast<int>(EdgeRoutingAlgorithm::SmoothBezier);
+            else if (r == "straight") targetVal = static_cast<int>(EdgeRoutingAlgorithm::StraightLine);
+            else if (r == "octilinear") targetVal = static_cast<int>(EdgeRoutingAlgorithm::Octilinear);
+            else if (r == "bus") targetVal = static_cast<int>(EdgeRoutingAlgorithm::BusHighway);
+
+            int idx = routingCombo_->findData(targetVal);
+            if (idx >= 0) routingCombo_->setCurrentIndex(idx);
+        }
+    }
+    form->addRow("Routing Style", routingCombo_);
 
     auto* generalTab = new QWidget(this);
     generalTab->setLayout(form);
@@ -171,7 +207,26 @@ void EdgeEditorDialog::onSave()
     EdgeData edge = *opt;
     edge.edgeType   = typeEdit_->text().toStdString();
     edge.attributes = attributesEditor_->toJsonString(QJsonDocument::Compact).toStdString();
-    edge.metadata   = metadataEditor_->toJsonString(QJsonDocument::Compact).toStdString();
+
+    QString metaJsonStr = metadataEditor_->toJsonString(QJsonDocument::Compact);
+    QJsonDocument metaDoc = QJsonDocument::fromJson(metaJsonStr.toUtf8());
+    QJsonObject metaObj = metaDoc.isObject() ? metaDoc.object() : QJsonObject();
+
+    int chosenAlgo = routingCombo_ ? routingCombo_->currentData().toInt() : -1;
+    if (chosenAlgo < 0) {
+        metaObj.remove("routing");
+    } else {
+        switch (static_cast<EdgeRoutingAlgorithm>(chosenAlgo)) {
+            case EdgeRoutingAlgorithm::SmartOrthogonal:  metaObj["routing"] = "smart"; break;
+            case EdgeRoutingAlgorithm::DirectOrthogonal: metaObj["routing"] = "direct"; break;
+            case EdgeRoutingAlgorithm::CircuitBoard:     metaObj["routing"] = "circuit"; break;
+            case EdgeRoutingAlgorithm::SmoothBezier:     metaObj["routing"] = "bezier"; break;
+            case EdgeRoutingAlgorithm::StraightLine:     metaObj["routing"] = "straight"; break;
+            case EdgeRoutingAlgorithm::Octilinear:       metaObj["routing"] = "octilinear"; break;
+            case EdgeRoutingAlgorithm::BusHighway:        metaObj["routing"] = "bus"; break;
+        }
+    }
+    edge.metadata = QString::fromUtf8(QJsonDocument(metaObj).toJson(QJsonDocument::Compact)).toStdString();
 
     Result r = model_->updateEdge(edge);
     if (!r.ok) {

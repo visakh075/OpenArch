@@ -41,6 +41,7 @@ public:
 
     QString displayTitle() const;
     QString displayType() const;
+    QString tertiaryText() const;
 
     void setPrimary(bool p);
     bool isPrimary() const;

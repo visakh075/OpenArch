@@ -21,8 +21,10 @@
 #include "DbManagerSQLite.h"
 #include "DbManagerJson.h"
 #include "GraphView.h"
+#include "GraphModules/GraphEdgeItem.h"
 
 class GraphNodeItem;
+class QComboBox;
 
 enum class ItemType : int
 {
@@ -65,6 +67,7 @@ public slots:
     void copySelectedNodes();
     void copySelectedNode();
     void pasteNodes();
+    void setGlobalRoutingAlgorithm(EdgeRoutingAlgorithm algo);
 
 private slots:
     void saveLayout();
@@ -96,6 +99,7 @@ private:
     void setupUi();
     void setupMenu();
     void populateThemeMenu();
+    void setupRoutingMenuAndControls();
     void setupToolbar();
     void setupShortcuts();
     void setupConnections();
@@ -180,6 +184,12 @@ private:
     QAction* actionMarkInvalid_{nullptr};
     QAction* actionVerifyIntegrity_{nullptr};
     QAction* actionShowBadges_{nullptr};
+
+    QMenu*   routingMenu_{nullptr};
+    QActionGroup* routingActionGroup_{nullptr};
+    QComboBox* routingCombo_{nullptr};
+    QToolBar* routingToolBar_{nullptr};
+    QAction* actionLineJumps_{nullptr};
 
     std::string currentDbPath_;
 

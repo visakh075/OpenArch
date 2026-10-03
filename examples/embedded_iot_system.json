@@ -1,0 +1,588 @@
+{
+  "layers": [
+    {
+      "id": 1,
+      "name": "Sensors & Peripherals",
+      "kind": "Hardware",
+      "attributes": "{}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "EE Team"
+    },
+    {
+      "id": 2,
+      "name": "Compute & Microcontroller",
+      "kind": "Hardware",
+      "attributes": "{}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Firmware"
+    },
+    {
+      "id": 3,
+      "name": "Actuators & Power",
+      "kind": "Hardware",
+      "attributes": "{}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "PowerEE"
+    },
+    {
+      "id": 4,
+      "name": "Wireless & Connectivity",
+      "kind": "RF",
+      "attributes": "{}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "RF Lead"
+    }
+  ],
+  "nodes": [
+    {
+      "id": 1,
+      "name": "Core MCU & Memory Board",
+      "type": "Container",
+      "parent_id": null,
+      "attributes": "{\"pcb_layers\": \"6-Layer FR4\", \"impedance\": \"50 Ohm Controlled\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "EE Team"
+    },
+    {
+      "id": 2,
+      "name": "STM32H753 Dual-Core (480MHz)",
+      "type": "Microcontroller",
+      "parent_id": 1,
+      "attributes": "{\"arch\": \"Arm Cortex-M7 + M4\", \"flash\": \"2MB\", \"ram\": \"1MB\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Firmware"
+    },
+    {
+      "id": 3,
+      "name": "QSPI NOR Flash 64MB",
+      "type": "Memory",
+      "parent_id": 1,
+      "attributes": "{\"chip\": \"W25Q512JV\", \"speed\": \"133MHz Quad SPI\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Firmware"
+    },
+    {
+      "id": 4,
+      "name": "ATECC608 Crypto Engine",
+      "type": "SecureElement",
+      "parent_id": 1,
+      "attributes": "{\"feature\": \"Hardware Root of Trust / ECDSA\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 5,
+      "name": "Precision Sensor Hub",
+      "type": "Container",
+      "parent_id": null,
+      "attributes": "{\"isolation\": \"Low-Noise Ground Plane\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "EE Team"
+    },
+    {
+      "id": 6,
+      "name": "6-Axis IMU (BMI088)",
+      "type": "Sensor",
+      "parent_id": 5,
+      "attributes": "{\"range\": \"+-24g / 2000dps\", \"rate\": \"1.6kHz\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "EE Team"
+    },
+    {
+      "id": 7,
+      "name": "Barometer (BMP390)",
+      "type": "Sensor",
+      "parent_id": 5,
+      "attributes": "{\"resolution\": \"300..1250 hPa (RMS 0.02Pa)\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "EE Team"
+    },
+    {
+      "id": 8,
+      "name": "Optical Flow Camera",
+      "type": "Sensor",
+      "parent_id": 5,
+      "attributes": "{\"sensor\": \"PMW3901MB\", \"frame_rate\": \"120fps\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "EE Team"
+    },
+    {
+      "id": 9,
+      "name": "Actuator & Motor Control",
+      "type": "Container",
+      "parent_id": null,
+      "attributes": "{\"voltage\": \"16.8V 4S LiPo\", \"current_max\": \"60A\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "PowerEE"
+    },
+    {
+      "id": 10,
+      "name": "Dual BLDC Motor Driver",
+      "type": "GateDriver",
+      "parent_id": 9,
+      "attributes": "{\"driver\": \"DRV8305\", \"pwm_freq\": \"40kHz\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "PowerEE"
+    },
+    {
+      "id": 11,
+      "name": "High-Speed Current Shunt ADC",
+      "type": "ADC",
+      "parent_id": 9,
+      "attributes": "{\"sampling\": \"INA240 / 1MSPS\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "PowerEE"
+    },
+    {
+      "id": 12,
+      "name": "Emergency Hardware E-Stop",
+      "type": "SafetyCircuit",
+      "parent_id": 9,
+      "attributes": "{\"rating\": \"SIL-3 Safety Optocoupler\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "PowerEE"
+    },
+    {
+      "id": 13,
+      "name": "Solid-State LiDAR (16-Beam)",
+      "type": "LiDAR",
+      "parent_id": null,
+      "attributes": "{\"range\": \"50m\", \"points\": \"300k pts/sec\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Robotics"
+    },
+    {
+      "id": 14,
+      "name": "RTK GNSS Navigation Module",
+      "type": "GPS",
+      "parent_id": null,
+      "attributes": "{\"accuracy\": \"1.5cm RTK Fixed\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Robotics"
+    },
+    {
+      "id": 15,
+      "name": "Wi-Fi 6 & BLE 5.3 Gateway",
+      "type": "WirelessSoC",
+      "parent_id": null,
+      "attributes": "{\"radio\": \"ESP32-S3 Dual-Core Radio\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "RF Lead"
+    },
+    {
+      "id": 16,
+      "name": "Cloud Mission Control",
+      "type": "CloudTelemetry",
+      "parent_id": null,
+      "attributes": "{\"broker\": \"AWS IoT Core / MQTT\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "CloudTeam"
+    },
+    {
+      "id": 17,
+      "name": "CAN Bus Vehicle Backbone",
+      "type": "VehicleBus",
+      "parent_id": null,
+      "attributes": "{\"speed\": \"1 Mbps CAN-FD 2.0B\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "AutoTeam"
+    }
+  ],
+  "node_layers": [
+    {
+      "node_id": 1,
+      "layer_id": 2
+    },
+    {
+      "node_id": 2,
+      "layer_id": 2
+    },
+    {
+      "node_id": 3,
+      "layer_id": 2
+    },
+    {
+      "node_id": 4,
+      "layer_id": 2
+    },
+    {
+      "node_id": 5,
+      "layer_id": 1
+    },
+    {
+      "node_id": 6,
+      "layer_id": 1
+    },
+    {
+      "node_id": 7,
+      "layer_id": 1
+    },
+    {
+      "node_id": 8,
+      "layer_id": 1
+    },
+    {
+      "node_id": 9,
+      "layer_id": 3
+    },
+    {
+      "node_id": 10,
+      "layer_id": 3
+    },
+    {
+      "node_id": 11,
+      "layer_id": 3
+    },
+    {
+      "node_id": 12,
+      "layer_id": 3
+    },
+    {
+      "node_id": 13,
+      "layer_id": 1
+    },
+    {
+      "node_id": 14,
+      "layer_id": 1
+    },
+    {
+      "node_id": 15,
+      "layer_id": 4
+    },
+    {
+      "node_id": 16,
+      "layer_id": 4
+    },
+    {
+      "node_id": 17,
+      "layer_id": 4
+    }
+  ],
+  "edges": [
+    {
+      "id": 1,
+      "src_node_id": 2,
+      "src_layer_id": 2,
+      "dst_node_id": 3,
+      "dst_layer_id": 2,
+      "edge_type": "Quad-SPI 80MHz PCB Trace",
+      "attributes": "{\"trace_width\": \"0.15mm\", \"skew\": \"<20ps\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Firmware"
+    },
+    {
+      "id": 2,
+      "src_node_id": 2,
+      "src_layer_id": 2,
+      "dst_node_id": 4,
+      "dst_layer_id": 2,
+      "edge_type": "I2C 1MHz Secure Bus Trace",
+      "attributes": "{\"pullup\": \"2.2k Ohm\", \"trace\": \"Sharp 90\\u00b0\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "SecOps"
+    },
+    {
+      "id": 3,
+      "src_node_id": 6,
+      "src_layer_id": 1,
+      "dst_node_id": 2,
+      "dst_layer_id": 2,
+      "edge_type": "I2C Sensor Bus Trunk (IMU)",
+      "attributes": "{\"bus_clock\": \"400kHz Fast-Mode\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "EE Team"
+    },
+    {
+      "id": 4,
+      "src_node_id": 7,
+      "src_layer_id": 1,
+      "dst_node_id": 2,
+      "dst_layer_id": 2,
+      "edge_type": "I2C Sensor Bus Trunk (Baro)",
+      "attributes": "{\"bus_clock\": \"400kHz Fast-Mode\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "EE Team"
+    },
+    {
+      "id": 5,
+      "src_node_id": 8,
+      "src_layer_id": 1,
+      "dst_node_id": 2,
+      "dst_layer_id": 2,
+      "edge_type": "High-Speed SPI Differential Stream",
+      "attributes": "{\"clock\": \"35MHz Full-Duplex\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Firmware"
+    },
+    {
+      "id": 6,
+      "src_node_id": 13,
+      "src_layer_id": 1,
+      "dst_node_id": 2,
+      "dst_layer_id": 2,
+      "edge_type": "LiDAR High-Speed DMA Feed",
+      "attributes": "{\"baud\": \"3000000 bps UART/DMA\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Robotics"
+    },
+    {
+      "id": 7,
+      "src_node_id": 14,
+      "src_layer_id": 1,
+      "dst_node_id": 2,
+      "dst_layer_id": 2,
+      "edge_type": "UBX / NMEA Navigation Stream",
+      "attributes": "{\"rate\": \"20Hz RTK Precision\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Robotics"
+    },
+    {
+      "id": 8,
+      "src_node_id": 2,
+      "src_layer_id": 2,
+      "dst_node_id": 10,
+      "dst_layer_id": 3,
+      "edge_type": "6-Phase Complementary PWM Traces",
+      "attributes": "{\"deadtime\": \"120ns Hardware Inserted\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "PowerEE"
+    },
+    {
+      "id": 9,
+      "src_node_id": 11,
+      "src_layer_id": 3,
+      "dst_node_id": 2,
+      "dst_layer_id": 2,
+      "edge_type": "Fast Analog Current Shunt Loop",
+      "attributes": "{\"feedback\": \"Overcurrent Fast Trip\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "PowerEE"
+    },
+    {
+      "id": 10,
+      "src_node_id": 12,
+      "src_layer_id": 3,
+      "dst_node_id": 10,
+      "dst_layer_id": 3,
+      "edge_type": "Hardware Safety Kill Bus",
+      "attributes": "{\"circuit\": \"Normally-Closed Opto Interlock\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "PowerEE"
+    },
+    {
+      "id": 11,
+      "src_node_id": 2,
+      "src_layer_id": 2,
+      "dst_node_id": 15,
+      "dst_layer_id": 4,
+      "edge_type": "SDIO 4-Bit Comms Bus",
+      "attributes": "{\"rate\": \"50MHz 4-Bit Wide\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "RF Lead"
+    },
+    {
+      "id": 12,
+      "src_node_id": 15,
+      "src_layer_id": 4,
+      "dst_node_id": 16,
+      "dst_layer_id": 4,
+      "edge_type": "2.4GHz / 5GHz Wireless Telemetry",
+      "attributes": "{\"rf_band\": \"Wi-Fi 6 OFDMA + MQTT\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "CloudTeam"
+    },
+    {
+      "id": 13,
+      "src_node_id": 2,
+      "src_layer_id": 2,
+      "dst_node_id": 17,
+      "dst_layer_id": 4,
+      "edge_type": "CAN-FD Isolated Differential Bus",
+      "attributes": "{\"transceiver\": \"ISO 11898-2 Galvanic 5kV\"}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "AutoTeam"
+    }
+  ],
+  "layout": {
+    "nodes": {
+      "1": {
+        "x": 380.0,
+        "y": 140.0,
+        "w": 460.0,
+        "h": 260.0
+      },
+      "2": {
+        "x": 30.0,
+        "y": 60.0,
+        "w": 180.0,
+        "h": 70.0
+      },
+      "3": {
+        "x": 250.0,
+        "y": 60.0,
+        "w": 170.0,
+        "h": 60.0
+      },
+      "4": {
+        "x": 250.0,
+        "y": 160.0,
+        "w": 170.0,
+        "h": 60.0
+      },
+      "5": {
+        "x": -60.0,
+        "y": 140.0,
+        "w": 360.0,
+        "h": 260.0
+      },
+      "6": {
+        "x": 30.0,
+        "y": 60.0,
+        "w": 150.0,
+        "h": 50.0
+      },
+      "7": {
+        "x": 30.0,
+        "y": 125.0,
+        "w": 150.0,
+        "h": 50.0
+      },
+      "8": {
+        "x": 30.0,
+        "y": 190.0,
+        "w": 150.0,
+        "h": 50.0
+      },
+      "9": {
+        "x": 380.0,
+        "y": 480.0,
+        "w": 460.0,
+        "h": 220.0
+      },
+      "10": {
+        "x": 30.0,
+        "y": 60.0,
+        "w": 170.0,
+        "h": 60.0
+      },
+      "11": {
+        "x": 250.0,
+        "y": 60.0,
+        "w": 170.0,
+        "h": 60.0
+      },
+      "12": {
+        "x": 250.0,
+        "y": 140.0,
+        "w": 170.0,
+        "h": 50.0
+      },
+      "13": {
+        "x": -60.0,
+        "y": -40.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "14": {
+        "x": 380.0,
+        "y": -40.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "15": {
+        "x": 920.0,
+        "y": 140.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "16": {
+        "x": 1200.0,
+        "y": 140.0,
+        "w": 180.0,
+        "h": 60.0
+      },
+      "17": {
+        "x": 920.0,
+        "y": 480.0,
+        "w": 190.0,
+        "h": 60.0
+      }
+    },
+    "layers": {},
+    "edges": {
+      "1": {
+        "routing": "circuit"
+      },
+      "2": {
+        "routing": "circuit"
+      },
+      "3": {
+        "routing": "bus"
+      },
+      "4": {
+        "routing": "bus"
+      },
+      "5": {
+        "routing": "straight"
+      },
+      "6": {
+        "routing": "octilinear"
+      },
+      "7": {
+        "routing": "direct"
+      },
+      "8": {
+        "routing": "circuit"
+      },
+      "9": {
+        "routing": "straight"
+      },
+      "10": {
+        "routing": "smart"
+      },
+      "11": {
+        "routing": "straight"
+      },
+      "12": {
+        "routing": "bezier"
+      },
+      "13": {
+        "routing": "direct"
+      }
+    }
+  }
+}

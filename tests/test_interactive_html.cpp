@@ -1,11 +1,15 @@
 #include <QApplication>
 #include <QFile>
+#include <QFileInfo>
+#include <QDir>
+#include <QStringList>
 #include <QTextStream>
 #include <iostream>
 #include <cassert>
 
 #include "MainWindow.h"
 #include "GraphThemeManager.h"
+#include "GraphModules/GraphEdgeItem.h"
 
 int main(int argc, char* argv[])
 {
@@ -22,7 +26,111 @@ int main(int argc, char* argv[])
 
     // 2. Initialize MainWindow and load existing test architecture
     MainWindow window;
-    window.setDb("/workspace/OpenArch/build/architecture.json");
+
+    QString dbPath;
+    QStringList candidates = {
+        "build/architecture.json",
+        "../build/architecture.json",
+        "architecture.json",
+        "../architecture.json",
+        "testdbx.db",
+        "../testdbx.db",
+        "/workspace/OpenArch/build/architecture.json",
+        "/workspace/OpenArch/testdbx.db"
+    };
+    for (const auto& c : candidates) {
+        if (QFile::exists(c)) {
+            dbPath = c;
+            break;
+        }
+    }
+
+    bool createdTempJson = false;
+    QString tempJsonPath = "test_sample_architecture.json";
+    if (dbPath.isEmpty()) {
+        dbPath = tempJsonPath;
+        createdTempJson = true;
+        QFile sampleFile(dbPath);
+        if (sampleFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            QTextStream out(&sampleFile);
+            out << R"({
+  "layers": [
+    {
+      "id": 1,
+      "name": "Backend Layer",
+      "kind": "Services",
+      "attributes": "{}",
+      "checksum": 100,
+      "status": "approved",
+      "reviewer": "Security"
+    }
+  ],
+  "nodes": [
+    {
+      "id": 1,
+      "name": "Cluster Container",
+      "type": "Container",
+      "parent_id": null,
+      "attributes": "{\"env\": \"prod\"}",
+      "checksum": 101,
+      "status": "approved",
+      "reviewer": "DevOps"
+    },
+    {
+      "id": 2,
+      "name": "Auth Service",
+      "type": "Microservice",
+      "parent_id": 1,
+      "attributes": "{\"port\": 8080}",
+      "checksum": 102,
+      "status": "changed",
+      "reviewer": "Alice"
+    },
+    {
+      "id": 3,
+      "name": "API Gateway",
+      "type": "Gateway",
+      "parent_id": null,
+      "attributes": "{\"protocol\": \"HTTPS\"}",
+      "checksum": 103,
+      "status": "approved",
+      "reviewer": "Bob"
+    }
+  ],
+  "node_layers": [
+    { "node_id": 1, "layer_id": 1 },
+    { "node_id": 2, "layer_id": 1 },
+    { "node_id": 3, "layer_id": 1 }
+  ],
+  "edges": [
+    {
+      "id": 1,
+      "src_node_id": 3,
+      "src_layer_id": 1,
+      "dst_node_id": 2,
+      "dst_layer_id": 1,
+      "edge_type": "Route",
+      "attributes": "{\"timeout\": 30}",
+      "checksum": 104,
+      "status": "approved",
+      "reviewer": "Alice"
+    }
+  ],
+  "layout": {
+    "nodes": {
+      "1": "{\"x\": 350.0, \"y\": 100.0, \"w\": 260.0, \"h\": 180.0}",
+      "2": "{\"x\": 380.0, \"y\": 160.0, \"w\": 140.0, \"h\": 60.0}",
+      "3": "{\"x\": 50.0, \"y\": 150.0, \"w\": 140.0, \"h\": 60.0}"
+    },
+    "layers": {},
+    "edges": {}
+  }
+})";
+            sampleFile.close();
+        }
+    }
+
+    window.setDb(dbPath.toStdString());
 
     // 3. Export to Interactive HTML
     QString testOutPath = "test_interactive_export.html";
@@ -100,17 +208,47 @@ int main(int argc, char* argv[])
     assert(html.contains("status-badge status-") && "Missing status badge in sidebar!");
     std::cout << " -> PASSED: Inspector data binding for nodes and edges verified.\n";
 
-    // 11. Overwrite /workspace/OpenArch/build/architecture.html with the new export
-    QFile archHtml("/workspace/OpenArch/build/architecture.html");
-    if (archHtml.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-        QTextStream out(&archHtml);
-        out << html;
-        archHtml.close();
-        std::cout << "[INFO] Updated /workspace/OpenArch/build/architecture.html with high-fidelity export.\n";
+    // 11. Test Smooth Bezier Spline SVG Export (C command)
+    std::cout << "[TEST] 9. Verifying Smooth Bezier Spline SVG Export (C command)...\n";
+    window.setGlobalRoutingAlgorithm(EdgeRoutingAlgorithm::SmoothBezier);
+    QString bezierOutPath = "test_bezier_export.html";
+    window.exportToInteractiveHtml(bezierOutPath);
+    QFile bezierFile(bezierOutPath);
+    if (bezierFile.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        QString bezierHtml = QTextStream(&bezierFile).readAll();
+        bezierFile.close();
+        bezierFile.remove();
+        assert(bezierHtml.contains(" C ") && "Missing SVG cubic bezier curve command in SmoothBezier export!");
+        std::cout << " -> PASSED: Smooth Bezier exported as true SVG cubic curve (C cp1 cp2 ep).\n";
     }
 
-    // 12. Cleanup temporary test file
+    // 12. Overwrite architecture.html if output directory exists
+    QStringList htmlDestinations = {
+        "/workspace/OpenArch/build/architecture.html",
+        "build/architecture.html",
+        "../build/architecture.html",
+        "architecture.html"
+    };
+    for (const auto& dest : htmlDestinations) {
+        QFileInfo fi(dest);
+        if (fi.dir().exists()) {
+            QFile archHtml(dest);
+            if (archHtml.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+                QTextStream out(&archHtml);
+                out << html;
+                archHtml.close();
+                std::cout << "[INFO] Updated " << dest.toStdString() << " with high-fidelity export.\n";
+                break;
+            }
+        }
+    }
+
+    // 13. Cleanup temporary test files
     file.remove();
+    if (createdTempJson && QFile::exists(tempJsonPath)) {
+        QFile::remove(tempJsonPath);
+    }
 
     std::cout << "\n===================================================\n";
     std::cout << " ALL INTERACTIVE HTML TESTS PASSED SUCCESSFULLY! \n";
