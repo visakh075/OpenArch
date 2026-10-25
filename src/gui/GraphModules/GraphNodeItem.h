@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QGraphicsObject>
+#include <QGraphicsPathItem>
 #include <QFont>
 #include <QRectF>
 #include <QPainterPath>
@@ -12,7 +13,23 @@
 
 class GraphEdgeItem;
 class GraphView;
-class QGraphicsPathItem;
+
+class GraphConnectingEdgeItem : public QGraphicsPathItem
+{
+public:
+    explicit GraphConnectingEdgeItem(QGraphicsItem* parent = nullptr);
+
+    void setConnectingData(const QPainterPath& linePath, const QPointF& arrowTip, double arrowAngle);
+    const QPointF& arrowTip() const { return arrowTip_; }
+    double arrowAngle() const { return arrowAngle_; }
+
+    QRectF boundingRect() const override;
+    void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget = nullptr) override;
+
+private:
+    QPointF arrowTip_;
+    double arrowAngle_{0.0};
+};
 
 class GraphNodeItem : public QGraphicsObject
 {
@@ -84,6 +101,15 @@ public:
     static QColor governanceStatusColor(Status s);
     static QColor governanceStatusBgColor(Status s);
 
+    struct PreviewLineData
+    {
+        QPainterPath linePath;
+        QPointF arrowTip;
+        double arrowAngle{0.0};
+    };
+    PreviewLineData buildPreviewData(const QPointF& targetScenePos, GraphNodeItem* targetNode = nullptr, qreal arrowWidth = 14.0) const;
+    QPainterPath buildPreviewPath(const QPointF& targetScenePos, GraphNodeItem* targetNode = nullptr) const;
+
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
     void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override;
@@ -101,7 +127,6 @@ private:
 
     QRectF calculateNodeRect();
     QRectF calculateContainerRect();
-    QPainterPath buildPreviewPath(const QPointF& targetScenePos, GraphNodeItem* targetNode = nullptr) const;
 
     ArchitectureModel* model_{nullptr};
     NodeId nodeId_{0};
@@ -112,7 +137,7 @@ private:
 
     // Edge creation interaction
     bool isConnecting_{false};
-    QGraphicsPathItem* tempPathItem_{nullptr};
+    GraphConnectingEdgeItem* tempPathItem_{nullptr};
 
     // Container geometry
     ContainerSizing sizingMode_{ContainerSizing::AutoFit};

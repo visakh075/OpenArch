@@ -54,6 +54,92 @@ QColor GraphNodeItem::governanceStatusBgColor(Status s)
     return c;
 }
 
+/*
+ * =========================================================
+ * GRAPH CONNECTING EDGE ITEM
+ * =========================================================
+ */
+GraphConnectingEdgeItem::GraphConnectingEdgeItem(QGraphicsItem* parent)
+    : QGraphicsPathItem(parent)
+{
+    setZValue(100);
+}
+
+void GraphConnectingEdgeItem::setConnectingData(const QPainterPath& linePath, const QPointF& arrowTip, double arrowAngle)
+{
+    prepareGeometryChange();
+    setPath(linePath);
+    arrowTip_ = arrowTip;
+    arrowAngle_ = arrowAngle;
+    update();
+}
+
+QRectF GraphConnectingEdgeItem::boundingRect() const
+{
+    QRectF r = path().boundingRect();
+
+    const auto& theme = GraphThemeManager::instance()->theme().edge.preview;
+    const auto& arrow = theme.arrow;
+    qreal arrowW = arrow.width > 0 ? arrow.width : 14.0;
+    qreal arrowH = arrow.height > 0 ? arrow.height : 10.0;
+    qreal arrowLineW = arrow.lineWidth > 0 ? arrow.lineWidth : 2.0;
+    qreal lineW = theme.width > 0 ? theme.width : 2.0;
+
+    qreal radius = std::max(arrowW, arrowH) + arrowLineW + 4.0;
+    QRectF arrowBounds(arrowTip_.x() - radius, arrowTip_.y() - radius, radius * 2.0, radius * 2.0);
+
+    qreal margin = (lineW / 2.0) + 4.0;
+    r.adjust(-margin, -margin, margin, margin);
+
+    return r.united(arrowBounds);
+}
+
+void GraphConnectingEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
+{
+    Q_UNUSED(option);
+    Q_UNUSED(widget);
+
+    painter->setRenderHint(QPainter::Antialiasing);
+
+    const auto& theme = GraphThemeManager::instance()->theme().edge.preview;
+
+    // Draw connecting line path
+    QPen linePen(theme.color, theme.width, theme.style, Qt::RoundCap, Qt::RoundJoin);
+    if (theme.style == Qt::CustomDashLine && !theme.dashPattern.isEmpty())
+    {
+        linePen.setDashPattern(theme.dashPattern);
+    }
+    painter->setPen(linePen);
+    painter->setBrush(Qt::NoBrush);
+    painter->drawPath(path());
+
+    // Draw arrowhead at arrowTip_ pointing along arrowAngle_
+    const auto& arrow = theme.arrow;
+    double arrowWidth = arrow.width > 0 ? arrow.width : 14.0;
+    double arrowHeight = arrow.height > 0 ? arrow.height : 10.0;
+    double angle = arrowAngle_;
+    QPointF tip = arrowTip_;
+
+    QPointF p1 = tip - QPointF(
+        std::cos(angle) * arrowWidth - std::sin(angle) * arrowHeight / 2.0,
+        -std::sin(angle) * arrowWidth - std::cos(angle) * arrowHeight / 2.0);
+
+    QPointF p2 = tip - QPointF(
+        std::cos(angle) * arrowWidth + std::sin(angle) * arrowHeight / 2.0,
+        -std::sin(angle) * arrowWidth + std::cos(angle) * arrowHeight / 2.0);
+
+    QPolygonF head;
+    head << tip << p1 << p2;
+
+    QPen arrowPen(arrow.lineColor);
+    arrowPen.setWidth(arrow.lineWidth > 0 ? arrow.lineWidth : 2);
+    arrowPen.setJoinStyle(Qt::RoundJoin);
+
+    painter->setPen(arrowPen);
+    painter->setBrush(arrow.fillColor);
+    painter->drawPolygon(head);
+}
+
 GraphNodeItem::GraphNodeItem(ArchitectureModel *m, NodeId id, QGraphicsItem *p)
     : QGraphicsObject(p),
       model_(m),
@@ -1123,11 +1209,9 @@ void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
 
         const auto& previewTheme = GraphThemeManager::instance()->theme().edge.preview;
 
-        tempPathItem_ = new QGraphicsPathItem();
-        QPen p(previewTheme.color, previewTheme.width, previewTheme.style, Qt::RoundCap, Qt::RoundJoin);
-        tempPathItem_->setPen(p);
-        tempPathItem_->setZValue(100);
-        tempPathItem_->setPath(buildPreviewPath(event->scenePos()));
+        tempPathItem_ = new GraphConnectingEdgeItem();
+        PreviewLineData data = buildPreviewData(event->scenePos(), nullptr, previewTheme.arrow.width);
+        tempPathItem_->setConnectingData(data.linePath, data.arrowTip, data.arrowAngle);
         scene()->addItem(tempPathItem_);
 
         event->accept();
@@ -1179,7 +1263,9 @@ void GraphNodeItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
             }
         }
 
-        tempPathItem_->setPath(buildPreviewPath(event->scenePos(), targetNode));
+        const auto& previewTheme = GraphThemeManager::instance()->theme().edge.preview;
+        PreviewLineData data = buildPreviewData(event->scenePos(), targetNode, previewTheme.arrow.width);
+        tempPathItem_->setConnectingData(data.linePath, data.arrowTip, data.arrowAngle);
         event->accept();
         return;
     }
@@ -1867,9 +1953,12 @@ void GraphNodeItem::refreshGeometry()
     }
 }
 
-QPainterPath GraphNodeItem::buildPreviewPath(const QPointF& targetScenePos, GraphNodeItem* targetNode) const
+GraphNodeItem::PreviewLineData GraphNodeItem::buildPreviewData(
+    const QPointF& targetScenePos,
+    GraphNodeItem* targetNode,
+    qreal arrowWidth) const
 {
-    QPainterPath path;
+    PreviewLineData data;
 
     QRectF srcRect = mapRectToScene(nodeRect());
     QPointF srcCenter = srcRect.center();
@@ -1932,7 +2021,8 @@ QPainterPath GraphNodeItem::buildPreviewPath(const QPointF& targetScenePos, Grap
         }
     }
 
-    path.moveTo(p1);
+    std::vector<QPointF> pts;
+    pts.push_back(p1);
 
     double midX = (p1.x() + p2.x()) / 2.0;
     double midY = (p1.y() + p2.y()) / 2.0;
@@ -1942,30 +2032,83 @@ QPainterPath GraphNodeItem::buildPreviewPath(const QPointF& targetScenePos, Grap
 
     if (overlapX && !overlapY)
     {
-        path.lineTo(p1.x(), midY);
-        path.lineTo(p2.x(), midY);
+        pts.push_back(QPointF(p1.x(), midY));
+        pts.push_back(QPointF(p2.x(), midY));
     }
     else if (overlapY && !overlapX)
     {
-        path.lineTo(midX, p1.y());
-        path.lineTo(midX, p2.y());
+        pts.push_back(QPointF(midX, p1.y()));
+        pts.push_back(QPointF(midX, p2.y()));
     }
     else
     {
         if (gapRight > 0 || gapLeft > 0)
         {
-            path.lineTo(midX, p1.y());
-            path.lineTo(midX, p2.y());
+            pts.push_back(QPointF(midX, p1.y()));
+            pts.push_back(QPointF(midX, p2.y()));
         }
         else
         {
-            path.lineTo(p1.x(), midY);
-            path.lineTo(p2.x(), midY);
+            pts.push_back(QPointF(p1.x(), midY));
+            pts.push_back(QPointF(p2.x(), midY));
         }
     }
 
-    path.lineTo(p2);
-    return path;
+    pts.push_back(p2);
+
+    std::vector<QPointF> cleanPts;
+    for (const auto& pt : pts)
+    {
+        if (cleanPts.empty() || (pt - cleanPts.back()).manhattanLength() > 0.5)
+        {
+            cleanPts.push_back(pt);
+        }
+    }
+
+    if (cleanPts.size() < 2)
+    {
+        data.arrowTip = p2;
+        data.arrowAngle = 0.0;
+        data.linePath.moveTo(p1);
+        data.linePath.lineTo(p2);
+        return data;
+    }
+
+    QPointF tip = cleanPts.back();
+    QPointF prev = cleanPts[cleanPts.size() - 2];
+    double angle = std::atan2(-(tip.y() - prev.y()), tip.x() - prev.x());
+
+    data.arrowTip = tip;
+    data.arrowAngle = angle;
+
+    QPointF lastDiff = tip - prev;
+    qreal lastLen = std::hypot(lastDiff.x(), lastDiff.y());
+    if (arrowWidth > 0)
+    {
+        if (lastLen > arrowWidth + 1.0)
+        {
+            cleanPts.back() = prev + (lastDiff / lastLen) * (lastLen - arrowWidth);
+        }
+        else
+        {
+            cleanPts.back() = prev;
+        }
+    }
+
+    QPainterPath path;
+    path.moveTo(cleanPts.front());
+    for (size_t i = 1; i < cleanPts.size(); ++i)
+    {
+        path.lineTo(cleanPts[i]);
+    }
+
+    data.linePath = path;
+    return data;
+}
+
+QPainterPath GraphNodeItem::buildPreviewPath(const QPointF& targetScenePos, GraphNodeItem* targetNode) const
+{
+    return buildPreviewData(targetScenePos, targetNode, 0.0).linePath;
 }
 
 void GraphNodeItem::onThemeChanged()

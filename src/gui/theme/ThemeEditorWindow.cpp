@@ -238,6 +238,63 @@ private:
     QString m_typeName;
 };
 
+class StandalonePreviewLinePreview : public QWidget
+{
+public:
+    explicit StandalonePreviewLinePreview(QWidget* parent = nullptr)
+        : QWidget(parent)
+    {
+        setFixedHeight(70);
+    }
+
+    void refresh() { update(); }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        p.fillRect(rect(), QColor("#1a1a1a"));
+
+        const auto& theme = GraphThemeManager::instance()->theme().edge.preview;
+
+        qreal midY = height() / 2.0;
+        QPointF start(30, midY);
+        QPointF tip(width() - 30, midY);
+
+        const auto& arrow = theme.arrow;
+        qreal arrowW = arrow.width > 0 ? arrow.width : 14.0;
+        qreal arrowH = arrow.height > 0 ? arrow.height : 10.0;
+
+        QPointF lineEnd = tip;
+        if (tip.x() - start.x() > arrowW + 1.0)
+        {
+            lineEnd.setX(tip.x() - arrowW);
+        }
+
+        QPen pen(theme.color, theme.width, theme.style, Qt::RoundCap, Qt::RoundJoin);
+        if (theme.style == Qt::CustomDashLine && !theme.dashPattern.isEmpty())
+        {
+            pen.setDashPattern(theme.dashPattern);
+        }
+        p.setPen(pen);
+        p.drawLine(start, lineEnd);
+
+        // Arrowhead
+        QPolygonF head;
+        head << tip
+             << QPointF(tip.x() - arrowW, midY - arrowH / 2.0)
+             << QPointF(tip.x() - arrowW, midY + arrowH / 2.0);
+
+        QPen arrowPen(arrow.lineColor, arrow.lineWidth > 0 ? arrow.lineWidth : 2);
+        arrowPen.setJoinStyle(Qt::RoundJoin);
+        p.setPen(arrowPen);
+        p.setBrush(arrow.fillColor);
+        p.drawPolygon(head);
+    }
+};
+
 /*
  * =========================================================
  * ADD STYLE DIALOG
@@ -1129,6 +1186,12 @@ void ThemeEditorWindow::buildArrowStateSection(const QString& title, GraphArrowS
         emitThemeChanged();
     }));
 
+    layout->addWidget(createIntEditor("Line Width", state.lineWidth, 1, 10, [&state, onUpdate, this](int v) {
+        state.lineWidth = v;
+        if (onUpdate) onUpdate();
+        emitThemeChanged();
+    }));
+
     parentLayout->addWidget(section);
 }
 
@@ -1298,7 +1361,14 @@ void ThemeEditorWindow::buildEdgeStateProperties(GraphEdgeState& state, QVBoxLay
 
 void ThemeEditorWindow::buildPreviewLineProperties(GraphPreviewLineTheme& preview, QVBoxLayout* layout)
 {
-    auto updatePreview = [this]() { emitThemeChanged(); };
+    auto* previewWidget = new StandalonePreviewLinePreview();
+    layout->addWidget(new QLabel("<b>Live Connecting Line Preview:</b>"));
+    layout->addWidget(previewWidget);
+
+    auto updatePreview = [previewWidget, this]() {
+        if (previewWidget) previewWidget->refresh();
+        emitThemeChanged();
+    };
 
     QVBoxLayout* lineLayout = nullptr;
     auto* lineBox = createSection("Connecting Line Styling", lineLayout);
@@ -1319,6 +1389,8 @@ void ThemeEditorWindow::buildPreviewLineProperties(GraphPreviewLineTheme& previe
     }));
 
     layout->addWidget(lineBox);
+
+    buildArrowStateSection("Arrowhead Properties", preview.arrow, layout, updatePreview);
 }
 
 void ThemeEditorWindow::buildPortStateProperties(GraphPortState& state, QVBoxLayout* layout)

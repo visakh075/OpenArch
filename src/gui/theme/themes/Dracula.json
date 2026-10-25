@@ -87,9 +87,16 @@
     },
     "edge": {
         "preview": {
+            "arrow": {
+                "fillColor": "#8be9fdff",
+                "height": 10,
+                "lineColor": "#8be9fdff",
+                "lineWidth": 2,
+                "width": 14
+            },
             "color": "#8be9fdff",
-            "width": 2,
-            "style": "dashed"
+            "style": "dashed",
+            "width": 2
         },
         "normal": {
             "lineColor": "#8be9fdff",

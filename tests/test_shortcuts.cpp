@@ -434,8 +434,63 @@ int main(int argc, char** argv)
     assert(selectedNode != nullptr && selectedNode->nodeId() == targetNodeId);
     std::cout << " -> PASSED: showNodeInGraph successfully locates, focuses, and selects target node on canvas." << std::endl;
 
+    std::cout << "\n[TEST] 16. Verifying Connecting Edge (Preview Line & Arrowhead) Properties..." << std::endl;
+    // 16.1 Verify preview line and arrow defaults
+    const auto& prevTheme = themeManager.theme().edge.preview;
+    assert(prevTheme.width == 2);
+    assert(prevTheme.style == Qt::DashLine);
+    assert(prevTheme.arrow.width == 14);
+    assert(prevTheme.arrow.height == 10);
+    assert(prevTheme.arrow.lineWidth == 2);
+    assert(prevTheme.arrow.lineColor.isValid());
+    assert(prevTheme.arrow.fillColor.isValid());
+
+    // 16.2 Verify custom arrow and preview styling persistence
+    themeManager.mutableTheme().edge.preview.color = QColor("#00b4d8");
+    themeManager.mutableTheme().edge.preview.width = 3;
+    themeManager.mutableTheme().edge.preview.style = Qt::DashLine;
+    themeManager.mutableTheme().edge.preview.arrow.width = 22;
+    themeManager.mutableTheme().edge.preview.arrow.height = 16;
+    themeManager.mutableTheme().edge.preview.arrow.lineWidth = 3;
+    themeManager.mutableTheme().edge.preview.arrow.lineColor = QColor("#ff5555");
+    themeManager.mutableTheme().edge.preview.arrow.fillColor = QColor("#50fa7b");
+
+    QTemporaryFile tempPreviewThemeFile;
+    assert(tempPreviewThemeFile.open());
+    QString tempPreviewThemePath = tempPreviewThemeFile.fileName();
+    tempPreviewThemeFile.close();
+
+    assert(themeManager.save(tempPreviewThemePath) == true);
+    GraphThemeManager reloadedPrevManager;
+    assert(reloadedPrevManager.load(tempPreviewThemePath) == true);
+    const auto& reloadedPrev = reloadedPrevManager.theme().edge.preview;
+    assert(reloadedPrev.color == QColor("#00b4d8"));
+    assert(reloadedPrev.width == 3);
+    assert(reloadedPrev.style == Qt::DashLine);
+    assert(reloadedPrev.arrow.width == 22);
+    assert(reloadedPrev.arrow.height == 16);
+    assert(reloadedPrev.arrow.lineWidth == 3);
+    assert(reloadedPrev.arrow.lineColor == QColor("#ff5555"));
+    assert(reloadedPrev.arrow.fillColor == QColor("#50fa7b"));
+
+    // 16.3 Verify geometry calculation for connecting edge
+    auto previewDataEmpty = stdItem->buildPreviewData(QPointF(800, 600), nullptr, 14.0);
+    assert(previewDataEmpty.arrowTip == QPointF(800, 600));
+    assert(previewDataEmpty.linePath.elementCount() >= 2);
+
+    auto previewDataTarget = stdItem->buildPreviewData(QPointF(600, 300), manualItem, 14.0);
+    assert(previewDataTarget.linePath.elementCount() >= 2);
+
+    GraphConnectingEdgeItem connectingItem;
+    connectingItem.setConnectingData(previewDataTarget.linePath, previewDataTarget.arrowTip, previewDataTarget.arrowAngle);
+    assert(connectingItem.arrowTip() == previewDataTarget.arrowTip);
+    assert(std::abs(connectingItem.arrowAngle() - previewDataTarget.arrowAngle) < 1e-4);
+    assert(!connectingItem.boundingRect().isEmpty());
+
+    std::cout << " -> PASSED: Connecting edge supports all properties (arrow width, height, colors, lineWidth, line styling) with persistence." << std::endl;
+
     std::cout << "\n==============================================" << std::endl;
-    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (15/15)" << std::endl;
+    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (16/16)" << std::endl;
     std::cout << "==============================================" << std::endl;
 
     return 0;

@@ -233,7 +233,7 @@ public:
     PreviewLinePreviewWidget(QWidget* parent = nullptr)
         : QWidget(parent)
     {
-        setFixedHeight(60);
+        setFixedHeight(70);
     }
 
     void refresh() { update(); }
@@ -249,9 +249,38 @@ protected:
         const auto& theme = GraphThemeManager::instance()->theme().edge.preview;
 
         qreal midY = height() / 2.0;
+        QPointF start(20, midY);
+        QPointF tip(width() - 20, midY);
+
+        const auto& arrow = theme.arrow;
+        qreal arrowW = arrow.width > 0 ? arrow.width : 14.0;
+        qreal arrowH = arrow.height > 0 ? arrow.height : 10.0;
+
+        QPointF lineEnd = tip;
+        if (tip.x() - start.x() > arrowW + 1.0)
+        {
+            lineEnd.setX(tip.x() - arrowW);
+        }
+
         QPen pen(theme.color, theme.width, theme.style, Qt::RoundCap, Qt::RoundJoin);
+        if (theme.style == Qt::CustomDashLine && !theme.dashPattern.isEmpty())
+        {
+            pen.setDashPattern(theme.dashPattern);
+        }
         p.setPen(pen);
-        p.drawLine(QPointF(20, midY), QPointF(width() - 20, midY));
+        p.drawLine(start, lineEnd);
+
+        // Arrowhead
+        QPolygonF head;
+        head << tip
+             << QPointF(tip.x() - arrowW, midY - arrowH / 2.0)
+             << QPointF(tip.x() - arrowW, midY + arrowH / 2.0);
+
+        QPen arrowPen(arrow.lineColor, arrow.lineWidth > 0 ? arrow.lineWidth : 2);
+        arrowPen.setJoinStyle(Qt::RoundJoin);
+        p.setPen(arrowPen);
+        p.setBrush(arrow.fillColor);
+        p.drawPolygon(head);
     }
 };
 
@@ -824,6 +853,12 @@ void ThemeEditorDock::buildArrowStateSection(const QString& title, GraphArrowSta
         emitThemeChanged();
     }));
 
+    layout->addWidget(createIntEditor("Line Width", state.lineWidth, 1, 10, [&state, onUpdate, this](int v) {
+        state.lineWidth = v;
+        if (onUpdate) onUpdate();
+        emitThemeChanged();
+    }));
+
     parentLayout->addWidget(section);
 }
 
@@ -1029,6 +1064,8 @@ void ThemeEditorDock::buildPreviewLineProperties(GraphPreviewLineTheme& preview,
     }));
 
     layout->addWidget(lineBox);
+
+    buildArrowStateSection("Arrowhead Properties", preview.arrow, layout, updatePreview);
 }
 
 void ThemeEditorDock::buildPortStateProperties(GraphPortState& state, QVBoxLayout* layout)

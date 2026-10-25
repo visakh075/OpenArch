@@ -396,9 +396,40 @@ QJsonObject saveEdgeState(const GraphEdgeState& state)
 GraphPreviewLineTheme loadPreviewLineTheme(const QJsonObject& obj)
 {
     GraphPreviewLineTheme preview;
-    preview.color = loadColor(obj, "color", "#00b4d8");
-    preview.width = loadInt(obj, "width", 2);
-    preview.style = loadPenStyle(obj, "style", Qt::DashLine);
+    if (obj.contains("lineColor"))
+        preview.color = loadColor(obj, "lineColor", "#00b4d8");
+    else
+        preview.color = loadColor(obj, "color", "#00b4d8");
+
+    if (obj.contains("lineWidth"))
+        preview.width = loadInt(obj, "lineWidth", 2);
+    else
+        preview.width = loadInt(obj, "width", 2);
+
+    if (obj.contains("lineStyle"))
+        preview.style = loadPenStyle(obj, "lineStyle", Qt::DashLine);
+    else
+        preview.style = loadPenStyle(obj, "style", Qt::DashLine);
+
+    if (obj.contains("dashPattern") && obj["dashPattern"].isArray())
+    {
+        preview.dashPattern.clear();
+        for (const auto& v : obj["dashPattern"].toArray())
+        {
+            preview.dashPattern.append(v.toDouble());
+        }
+    }
+
+    if (obj.contains("arrow") && obj["arrow"].isObject())
+    {
+        preview.arrow = loadArrowState(obj["arrow"].toObject());
+    }
+    else
+    {
+        preview.arrow.lineColor = preview.color;
+        preview.arrow.fillColor = preview.color;
+    }
+
     return preview;
 }
 
@@ -408,6 +439,14 @@ QJsonObject savePreviewLineTheme(const GraphPreviewLineTheme& preview)
     obj["color"] = saveColor(preview.color);
     obj["width"] = preview.width;
     obj["style"] = savePenStyle(preview.style);
+    if (!preview.dashPattern.isEmpty())
+    {
+        QJsonArray arr;
+        for (qreal v : preview.dashPattern)
+            arr.append(v);
+        obj["dashPattern"] = arr;
+    }
+    obj["arrow"] = saveArrowState(preview.arrow);
     return obj;
 }
 
@@ -771,6 +810,7 @@ void GraphThemeManager::initializeDefaults()
     m_theme.edge.preview.color = QColor(0, 180, 216);
     m_theme.edge.preview.width = 2;
     m_theme.edge.preview.style = Qt::DashLine;
+    m_theme.edge.preview.arrow = {QColor(0, 180, 216), QColor(0, 180, 216), QColor("#000000"), 14, 10, 2, 1};
 
     m_theme.edge.normal.lineColor = QColor("#7aa2f7");
     m_theme.edge.normal.lineWidth = 2;

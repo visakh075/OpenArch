@@ -150,6 +150,13 @@
             "lineWidth": 2
         },
         "preview": {
+            "arrow": {
+                "fillColor": "#0284c7ff",
+                "height": 10,
+                "lineColor": "#0284c7ff",
+                "lineWidth": 2,
+                "width": 14
+            },
             "color": "#0284c7ff",
             "style": "dashed",
             "width": 2

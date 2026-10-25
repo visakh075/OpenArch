@@ -129,6 +129,26 @@ struct GraphPreviewLineTheme
     QColor color{0, 180, 216};
     int width = 2;
     Qt::PenStyle style = Qt::DashLine;
+    QVector<qreal> dashPattern;
+    GraphArrowState arrow;
+
+    GraphPreviewLineTheme()
+    {
+        arrow.lineColor = color;
+        arrow.fillColor = color;
+        arrow.borderColor = QColor("#000000");
+        arrow.width = 14;
+        arrow.height = 10;
+        arrow.lineWidth = 2;
+        arrow.borderWidth = 1;
+    }
+
+    inline QColor lineColor() const { return color; }
+    inline void setLineColor(const QColor& c) { color = c; }
+    inline int lineWidth() const { return width; }
+    inline void setLineWidth(int w) { width = w; }
+    inline Qt::PenStyle lineStyle() const { return style; }
+    inline void setLineStyle(Qt::PenStyle s) { style = s; }
 };
 
 /*
