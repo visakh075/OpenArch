@@ -324,7 +324,7 @@ void MainWindow::setupMenu()
     }
 
     themeMenu_->addAction("Launch Standalone &Theme Editor...", this, [this]() {
-        auto* editor = new ThemeEditorWindow(this);
+        auto* editor = new ThemeEditorWindow(nullptr);
         editor->setAttribute(Qt::WA_DeleteOnClose);
         editor->show();
     });
@@ -613,15 +613,6 @@ void MainWindow::setupConnections()
 
     auto* backspaceShortcut = new QShortcut(QKeySequence(Qt::Key_Backspace), this);
     connect(backspaceShortcut, &QShortcut::activated, this, &MainWindow::deleteSelected);
-
-    auto* cutShortcut = new QShortcut(QKeySequence::Cut, this);
-    connect(cutShortcut, &QShortcut::activated, this, &MainWindow::cutSelectedNodes);
-
-    auto* copyShortcut = new QShortcut(QKeySequence::Copy, this);
-    connect(copyShortcut, &QShortcut::activated, this, &MainWindow::copySelectedNodes);
-
-    auto* pasteShortcut = new QShortcut(QKeySequence::Paste, this);
-    connect(pasteShortcut, &QShortcut::activated, this, [this]() { pasteNodes(); });
 
     connect(ShortcutManager::instance(), &ShortcutManager::shortcutsChanged, this, &MainWindow::updateShortcutLabels);
 

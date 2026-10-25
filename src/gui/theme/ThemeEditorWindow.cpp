@@ -545,19 +545,24 @@ void ThemeEditorWindow::setupMenusAndToolbars()
     auto* editMenu = menuBar()->addMenu("&Edit");
     actAddStyle_ = editMenu->addAction("&Add Style...", this, &ThemeEditorWindow::addNewStyle);
     actAddStyle_->setShortcut(QKeySequence::New);
+    actAddStyle_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
 
     actDuplicateStyle_ = editMenu->addAction("&Duplicate Style...", this, &ThemeEditorWindow::duplicateSelectedStyle);
     actDuplicateStyle_->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_D));
+    actDuplicateStyle_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
 
     actRemoveStyle_ = editMenu->addAction("&Remove Style", this, &ThemeEditorWindow::removeSelectedStyle);
     actRemoveStyle_->setShortcut(QKeySequence::Delete);
+    actRemoveStyle_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
 
     editMenu->addSeparator();
     actCopyStyle_ = editMenu->addAction("&Copy Style Properties", this, &ThemeEditorWindow::copySelectedStyle);
     actCopyStyle_->setShortcut(QKeySequence::Copy);
+    actCopyStyle_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
 
     actPasteStyle_ = editMenu->addAction("&Paste Style Properties", this, &ThemeEditorWindow::pasteSelectedStyle);
     actPasteStyle_->setShortcut(QKeySequence::Paste);
+    actPasteStyle_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     actPasteStyle_->setEnabled(false);
 
     // ==========================================
