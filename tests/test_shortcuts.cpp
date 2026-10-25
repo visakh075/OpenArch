@@ -406,8 +406,36 @@ int main(int argc, char** argv)
     editorWin.refreshLiveView();
     std::cout << " -> PASSED: Standalone Theme Editor initialized and verified with custom style lifecycle and live view." << std::endl;
 
+    // 15. Show in Graph from Architecture
+    std::cout << "\n[TEST] 15. Verifying Show in Graph from Architecture..." << std::endl;
+    QTemporaryFile tempDbFile;
+    assert(tempDbFile.open());
+    QString tempDbPath = tempDbFile.fileName();
+    tempDbFile.close();
+
+    window.setDb(tempDbPath.toStdString());
+    assert(window.model() != nullptr);
+
+    NodeData targetNodeData;
+    targetNodeData.name = "TargetServer";
+    targetNodeData.type = "server";
+    targetNodeData.metadata = R"({"x": 500, "y": 400})";
+    NodeId targetNodeId = 0;
+    assert(window.model()->addNode(targetNodeData, targetNodeId).ok);
+
+    window.populateNavigator();
+    window.showNodeInGraph(targetNodeId);
+
+    assert(window.graphView() != nullptr);
+    assert(window.graphView()->scene() != nullptr);
+    auto selectedItems = window.graphView()->scene()->selectedItems();
+    assert(!selectedItems.isEmpty());
+    auto* selectedNode = dynamic_cast<GraphNodeItem*>(selectedItems.first());
+    assert(selectedNode != nullptr && selectedNode->nodeId() == targetNodeId);
+    std::cout << " -> PASSED: showNodeInGraph successfully locates, focuses, and selects target node on canvas." << std::endl;
+
     std::cout << "\n==============================================" << std::endl;
-    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (14/14)" << std::endl;
+    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (15/15)" << std::endl;
     std::cout << "==============================================" << std::endl;
 
     return 0;

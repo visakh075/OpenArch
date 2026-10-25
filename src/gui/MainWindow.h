@@ -64,6 +64,7 @@ public:
     QDockWidget* architectureDock() const { return architectureDock_; }
     ThemeEditorDock* themeDock() const { return themeDock_; }
     bool isRendering() const { return isRendering_; }
+    ArchitectureModel* model() const { return model_; }
     void exportToInteractiveHtml(const QString& filePath = QString());
 
 public slots:
@@ -72,6 +73,9 @@ public slots:
     void copySelectedNode();
     void pasteNodes();
     void setGlobalRoutingAlgorithm(EdgeRoutingAlgorithm algo);
+    void showSelectedInGraph();
+    void showNodeInGraph(NodeId nodeId);
+    void showLayerInGraph(LayerId layerId);
 
 private slots:
     void saveLayout();
@@ -144,6 +148,7 @@ private:
     ArchitectureFilterProxyModel* navProxyModel_{nullptr};
     QLineEdit* treeSearchEdit_{nullptr};
     QComboBox* treeFilterCombo_{nullptr};
+    QPushButton* btnShowInGraph_{nullptr};
     QLabel* treeStatusLabel_{nullptr};
 
     QGraphicsScene* scene_{nullptr};

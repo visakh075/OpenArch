@@ -92,18 +92,29 @@ void MainWindow::setupUi()
     treeSearchEdit_->setPlaceholderText("Search architecture...");
     treeSearchEdit_->setClearButtonEnabled(true);
 
-    // Filter bar
+    // Filter bar & action row
+    auto* navControlRow = new QHBoxLayout();
+    navControlRow->setContentsMargins(0, 0, 0, 0);
+    navControlRow->setSpacing(4);
+
     treeFilterCombo_ = new QComboBox(navContainer);
     treeFilterCombo_->addItem("All Categories", 0);
     treeFilterCombo_->addItem("Nodes Only", 1);
     treeFilterCombo_->addItem("Layers Only", 2);
+
+    btnShowInGraph_ = new QPushButton(QIcon(":/icons/layers.svg"), "Show in Graph", navContainer);
+    btnShowInGraph_->setToolTip("Locate, select, and center the highlighted architecture item on the canvas");
+    btnShowInGraph_->setCursor(Qt::PointingHandCursor);
+
+    navControlRow->addWidget(treeFilterCombo_, 1);
+    navControlRow->addWidget(btnShowInGraph_);
 
     // Status label
     treeStatusLabel_ = new QLabel(navContainer);
     treeStatusLabel_->setStyleSheet("color: #888888; font-size: 11px; padding: 2px;");
 
     navLayout->addWidget(treeSearchEdit_);
-    navLayout->addWidget(treeFilterCombo_);
+    navLayout->addLayout(navControlRow);
     navLayout->addWidget(navigator_, 1);
     navLayout->addWidget(treeStatusLabel_);
 
@@ -574,8 +585,14 @@ void MainWindow::setupConnections()
 
     connect(navigator_, &QTreeView::doubleClicked, this, &MainWindow::onTreeItemDoubleClicked);
     connect(navigator_, &QTreeView::clicked, this, &MainWindow::onTreeItemClicked);
+    connect(navigator_, &QTreeView::activated, this, &MainWindow::showSelectedInGraph);
     navigator_->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(navigator_, &QTreeView::customContextMenuRequested, this, &MainWindow::onNavigatorContextMenu);
+
+    if (btnShowInGraph_)
+    {
+        connect(btnShowInGraph_, &QPushButton::clicked, this, &MainWindow::showSelectedInGraph);
+    }
 
     connect(treeSearchEdit_, &QLineEdit::textChanged, this, [this](const QString& text) {
         if (navProxyModel_) {
@@ -945,18 +962,143 @@ void MainWindow::onTreeItemClicked(const QModelIndex& index)
 
     if (type == ItemType::Layer) {
         auto layerId = static_cast<LayerId>(item->data(NavRole::Id).toULongLong());
-        if (layerId > 0)
-        {
-            renderGraph(model_->extractGraph(layerId));
-        }
-        else
-        {
-            renderGraph(model_->extractGraph(std::nullopt));
-        }
+        showLayerInGraph(layerId);
+    }
+    else if (type == ItemType::Node) {
+        auto nodeId = static_cast<NodeId>(item->data(NavRole::Id).toULongLong());
+        showNodeInGraph(nodeId);
     }
     else {
         renderGraph(model_->extractGraph(std::nullopt));
     }
+}
+
+void MainWindow::showSelectedInGraph()
+{
+    if (!navigator_ || !model_) return;
+
+    QModelIndex index = navigator_->currentIndex();
+    if (!index.isValid()) return;
+
+    QModelIndex srcIndex = navProxyModel_ ? navProxyModel_->mapToSource(index) : index;
+    auto* item = navModel_->itemFromIndex(srcIndex);
+    if (!item) return;
+
+    auto type = static_cast<ItemType>(item->data(NavRole::Type).toInt());
+    qulonglong id = item->data(NavRole::Id).toULongLong();
+
+    if (type == ItemType::Node)
+    {
+        showNodeInGraph(static_cast<NodeId>(id));
+    }
+    else if (type == ItemType::Layer)
+    {
+        showLayerInGraph(static_cast<LayerId>(id));
+    }
+    else
+    {
+        showCanvas();
+        renderGraph(model_->extractGraph(std::nullopt));
+        if (scene_ && graphView_)
+        {
+            QRectF b = scene_->itemsBoundingRect();
+            if (!b.isEmpty()) graphView_->fitInView(b.adjusted(-40, -40, 40, 40), Qt::KeepAspectRatio);
+        }
+    }
+}
+
+void MainWindow::showNodeInGraph(NodeId nodeId)
+{
+    if (!model_ || !scene_ || !graphView_) return;
+
+    showCanvas();
+
+    // 1. Locate node item in current scene
+    GraphNodeItem* targetItem = nullptr;
+    for (QGraphicsItem* item : scene_->items())
+    {
+        if (auto* nodeItem = dynamic_cast<GraphNodeItem*>(item))
+        {
+            if (nodeItem->nodeId() == nodeId)
+            {
+                targetItem = nodeItem;
+                break;
+            }
+        }
+    }
+
+    // 2. If node is not on canvas (e.g. filtered by a layer), render the full graph
+    if (!targetItem)
+    {
+        renderGraph(model_->extractGraph(std::nullopt));
+        for (QGraphicsItem* item : scene_->items())
+        {
+            if (auto* nodeItem = dynamic_cast<GraphNodeItem*>(item))
+            {
+                if (nodeItem->nodeId() == nodeId)
+                {
+                    targetItem = nodeItem;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!targetItem) return;
+
+    // 3. Unfold any parent containers so the target node is visible
+    QGraphicsItem* p = targetItem->parentItem();
+    while (p)
+    {
+        if (auto* parentNode = dynamic_cast<GraphNodeItem*>(p))
+        {
+            if (parentNode->isFolded())
+            {
+                parentNode->setFolded(false);
+            }
+        }
+        p = p->parentItem();
+    }
+
+    // 4. Select the target node
+    scene_->clearSelection();
+    targetItem->setSelected(true);
+    primaryNode_ = targetItem;
+
+    // 5. Center and focus view on target node
+    graphView_->centerOn(targetItem);
+    graphView_->ensureVisible(targetItem, 80, 80);
+
+    // 6. Provide status bar feedback
+    auto nodeOpt = model_->getNodeById(nodeId);
+    QString name = nodeOpt ? QString::fromStdString(nodeOpt->name) : QString("Node #%1").arg(nodeId);
+    statusBar()->showMessage(QString("Showing '%1' in graph").arg(name), 2500);
+}
+
+void MainWindow::showLayerInGraph(LayerId layerId)
+{
+    if (!model_ || !scene_ || !graphView_) return;
+
+    showCanvas();
+
+    if (layerId > 0)
+    {
+        renderGraph(model_->extractGraph(layerId));
+    }
+    else
+    {
+        renderGraph(model_->extractGraph(std::nullopt));
+    }
+
+    QRectF b = scene_->itemsBoundingRect();
+    if (!b.isEmpty())
+    {
+        graphView_->fitInView(b.adjusted(-40, -40, 40, 40), Qt::KeepAspectRatio);
+    }
+
+    auto layerOpt = model_->getLayerById(layerId);
+    QString name = layerOpt ? QString::fromStdString(layerOpt->name) : QString("Layer #%1").arg(layerId);
+    statusBar()->showMessage(QString("Showing layer '%1' in graph").arg(name), 2500);
 }
 
 void MainWindow::updateNavStatus()
@@ -3142,6 +3284,8 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
     QMenu menu(this);
     if (type == ItemType::Node)
     {
+        QAction* showAct = menu.addAction(QIcon(":/icons/layers.svg"), "Show in Graph");
+        menu.addSeparator();
         QAction* editAct = menu.addAction("Edit Node...");
         menu.addSeparator();
         auto* govMenu = menu.addMenu("Governance");
@@ -3166,7 +3310,11 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
         QAction* delAct = menu.addAction("Delete Node");
 
         QAction* chosen = menu.exec(navigator_->viewport()->mapToGlobal(pos));
-        if (chosen == editAct)
+        if (chosen == showAct)
+        {
+            showNodeInGraph(id);
+        }
+        else if (chosen == editAct)
         {
             NodeEditorDialog dlg(model_, id, this);
             if (dlg.exec() == QDialog::Accepted)
@@ -3299,6 +3447,8 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
     }
     else if (type == ItemType::Layer)
     {
+        QAction* showAct = menu.addAction(QIcon(":/icons/layers.svg"), "Show in Graph");
+        menu.addSeparator();
         QAction* editAct = menu.addAction("Edit Layer...");
         menu.addSeparator();
         auto* govMenu = menu.addMenu("Governance");
@@ -3312,7 +3462,11 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
         QAction* delAct = menu.addAction("Delete Layer");
 
         QAction* chosen = menu.exec(navigator_->viewport()->mapToGlobal(pos));
-        if (chosen == editAct)
+        if (chosen == showAct)
+        {
+            showLayerInGraph(id);
+        }
+        else if (chosen == editAct)
         {
             LayerEditorDialog dlg(model_, id, this);
             if (dlg.exec() == QDialog::Accepted)
