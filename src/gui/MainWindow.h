@@ -63,6 +63,8 @@ public:
     GraphView* graphView() const { return graphView_; }
     QDockWidget* architectureDock() const { return architectureDock_; }
     ThemeEditorDock* themeDock() const { return themeDock_; }
+    QMenu* themeMenu() const { return themeMenu_; }
+    void populateThemeMenu();
     bool isRendering() const { return isRendering_; }
     ArchitectureModel* model() const { return model_; }
     void exportToInteractiveHtml(const QString& filePath = QString());
@@ -106,7 +108,6 @@ private slots:
 private:
     void setupUi();
     void setupMenu();
-    void populateThemeMenu();
     void setupRoutingMenuAndControls();
     void setupToolbar();
     void setupShortcuts();

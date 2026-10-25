@@ -1,0 +1,305 @@
+{
+    "name": "GitHub Light",
+    "view": {
+        "background": "#f6f8faff",
+        "grid": {
+            "enabled": false,
+            "lineWidth": 1,
+            "minorColor": "#eaecf0ff",
+            "majorColor": "#d0d7deff",
+            "spacing": 20,
+            "majorSpacing": 100
+        }
+    },
+    "node": {
+        "minWidth": 120,
+        "minHeight": 50,
+        "normal": {
+            "background": "#ffffffff",
+            "border": "#d0d7deff",
+            "borderWidth": 2,
+            "borderStyle": "solid",
+            "radius": 8,
+            "padding": 8,
+            "title": {
+                "color": "#1f2328ff",
+                "size": 14,
+                "bold": true,
+                "align": "center"
+            },
+            "body": {
+                "color": "#656d76ff",
+                "size": 11,
+                "bold": false,
+                "align": "center"
+            },
+            "tertiary": {
+                "color": "#656d76a0",
+                "size": 9,
+                "bold": false,
+                "italic": true,
+                "align": "center"
+            }
+        },
+        "hover": {
+            "background": "#f3f4f6ff",
+            "border": "#0969daff",
+            "borderWidth": 3,
+            "borderStyle": "solid",
+            "radius": 8,
+            "padding": 8,
+            "title": {
+                "color": "#0969daff",
+                "size": 14,
+                "bold": true,
+                "align": "center"
+            },
+            "body": {
+                "color": "#24292fff",
+                "size": 11,
+                "bold": false,
+                "align": "center"
+            },
+            "tertiary": {
+                "color": "#57606aff",
+                "size": 9,
+                "bold": false,
+                "italic": true,
+                "align": "center"
+            }
+        },
+        "selected": {
+            "background": "#ddf4ffff",
+            "border": "#0969daff",
+            "borderWidth": 4,
+            "borderStyle": "solid",
+            "radius": 8,
+            "padding": 8,
+            "title": {
+                "color": "#0969daff",
+                "size": 14,
+                "bold": true,
+                "align": "center"
+            },
+            "body": {
+                "color": "#0550aeff",
+                "size": 11,
+                "bold": false,
+                "align": "center"
+            },
+            "tertiary": {
+                "color": "#0969daa0",
+                "size": 9,
+                "bold": false,
+                "italic": true,
+                "align": "center"
+            }
+        }
+    },
+    "container": {
+        "minWidth": 220,
+        "minHeight": 140,
+        "normal": {
+            "background": "#f6f8fa60",
+            "border": "#d0d7deff",
+            "borderWidth": 2,
+            "borderStyle": "dashed",
+            "dashPattern": [6, 4],
+            "radius": 8,
+            "padding": 8,
+            "headerBackground": "#eaeef280",
+            "headerHeightPadding": 12,
+            "title": {
+                "color": "#1f2328ff",
+                "size": 14,
+                "bold": true,
+                "align": "left"
+            },
+            "body": {
+                "color": "#656d76ff",
+                "size": 11,
+                "bold": false,
+                "align": "center"
+            },
+            "tertiary": {
+                "color": "#656d76a0",
+                "size": 9,
+                "bold": false,
+                "italic": true,
+                "align": "center"
+            }
+        },
+        "hover": {
+            "background": "#ddf4ff40",
+            "border": "#54aeffff",
+            "borderWidth": 2,
+            "borderStyle": "dashed",
+            "dashPattern": [6, 4],
+            "radius": 8,
+            "padding": 8,
+            "headerBackground": "#ddf4ff80",
+            "headerHeightPadding": 12,
+            "title": {
+                "color": "#0969daff",
+                "size": 14,
+                "bold": true,
+                "align": "left"
+            },
+            "body": {
+                "color": "#24292fff",
+                "size": 11,
+                "bold": false,
+                "align": "center"
+            },
+            "tertiary": {
+                "color": "#57606aff",
+                "size": 9,
+                "bold": false,
+                "italic": true,
+                "align": "center"
+            }
+        },
+        "selected": {
+            "background": "#ddf4ff60",
+            "border": "#0969daff",
+            "borderWidth": 3,
+            "borderStyle": "dashed",
+            "dashPattern": [6, 4],
+            "radius": 8,
+            "padding": 8,
+            "headerBackground": "#b6e3ff80",
+            "headerHeightPadding": 12,
+            "title": {
+                "color": "#0550aeff",
+                "size": 14,
+                "bold": true,
+                "align": "left"
+            },
+            "body": {
+                "color": "#0550aeff",
+                "size": 11,
+                "bold": false,
+                "align": "center"
+            },
+            "tertiary": {
+                "color": "#0969daa0",
+                "size": 9,
+                "bold": false,
+                "italic": true,
+                "align": "center"
+            }
+        }
+    },
+    "edge": {
+        "normal": {
+            "lineColor": "#57606aff",
+            "lineWidth": 2,
+            "arrow": {
+                "lineColor": "#57606aff",
+                "fillColor": "#57606aaa",
+                "width": 14,
+                "height": 10,
+                "lineWidth": 2
+            },
+            "label": {
+                "textColor": "#24292fff",
+                "backgroundColor": "#ffffffff",
+                "borderColor": "#d0d7deff",
+                "borderWidth": 1,
+                "fontSize": 11,
+                "bold": false,
+                "paddingX": 6,
+                "paddingY": 3,
+                "radius": 4,
+                "offset": 8
+            }
+        },
+        "hover": {
+            "lineColor": "#0969daff",
+            "lineWidth": 3,
+            "arrow": {
+                "lineColor": "#0969daff",
+                "fillColor": "#0969daff",
+                "width": 16,
+                "height": 12,
+                "lineWidth": 2
+            },
+            "label": {
+                "textColor": "#0969daff",
+                "backgroundColor": "#ffffffff",
+                "borderColor": "#0969daff",
+                "borderWidth": 1,
+                "fontSize": 11,
+                "bold": true,
+                "paddingX": 6,
+                "paddingY": 3,
+                "radius": 4,
+                "offset": 8
+            }
+        },
+        "selected": {
+            "lineColor": "#1a7f37ff",
+            "lineWidth": 4,
+            "arrow": {
+                "lineColor": "#1a7f37ff",
+                "fillColor": "#1a7f37ff",
+                "width": 18,
+                "height": 14,
+                "lineWidth": 3
+            },
+            "label": {
+                "textColor": "#1a7f37ff",
+                "backgroundColor": "#dafbe1ff",
+                "borderColor": "#1a7f37ff",
+                "borderWidth": 2,
+                "fontSize": 11,
+                "bold": true,
+                "paddingX": 6,
+                "paddingY": 3,
+                "radius": 4,
+                "offset": 8
+            }
+        },
+        "preview": {
+            "color": "#0969daff",
+            "width": 2,
+            "style": "dashed",
+            "arrow": {
+                "lineColor": "#0969daff",
+                "fillColor": "#0969daff",
+                "width": 14,
+                "height": 10,
+                "lineWidth": 2
+            }
+        }
+    },
+    "port": {
+        "inputColor": "#0969daff",
+        "outputColor": "#1a7f37ff",
+        "hoverColor": "#8250dfff",
+        "radius": 6
+    },
+    "selection": {
+        "outline": "#0969daff",
+        "fill": "#0969da20"
+    },
+    "interaction": {
+        "hoverOutline": "#54aeffff",
+        "invalidConnection": "#cf222eff",
+        "dropTarget": "#1a7f37ff"
+    },
+    "edge#pwr": {
+        "lineColor": "#bc4c00ff",
+        "lineWidth": 3
+    },
+    "edge#lan": {
+        "lineColor": "#0969daff",
+        "lineWidth": 2
+    },
+    "node#pwr": {
+        "border": "#bc4c00ff"
+    },
+    "node#lan": {
+        "border": "#0969daff"
+    }
+}

@@ -626,12 +626,36 @@ void ThemeEditorWindow::setupMenusAndToolbars()
     // Presets Menu
     // ==========================================
     auto* presetsMenu = menuBar()->addMenu("&Presets");
-    presetsMenu->addAction("Load Dark Theme", this, [this]() {
-        loadTheme("src/gui/theme/themes/Dark.json");
-    });
-    presetsMenu->addAction("Load Light Theme", this, [this]() {
-        loadTheme("src/gui/theme/themes/Light.json");
-    });
+    QDir themeDir("themes");
+    if (!themeDir.exists()) {
+        themeDir = QDir(QCoreApplication::applicationDirPath() + "/themes");
+    }
+    if (!themeDir.exists()) {
+        themeDir = QDir(QCoreApplication::applicationDirPath() + "/../src/gui/theme/themes");
+    }
+    if (!themeDir.exists()) {
+        themeDir = QDir("src/gui/theme/themes");
+    }
+
+    if (themeDir.exists()) {
+        QStringList filters;
+        filters << "*.json";
+        QFileInfoList list = themeDir.entryInfoList(filters, QDir::Files, QDir::Name);
+        for (const QFileInfo& fi : list) {
+            QString path = fi.absoluteFilePath();
+            QString name = fi.baseName();
+            presetsMenu->addAction(QString("Load %1").arg(name), this, [this, path]() {
+                loadTheme(path);
+            });
+        }
+    } else {
+        presetsMenu->addAction("Load Dark Theme", this, [this]() {
+            loadTheme("src/gui/theme/themes/Dark.json");
+        });
+        presetsMenu->addAction("Load Light Theme", this, [this]() {
+            loadTheme("src/gui/theme/themes/Light.json");
+        });
+    }
 
     // ==========================================
     // View Menu

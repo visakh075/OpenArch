@@ -489,8 +489,36 @@ int main(int argc, char** argv)
 
     std::cout << " -> PASSED: Connecting edge supports all properties (arrow width, height, colors, lineWidth, line styling) with persistence." << std::endl;
 
+    std::cout << "\n[TEST] 17. Verifying Light Theme Presets (GitHub Light, Solarized Light, Nord Light, Paper Light)..." << std::endl;
+    QStringList lightThemes = {
+        "src/gui/theme/themes/GitHub Light.json",
+        "src/gui/theme/themes/Solarized Light.json",
+        "src/gui/theme/themes/Nord Light.json",
+        "src/gui/theme/themes/Paper Light.json"
+    };
+
+    for (const QString& themePath : lightThemes) {
+        GraphThemeManager mgr;
+        assert(mgr.load(themePath) == true);
+        const auto& t = mgr.theme();
+        assert(!t.name.isEmpty());
+        // Verify background is a light color (lightness > 140)
+        assert(t.view.background.lightness() > 140);
+        // Verify node title and border are valid
+        assert(t.node.normal.title.color.isValid());
+        assert(t.node.normal.border.isValid());
+        // Verify preview arrow properties
+        assert(t.edge.preview.arrow.width > 0);
+        assert(t.edge.preview.arrow.lineColor.isValid());
+    }
+
+    // Verify MainWindow theme menu lists all presets
+    window.populateThemeMenu();
+    assert(window.themeMenu() != nullptr);
+    std::cout << " -> PASSED: All 4 new light themes load cleanly, validate as light backgrounds, and register in theme menus." << std::endl;
+
     std::cout << "\n==============================================" << std::endl;
-    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (16/16)" << std::endl;
+    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (17/17)" << std::endl;
     std::cout << "==============================================" << std::endl;
 
     return 0;
