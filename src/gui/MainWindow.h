@@ -46,6 +46,7 @@ class QComboBox;
 class QLabel;
 class QMenu;
 class QAction;
+class ThemeEditorDock;
 
 class MainWindow : public QMainWindow
 {
@@ -60,6 +61,9 @@ public:
     void pasteNodesAt(const std::optional<QPointF>& targetPos = std::nullopt);
     void populateNavigator();
     GraphView* graphView() const { return graphView_; }
+    QDockWidget* architectureDock() const { return architectureDock_; }
+    ThemeEditorDock* themeDock() const { return themeDock_; }
+    bool isRendering() const { return isRendering_; }
     void exportToInteractiveHtml(const QString& filePath = QString());
 
 public slots:
@@ -135,6 +139,7 @@ private:
 
     QTreeView* navigator_{nullptr};
     QDockWidget* architectureDock_{nullptr};
+    ThemeEditorDock* themeDock_{nullptr};
     QStandardItemModel* navModel_{nullptr};
     ArchitectureFilterProxyModel* navProxyModel_{nullptr};
     QLineEdit* treeSearchEdit_{nullptr};
@@ -187,8 +192,6 @@ private:
 
     QMenu*   routingMenu_{nullptr};
     QActionGroup* routingActionGroup_{nullptr};
-    QComboBox* routingCombo_{nullptr};
-    QToolBar* routingToolBar_{nullptr};
     QAction* actionLineJumps_{nullptr};
 
     std::string currentDbPath_;

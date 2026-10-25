@@ -5,6 +5,7 @@
 #include <QRectF>
 #include <QPainterPath>
 #include <vector>
+#include <optional>
 
 #include "core/Types.h"
 #include "core/ArchitectureModel.h"
@@ -48,6 +49,7 @@ public:
     void setEditable(bool enabled);
 
     bool isContainer() const;
+    bool canAcceptChildren() const;
     void adoptChild(GraphNodeItem* child);
     void releaseChild(GraphNodeItem* child);
     void setManualContainerSize(qreal w, qreal h);
@@ -68,6 +70,14 @@ public:
     void onThemeChanged();
 
     QRectF nodeRect() const { return cachedRect_; }
+
+    struct CustomDimensions {
+        std::optional<qreal> width;
+        std::optional<qreal> height;
+        bool dimLock{false};
+    };
+    CustomDimensions getCustomDimensions() const;
+    bool isDimLocked() const;
 
     static bool showGovernanceBadges();
     static void setShowGovernanceBadges(bool show);

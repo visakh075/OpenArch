@@ -1,5 +1,6 @@
 #include "GraphThemeManager.h"
 
+#include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
 #include <QFileInfo>
@@ -410,6 +411,249 @@ QJsonObject savePreviewLineTheme(const GraphPreviewLineTheme& preview)
     return obj;
 }
 
+void mergeEdgeState(GraphEdgeState& state, const QJsonObject& obj)
+{
+    if (obj.contains("lineColor"))
+        state.lineColor = loadColor(obj, "lineColor", state.lineColor.name(QColor::HexArgb));
+    else if (obj.contains("color"))
+        state.lineColor = loadColor(obj, "color", state.lineColor.name(QColor::HexArgb));
+
+    if (obj.contains("lineWidth"))
+        state.lineWidth = loadInt(obj, "lineWidth", state.lineWidth);
+    else if (obj.contains("width"))
+        state.lineWidth = loadInt(obj, "width", state.lineWidth);
+
+    if (obj.contains("lineStyle"))
+        state.lineStyle = loadPenStyle(obj, "lineStyle", state.lineStyle);
+    else if (obj.contains("style"))
+        state.lineStyle = loadPenStyle(obj, "style", state.lineStyle);
+
+    if (obj.contains("dashed"))
+    {
+        state.dashed = loadBool(obj, "dashed", state.dashed);
+        state.lineStyle = state.dashed ? Qt::DashLine : Qt::SolidLine;
+    }
+
+    if (obj.contains("dashPattern") && obj["dashPattern"].isArray())
+    {
+        state.dashPattern.clear();
+        for (const auto& val : obj["dashPattern"].toArray())
+            state.dashPattern.append(val.toDouble(4.0));
+    }
+
+    if (obj.contains("arrow") && obj["arrow"].isObject())
+    {
+        QJsonObject arrowObj = obj["arrow"].toObject();
+        if (arrowObj.contains("lineColor"))
+            state.arrow.lineColor = loadColor(arrowObj, "lineColor", state.arrow.lineColor.name(QColor::HexArgb));
+        if (arrowObj.contains("fillColor"))
+            state.arrow.fillColor = loadColor(arrowObj, "fillColor", state.arrow.fillColor.name(QColor::HexArgb));
+        if (arrowObj.contains("borderColor"))
+            state.arrow.borderColor = loadColor(arrowObj, "borderColor", state.arrow.borderColor.name(QColor::HexArgb));
+        if (arrowObj.contains("width"))
+            state.arrow.width = loadInt(arrowObj, "width", state.arrow.width);
+        if (arrowObj.contains("height"))
+            state.arrow.height = loadInt(arrowObj, "height", state.arrow.height);
+        if (arrowObj.contains("lineWidth"))
+            state.arrow.lineWidth = loadInt(arrowObj, "lineWidth", state.arrow.lineWidth);
+        if (arrowObj.contains("borderWidth"))
+            state.arrow.borderWidth = loadInt(arrowObj, "borderWidth", state.arrow.borderWidth);
+    }
+    else if (obj.contains("lineColor") || obj.contains("color"))
+    {
+        state.arrow.lineColor = state.lineColor;
+        state.arrow.fillColor = state.lineColor;
+    }
+
+    if (obj.contains("label") && obj["label"].isObject())
+    {
+        QJsonObject labelObj = obj["label"].toObject();
+        if (labelObj.contains("textColor"))
+            state.label.textColor = loadColor(labelObj, "textColor", state.label.textColor.name(QColor::HexArgb));
+        if (labelObj.contains("backgroundColor"))
+            state.label.backgroundColor = loadColor(labelObj, "backgroundColor", state.label.backgroundColor.name(QColor::HexArgb));
+        if (labelObj.contains("borderColor"))
+            state.label.borderColor = loadColor(labelObj, "borderColor", state.label.borderColor.name(QColor::HexArgb));
+        if (labelObj.contains("borderWidth"))
+            state.label.borderWidth = loadInt(labelObj, "borderWidth", state.label.borderWidth);
+        if (labelObj.contains("fontSize"))
+            state.label.fontSize = loadInt(labelObj, "fontSize", state.label.fontSize);
+        if (labelObj.contains("bold"))
+            state.label.bold = loadBool(labelObj, "bold", state.label.bold);
+        if (labelObj.contains("paddingX"))
+            state.label.paddingX = loadInt(labelObj, "paddingX", state.label.paddingX);
+        if (labelObj.contains("paddingY"))
+            state.label.paddingY = loadInt(labelObj, "paddingY", state.label.paddingY);
+        if (labelObj.contains("radius"))
+            state.label.radius = loadInt(labelObj, "radius", state.label.radius);
+        if (labelObj.contains("offset"))
+            state.label.offset = loadInt(labelObj, "offset", state.label.offset);
+    }
+}
+
+GraphEdgeTheme loadEdgeThemeOverride(const GraphEdgeTheme& baseTheme, const QJsonObject& obj)
+{
+    GraphEdgeTheme theme = baseTheme;
+
+    if (obj.contains("lineColor") || obj.contains("color") || obj.contains("lineWidth") ||
+        obj.contains("width") || obj.contains("lineStyle") || obj.contains("style") ||
+        obj.contains("dashed") || obj.contains("dashPattern") || obj.contains("arrow") ||
+        obj.contains("label"))
+    {
+        mergeEdgeState(theme.normal, obj);
+        mergeEdgeState(theme.hover, obj);
+        if (obj.contains("lineWidth") || obj.contains("width"))
+            theme.selected.lineWidth = std::max(theme.normal.lineWidth + 1, theme.selected.lineWidth);
+        if (obj.contains("lineStyle") || obj.contains("style") || obj.contains("dashed"))
+            theme.selected.lineStyle = theme.normal.lineStyle;
+    }
+
+    if (obj.contains("normal") && obj["normal"].isObject())
+    {
+        mergeEdgeState(theme.normal, obj["normal"].toObject());
+    }
+    if (obj.contains("hover") && obj["hover"].isObject())
+    {
+        mergeEdgeState(theme.hover, obj["hover"].toObject());
+    }
+    if (obj.contains("selected") && obj["selected"].isObject())
+    {
+        mergeEdgeState(theme.selected, obj["selected"].toObject());
+    }
+    if (obj.contains("preview") && obj["preview"].isObject())
+    {
+        theme.preview = loadPreviewLineTheme(obj["preview"].toObject());
+    }
+
+    return theme;
+}
+
+void mergeComponentState(GraphComponentState& state, const QJsonObject& obj, bool isContainer = false)
+{
+    if (obj.contains("background"))
+        state.background = loadColor(obj, "background", state.background.name(QColor::HexArgb));
+    if (obj.contains("backgroundAlpha"))
+        state.background.setAlpha(obj["backgroundAlpha"].toInt(state.background.alpha()));
+
+    if (obj.contains("border"))
+        state.border = loadColor(obj, "border", state.border.name(QColor::HexArgb));
+    if (obj.contains("borderColor"))
+        state.border = loadColor(obj, "borderColor", state.border.name(QColor::HexArgb));
+
+    if (obj.contains("borderWidth"))
+        state.borderWidth = loadInt(obj, "borderWidth", state.borderWidth);
+    if (obj.contains("borderStyle"))
+        state.borderStyle = loadPenStyle(obj, "borderStyle", state.borderStyle);
+
+    if (obj.contains("dashPattern") && obj["dashPattern"].isArray())
+    {
+        state.dashPattern.clear();
+        for (const auto& val : obj["dashPattern"].toArray())
+            state.dashPattern.append(val.toDouble(4.0));
+    }
+
+    if (obj.contains("radius"))
+        state.radius = loadInt(obj, "radius", state.radius);
+    if (obj.contains("padding"))
+        state.padding = loadInt(obj, "padding", state.padding);
+
+    if (obj.contains("headerBackground"))
+        state.headerBackground = loadColor(obj, "headerBackground", state.headerBackground.name(QColor::HexArgb));
+    if (obj.contains("headerAlpha"))
+        state.headerBackground.setAlpha(obj["headerAlpha"].toInt(state.headerBackground.alpha()));
+    if (obj.contains("headerHeightPadding"))
+        state.headerHeightPadding = loadInt(obj, "headerHeightPadding", state.headerHeightPadding);
+
+    if (obj.contains("title") && obj["title"].isObject())
+    {
+        QJsonObject tObj = obj["title"].toObject();
+        if (tObj.contains("color"))
+            state.title.color = loadColor(tObj, "color", state.title.color.name(QColor::HexArgb));
+        if (tObj.contains("size"))
+            state.title.size = loadInt(tObj, "size", state.title.size);
+        if (tObj.contains("bold"))
+            state.title.bold = loadBool(tObj, "bold", state.title.bold);
+        if (tObj.contains("italic"))
+            state.title.italic = loadBool(tObj, "italic", state.title.italic);
+        if (tObj.contains("align"))
+            state.title.align = loadAlign(tObj, "align", state.title.align);
+    }
+
+    if (obj.contains("body") && obj["body"].isObject())
+    {
+        QJsonObject bObj = obj["body"].toObject();
+        if (bObj.contains("color"))
+            state.body.color = loadColor(bObj, "color", state.body.color.name(QColor::HexArgb));
+        if (bObj.contains("size"))
+            state.body.size = loadInt(bObj, "size", state.body.size);
+        if (bObj.contains("bold"))
+            state.body.bold = loadBool(bObj, "bold", state.body.bold);
+        if (bObj.contains("italic"))
+            state.body.italic = loadBool(bObj, "italic", state.body.italic);
+        if (bObj.contains("align"))
+            state.body.align = loadAlign(bObj, "align", state.body.align);
+    }
+
+    if (obj.contains("tertiary") && obj["tertiary"].isObject())
+    {
+        QJsonObject tertObj = obj["tertiary"].toObject();
+        if (tertObj.contains("color"))
+            state.tertiary.color = loadColor(tertObj, "color", state.tertiary.color.name(QColor::HexArgb));
+        if (tertObj.contains("size"))
+            state.tertiary.size = loadInt(tertObj, "size", state.tertiary.size);
+        if (tertObj.contains("bold"))
+            state.tertiary.bold = loadBool(tertObj, "bold", state.tertiary.bold);
+        if (tertObj.contains("italic"))
+            state.tertiary.italic = loadBool(tertObj, "italic", state.tertiary.italic);
+        if (tertObj.contains("align"))
+            state.tertiary.align = loadAlign(tertObj, "align", state.tertiary.align);
+    }
+}
+
+GraphComponentTheme loadComponentThemeOverride(const GraphComponentTheme& baseTheme, const QJsonObject& obj, bool isContainer = false)
+{
+    GraphComponentTheme theme = baseTheme;
+
+    if (obj.contains("minWidth"))
+        theme.minWidth = loadDouble(obj, "minWidth", theme.minWidth);
+    if (obj.contains("minHeight"))
+        theme.minHeight = loadDouble(obj, "minHeight", theme.minHeight);
+
+    if (obj.contains("background") || obj.contains("backgroundAlpha") ||
+        obj.contains("border") || obj.contains("borderColor") ||
+        obj.contains("borderWidth") || obj.contains("borderStyle") ||
+        obj.contains("dashPattern") || obj.contains("radius") || obj.contains("padding") ||
+        obj.contains("headerBackground") || obj.contains("headerAlpha") ||
+        obj.contains("headerHeightPadding") || obj.contains("title") ||
+        obj.contains("body") || obj.contains("tertiary"))
+    {
+        mergeComponentState(theme.normal, obj, isContainer);
+        if (!obj.contains("hover"))
+        {
+            mergeComponentState(theme.hover, obj, isContainer);
+            if (!obj.contains("border") && !obj.contains("borderColor"))
+            {
+                theme.hover.border = baseTheme.hover.border;
+            }
+        }
+    }
+
+    if (obj.contains("normal") && obj["normal"].isObject())
+    {
+        mergeComponentState(theme.normal, obj["normal"].toObject(), isContainer);
+    }
+    if (obj.contains("hover") && obj["hover"].isObject())
+    {
+        mergeComponentState(theme.hover, obj["hover"].toObject(), isContainer);
+    }
+    if (obj.contains("selected") && obj["selected"].isObject())
+    {
+        mergeComponentState(theme.selected, obj["selected"].toObject(), isContainer);
+    }
+
+    return theme;
+}
+
 } // anonymous namespace
 
 GraphThemeManager::GraphThemeManager(QObject* parent)
@@ -419,8 +663,20 @@ GraphThemeManager::GraphThemeManager(QObject* parent)
     initializeDefaults();
 }
 
+GraphThemeManager::~GraphThemeManager()
+{
+    if (s_instance == this)
+    {
+        s_instance = nullptr;
+    }
+}
+
 GraphThemeManager* GraphThemeManager::instance()
 {
+    if (!s_instance)
+    {
+        s_instance = new GraphThemeManager(qApp);
+    }
     return s_instance;
 }
 
@@ -545,6 +801,10 @@ void GraphThemeManager::initializeDefaults()
     m_theme.interaction.hoverOutline = QColor("#ffffff");
     m_theme.interaction.invalidConnection = QColor("#ff4444");
     m_theme.interaction.dropTarget = QColor("#00ff88");
+
+    m_theme.edgeTypeThemes.clear();
+    m_theme.nodeTypeThemes.clear();
+    m_theme.containerTypeThemes.clear();
 }
 
 void GraphThemeManager::resetDefaults()
@@ -638,6 +898,45 @@ bool GraphThemeManager::load(const QString& path)
         m_theme.interaction.dropTarget = loadColor(intObj, "dropTarget", "#00ff88");
     }
 
+    // Load type-specific overrides (edge#<type>, node#<type>, container#<type>)
+    m_theme.edgeTypeThemes.clear();
+    m_theme.nodeTypeThemes.clear();
+    m_theme.containerTypeThemes.clear();
+
+    for (auto it = root.begin(); it != root.end(); ++it)
+    {
+        const QString key = it.key();
+        if (!it.value().isObject())
+            continue;
+
+        QJsonObject obj = it.value().toObject();
+
+        if (key.startsWith("edge#", Qt::CaseInsensitive))
+        {
+            QString typeName = key.mid(5).trimmed().toLower();
+            if (!typeName.isEmpty())
+            {
+                m_theme.edgeTypeThemes[typeName] = loadEdgeThemeOverride(m_theme.edge, obj);
+            }
+        }
+        else if (key.startsWith("node#", Qt::CaseInsensitive))
+        {
+            QString typeName = key.mid(5).trimmed().toLower();
+            if (!typeName.isEmpty())
+            {
+                m_theme.nodeTypeThemes[typeName] = loadComponentThemeOverride(m_theme.node, obj, false);
+            }
+        }
+        else if (key.startsWith("container#", Qt::CaseInsensitive))
+        {
+            QString typeName = key.mid(10).trimmed().toLower();
+            if (!typeName.isEmpty())
+            {
+                m_theme.containerTypeThemes[typeName] = loadComponentThemeOverride(m_theme.container, obj, true);
+            }
+        }
+    }
+
     emit themeLoaded(path);
     emit themeChanged();
     return true;
@@ -717,6 +1016,25 @@ bool GraphThemeManager::save(const QString& path)
         intObj["invalidConnection"] = saveColor(m_theme.interaction.invalidConnection);
         intObj["dropTarget"] = saveColor(m_theme.interaction.dropTarget);
         root["interaction"] = intObj;
+    }
+
+    // Save type-specific overrides (node#<type>, container#<type>, edge#<type>)
+    for (auto it = m_theme.nodeTypeThemes.begin(); it != m_theme.nodeTypeThemes.end(); ++it)
+    {
+        root["node#" + it.key()] = saveComponentTheme(it.value(), false);
+    }
+    for (auto it = m_theme.containerTypeThemes.begin(); it != m_theme.containerTypeThemes.end(); ++it)
+    {
+        root["container#" + it.key()] = saveComponentTheme(it.value(), true);
+    }
+    for (auto it = m_theme.edgeTypeThemes.begin(); it != m_theme.edgeTypeThemes.end(); ++it)
+    {
+        QJsonObject edgeObj;
+        edgeObj["normal"] = saveEdgeState(it.value().normal);
+        edgeObj["hover"] = saveEdgeState(it.value().hover);
+        edgeObj["selected"] = saveEdgeState(it.value().selected);
+        edgeObj["preview"] = savePreviewLineTheme(it.value().preview);
+        root["edge#" + it.key()] = edgeObj;
     }
 
     QJsonDocument doc(root);

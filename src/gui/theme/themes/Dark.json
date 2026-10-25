@@ -289,5 +289,19 @@
             "minorColor": "#2a2a2aff",
             "spacing": 20
         }
+    },
+    "edge#pwr": {
+        "lineColor": "#ffff00ff",
+        "lineWidth": 3
+    },
+    "edge#lan": {
+        "lineColor": "#00ffffff",
+        "lineWidth": 2
+    },
+    "node#pwr": {
+        "border": "#ffff00ff"
+    },
+    "node#lan": {
+        "border": "#00ffffff"
     }
 }

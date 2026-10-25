@@ -637,17 +637,53 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
 
     QTextStream out(&file);
 
+    QString appFont = QApplication::font().family();
+    QString fontSansFallback = "'Inter', ";
+    if (!appFont.isEmpty() && appFont.compare("Sans Serif", Qt::CaseInsensitive) != 0 && appFont.compare("sans-serif", Qt::CaseInsensitive) != 0)
+    {
+        fontSansFallback += QString("'%1', ").arg(appFont);
+    }
+    fontSansFallback += "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+
+    QString fontMonoFallback = "'JetBrains Mono', 'Fira Code', 'Consolas', 'Menlo', 'Monaco', 'Courier New', monospace";
+
     out << "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n";
     out << "<meta charset=\"utf-8\"/>\n";
     out << "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"/>\n";
     out << "<title>OpenArch Architecture Diagram</title>\n";
+    out << "<!-- Embedded & Web Fonts for high-fidelity typography -->\n";
+    out << "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"/>\n";
+    out << "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin=\"anonymous\"/>\n";
+    out << "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap\" rel=\"stylesheet\"/>\n";
     out << "<style>\n";
+    out << "  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');\n\n";
+    out << "  :root {\n";
+    out << "    --font-sans: " << fontSansFallback << ";\n";
+    out << "    --font-mono: " << fontMonoFallback << ";\n";
+    out << "  }\n\n";
     out << "  * { box-sizing: border-box; }\n";
-    out << "  html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background: "
-        << toCssRgba(theme.view.background) << "; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; }\n";
+    out << "  html, body {\n";
+    out << "    margin: 0;\n";
+    out << "    padding: 0;\n";
+    out << "    width: 100vw;\n";
+    out << "    height: 100vh;\n";
+    out << "    overflow: hidden;\n";
+    out << "    background: " << toCssRgba(theme.view.background) << ";\n";
+    out << "    font-family: var(--font-sans);\n";
+    out << "    -webkit-font-smoothing: antialiased;\n";
+    out << "    -moz-osx-font-smoothing: grayscale;\n";
+    out << "    text-rendering: optimizeLegibility;\n";
+    out << "    display: flex;\n";
+    out << "  }\n";
     out << "  #canvas-container { flex: 1; height: 100%; position: relative; cursor: grab; overflow: hidden; }\n";
     out << "  #canvas-container.panning { cursor: grabbing; }\n";
-    out << "  svg { width: 100%; height: 100%; display: block; user-select: none; }\n";
+    out << "  svg { width: 100%; height: 100%; display: block; user-select: none; font-family: var(--font-sans); }\n";
+    out << "  svg text, text {\n";
+    out << "    font-family: var(--font-sans);\n";
+    out << "    -webkit-font-smoothing: antialiased;\n";
+    out << "    -moz-osx-font-smoothing: grayscale;\n";
+    out << "    text-rendering: optimizeLegibility;\n";
+    out << "  }\n";
 
     // --- Containers ---
     const auto& cNormal = theme.container.normal;
@@ -678,23 +714,42 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
     out << "  .graph-container:hover rect.header { fill: " << toCssRgba(cHover.headerBackground) << "; }\n";
     out << "  .graph-container.selected rect.header { fill: " << toCssRgba(cSelected.headerBackground) << "; }\n";
 
-    out << "  .graph-container text.header-title { fill: " << toCssRgba(cNormal.title.color)
-        << "; font-size: " << cNormal.title.size
-        << "px; font-weight: " << (cNormal.title.bold ? "bold" : "normal")
-        << "; pointer-events: none; transition: fill 0.15s ease; }\n";
-    out << "  .graph-container:hover text.header-title { fill: " << toCssRgba(cHover.title.color) << "; }\n";
-    out << "  .graph-container.selected text.header-title { fill: " << toCssRgba(cSelected.title.color) << "; font-weight: bold; }\n";
+    out << "  .graph-container text.header-title {\n"
+        << "    fill: " << toCssRgba(cNormal.title.color) << ";\n"
+        << "    font-family: var(--font-sans);\n"
+        << "    font-size: " << cNormal.title.size << "px;\n"
+        << "    font-weight: " << (cNormal.title.bold ? "bold" : "600") << ";\n"
+        << "    font-style: " << (cNormal.title.italic ? "italic" : "normal") << ";\n"
+        << "    pointer-events: none;\n"
+        << "    transition: fill 0.15s ease;\n"
+        << "  }\n";
+    out << "  .graph-container:hover text.header-title { fill: " << toCssRgba(cHover.title.color)
+        << "; font-weight: " << (cHover.title.bold ? "bold" : (cNormal.title.bold ? "bold" : "600"))
+        << "; font-style: " << (cHover.title.italic ? "italic" : (cNormal.title.italic ? "italic" : "normal")) << "; }\n";
+    out << "  .graph-container.selected text.header-title { fill: " << toCssRgba(cSelected.title.color)
+        << "; font-weight: bold; font-style: " << (cSelected.title.italic ? "italic" : (cNormal.title.italic ? "italic" : "normal")) << "; }\n";
 
-    out << "  .graph-container text.container-body { fill: " << toCssRgba(cNormal.body.color)
-        << "; font-size: " << cNormal.body.size
-        << "px; pointer-events: none; transition: fill 0.15s ease; }\n";
+    out << "  .graph-container text.container-body {\n"
+        << "    fill: " << toCssRgba(cNormal.body.color) << ";\n"
+        << "    font-family: var(--font-sans);\n"
+        << "    font-size: " << cNormal.body.size << "px;\n"
+        << "    font-weight: " << (cNormal.body.bold ? "bold" : "500") << ";\n"
+        << "    font-style: " << (cNormal.body.italic ? "italic" : "normal") << ";\n"
+        << "    pointer-events: none;\n"
+        << "    transition: fill 0.15s ease;\n"
+        << "  }\n";
     out << "  .graph-container:hover text.container-body { fill: " << toCssRgba(cHover.body.color) << "; }\n";
     out << "  .graph-container.selected text.container-body { fill: " << toCssRgba(cSelected.body.color) << "; }\n";
 
-    out << "  .graph-container text.container-tertiary { fill: " << toCssRgba(cNormal.tertiary.color)
-        << "; font-size: " << cNormal.tertiary.size
-        << "px; font-style: " << (cNormal.tertiary.italic ? "italic" : "normal")
-        << "; pointer-events: none; transition: fill 0.15s ease; }\n";
+    out << "  .graph-container text.container-tertiary {\n"
+        << "    fill: " << toCssRgba(cNormal.tertiary.color) << ";\n"
+        << "    font-family: var(--font-sans);\n"
+        << "    font-size: " << cNormal.tertiary.size << "px;\n"
+        << "    font-weight: " << (cNormal.tertiary.bold ? "bold" : "normal") << ";\n"
+        << "    font-style: " << (cNormal.tertiary.italic ? "italic" : "normal") << ";\n"
+        << "    pointer-events: none;\n"
+        << "    transition: fill 0.15s ease;\n"
+        << "  }\n";
     out << "  .graph-container:hover text.container-tertiary { fill: " << toCssRgba(cHover.tertiary.color) << "; }\n";
     out << "  .graph-container.selected text.container-tertiary { fill: " << toCssRgba(cSelected.tertiary.color) << "; }\n";
 
@@ -722,16 +777,30 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         << "; stroke-width: " << nSelected.borderWidth
         << "px; stroke-dasharray: " << nSelectedDash << "; }\n";
 
-    out << "  .graph-node text.title { fill: " << toCssRgba(nNormal.title.color)
-        << "; font-size: " << nNormal.title.size
-        << "px; font-weight: " << (nNormal.title.bold ? "bold" : "normal")
-        << "; pointer-events: none; transition: fill 0.15s ease; }\n";
-    out << "  .graph-node:hover text.title { fill: " << toCssRgba(nHover.title.color) << "; }\n";
-    out << "  .graph-node.selected text.title { fill: " << toCssRgba(nSelected.title.color) << "; font-weight: bold; }\n";
+    out << "  .graph-node text.title {\n"
+        << "    fill: " << toCssRgba(nNormal.title.color) << ";\n"
+        << "    font-family: var(--font-sans);\n"
+        << "    font-size: " << nNormal.title.size << "px;\n"
+        << "    font-weight: " << (nNormal.title.bold ? "bold" : "600") << ";\n"
+        << "    font-style: " << (nNormal.title.italic ? "italic" : "normal") << ";\n"
+        << "    pointer-events: none;\n"
+        << "    transition: fill 0.15s ease;\n"
+        << "  }\n";
+    out << "  .graph-node:hover text.title { fill: " << toCssRgba(nHover.title.color)
+        << "; font-weight: " << (nHover.title.bold ? "bold" : (nNormal.title.bold ? "bold" : "600"))
+        << "; font-style: " << (nHover.title.italic ? "italic" : (nNormal.title.italic ? "italic" : "normal")) << "; }\n";
+    out << "  .graph-node.selected text.title { fill: " << toCssRgba(nSelected.title.color)
+        << "; font-weight: bold; font-style: " << (nSelected.title.italic ? "italic" : (nNormal.title.italic ? "italic" : "normal")) << "; }\n";
 
-    out << "  .graph-node text.body { fill: " << toCssRgba(nNormal.body.color)
-        << "; font-size: " << nNormal.body.size
-        << "px; pointer-events: none; transition: fill 0.15s ease; }\n";
+    out << "  .graph-node text.body {\n"
+        << "    fill: " << toCssRgba(nNormal.body.color) << ";\n"
+        << "    font-family: var(--font-sans);\n"
+        << "    font-size: " << nNormal.body.size << "px;\n"
+        << "    font-weight: " << (nNormal.body.bold ? "bold" : "normal") << ";\n"
+        << "    font-style: " << (nNormal.body.italic ? "italic" : "normal") << ";\n"
+        << "    pointer-events: none;\n"
+        << "    transition: fill 0.15s ease;\n"
+        << "  }\n";
     out << "  .graph-node:hover text.body { fill: " << toCssRgba(nHover.body.color) << "; }\n";
     out << "  .graph-node.selected text.body { fill: " << toCssRgba(nSelected.body.color) << "; }\n";
 
@@ -763,10 +832,14 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         << "; stroke-width: " << eNormal.label.borderWidth
         << "px; rx: " << eNormal.label.radius
         << "px; pointer-events: all; transition: fill 0.15s ease, stroke 0.15s ease, stroke-width 0.15s ease; }\n";
-    out << "  .graph-edge .edge-label text { fill: " << toCssRgba(eNormal.label.textColor)
-        << "; font-size: " << eNormal.label.fontSize
-        << "px; font-weight: " << (eNormal.label.bold ? "bold" : "normal")
-        << "; pointer-events: none; transition: fill 0.15s ease; }\n";
+    out << "  .graph-edge .edge-label text {\n"
+        << "    fill: " << toCssRgba(eNormal.label.textColor) << ";\n"
+        << "    font-family: var(--font-sans);\n"
+        << "    font-size: " << eNormal.label.fontSize << "px;\n"
+        << "    font-weight: " << (eNormal.label.bold ? "bold" : "500") << ";\n"
+        << "    pointer-events: none;\n"
+        << "    transition: fill 0.15s ease;\n"
+        << "  }\n";
 
     // Edge Hover State (Clean, crisp, matching View without blurry halo)
     out << "  .graph-edge:hover path.line { stroke: " << toCssRgba(eHover.lineColor)
@@ -779,7 +852,7 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         << "; stroke: " << toCssRgba(eHover.label.borderColor)
         << "; stroke-width: " << eHover.label.borderWidth << "px; }\n";
     out << "  .graph-edge:hover .edge-label text { fill: " << toCssRgba(eHover.label.textColor)
-        << "; font-weight: " << (eHover.label.bold ? "bold" : "normal") << "; }\n";
+        << "; font-weight: " << (eHover.label.bold ? "bold" : (eNormal.label.bold ? "bold" : "500")) << "; }\n";
 
     // Edge Selected State
     out << "  .graph-edge.selected path.line { stroke: " << toCssRgba(eSelected.lineColor)
@@ -794,6 +867,53 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
     out << "  .graph-edge.selected .edge-label text { fill: " << toCssRgba(eSelected.label.textColor)
         << "; font-weight: bold; }\n";
 
+    // --- Type-Specific Overrides (e.g. edge#pwr, edge#lan, node#service) ---
+    for (auto it = theme.edgeTypeThemes.begin(); it != theme.edgeTypeThemes.end(); ++it)
+    {
+        QString typeKey = it.key().toHtmlEscaped();
+        const auto& eState = it.value().normal;
+        const auto& eHoverState = it.value().hover;
+        const auto& eSelState = it.value().selected;
+
+        out << "  .graph-edge[data-type=\"" << typeKey << "\" i] path.line { stroke: " << toCssRgba(eState.lineColor)
+            << "; stroke-width: " << eState.lineWidth << "px; }\n";
+        out << "  .graph-edge[data-type=\"" << typeKey << "\" i] polygon.arrow { fill: " << toCssRgba(eState.arrow.fillColor)
+            << "; stroke: " << toCssRgba(eState.arrow.lineColor) << "; stroke-width: " << eState.arrow.lineWidth << "px; }\n";
+        out << "  .graph-edge[data-type=\"" << typeKey << "\" i]:hover path.line { stroke: " << toCssRgba(eHoverState.lineColor)
+            << "; stroke-width: " << eHoverState.lineWidth << "px; }\n";
+        out << "  .graph-edge[data-type=\"" << typeKey << "\" i]:hover polygon.arrow { fill: " << toCssRgba(eHoverState.arrow.fillColor)
+            << "; stroke: " << toCssRgba(eHoverState.arrow.lineColor) << "; stroke-width: " << eHoverState.arrow.lineWidth << "px; }\n";
+        out << "  .graph-edge[data-type=\"" << typeKey << "\" i].selected path.line { stroke: " << toCssRgba(eSelState.lineColor)
+            << "; stroke-width: " << eSelState.lineWidth << "px; }\n";
+        out << "  .graph-edge[data-type=\"" << typeKey << "\" i].selected polygon.arrow { fill: " << toCssRgba(eSelState.arrow.fillColor)
+            << "; stroke: " << toCssRgba(eSelState.arrow.lineColor) << "; stroke-width: " << eSelState.arrow.lineWidth << "px; }\n";
+    }
+
+    for (auto it = theme.nodeTypeThemes.begin(); it != theme.nodeTypeThemes.end(); ++it)
+    {
+        QString typeKey = it.key().toHtmlEscaped();
+        const auto& nState = it.value().normal;
+        const auto& nHoverState = it.value().hover;
+
+        out << "  .graph-node[data-type=\"" << typeKey << "\" i] rect.box { fill: " << toCssRgba(nState.background)
+            << "; stroke: " << toCssRgba(nState.border) << "; stroke-width: " << nState.borderWidth << "px; }\n";
+        out << "  .graph-node[data-type=\"" << typeKey << "\" i]:hover rect.box { fill: " << toCssRgba(nHoverState.background)
+            << "; stroke: " << toCssRgba(nHoverState.border) << "; stroke-width: " << nHoverState.borderWidth << "px; }\n";
+    }
+
+    for (auto it = theme.containerTypeThemes.begin(); it != theme.containerTypeThemes.end(); ++it)
+    {
+        QString typeKey = it.key().toHtmlEscaped();
+        const auto& cState = it.value().normal;
+        const auto& cHoverState = it.value().hover;
+
+        out << "  .graph-container[data-type=\"" << typeKey << "\" i] rect.box { fill: " << toCssRgba(cState.background)
+            << "; stroke: " << toCssRgba(cState.border) << "; stroke-width: " << cState.borderWidth << "px; }\n";
+        out << "  .graph-container[data-type=\"" << typeKey << "\" i] rect.header { fill: " << toCssRgba(cState.headerBackground) << "; }\n";
+        out << "  .graph-container[data-type=\"" << typeKey << "\" i]:hover rect.box { fill: " << toCssRgba(cHoverState.background)
+            << "; stroke: " << toCssRgba(cHoverState.border) << "; stroke-width: " << cHoverState.borderWidth << "px; }\n";
+    }
+
     // --- Floating Navigation Controls ---
     QColor ctrlBg = theme.node.normal.background;
     QColor ctrlBorder = theme.node.normal.border;
@@ -803,7 +923,7 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         << toCssRgba(ctrlBg) << "; border: 1px solid " << toCssRgba(ctrlBorder)
         << "; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); z-index: 10; overflow: hidden; }\n";
     out << "  #controls-bar button { background: transparent; border: none; color: " << toCssRgba(ctrlText)
-        << "; width: 36px; height: 36px; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s ease; }\n";
+        << "; width: 36px; height: 36px; font-family: var(--font-sans); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s ease; }\n";
     out << "  #controls-bar button:hover { background: " << toCssRgba(nHover.background) << "; }\n";
     out << "  #controls-bar button + button { border-left: 1px solid " << toCssRgba(ctrlBorder) << "; }\n";
 
@@ -816,24 +936,26 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
 
     out << "  #sidebar { width: 360px; background: " << toCssRgba(sidebarBg)
         << "; color: " << toCssRgba(textPrimary)
-        << "; border-left: 1px solid " << toCssRgba(sidebarBorder)
+        << "; font-family: var(--font-sans);"
+        << " border-left: 1px solid " << toCssRgba(sidebarBorder)
         << "; display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: -4px 0 24px rgba(0,0,0,0.25); z-index: 20; }\n";
     out << "  #sidebar.open { transform: translateX(0); }\n";
     out << "  .sb-header { padding: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid " << toCssRgba(sidebarBorder) << "; }\n";
-    out << "  .sb-title { margin: 0; font-size: 16px; font-weight: bold; color: " << toCssRgba(textPrimary) << "; }\n";
-    out << "  .sb-close { background: none; border: none; color: " << toCssRgba(textSecondary) << "; font-size: 22px; cursor: pointer; padding: 0 4px; line-height: 1; }\n";
+    out << "  .sb-title { margin: 0; font-family: var(--font-sans); font-size: 16px; font-weight: bold; color: " << toCssRgba(textPrimary) << "; }\n";
+    out << "  .sb-close { background: none; border: none; color: " << toCssRgba(textSecondary) << "; font-family: var(--font-sans); font-size: 22px; cursor: pointer; padding: 0 4px; line-height: 1; }\n";
     out << "  .sb-close:hover { color: " << toCssRgba(textPrimary) << "; }\n";
-    out << "  .sb-content { padding: 16px; overflow-y: auto; flex: 1; font-size: 13px; }\n";
+    out << "  .sb-content { padding: 16px; overflow-y: auto; flex: 1; font-family: var(--font-sans); font-size: 13px; }\n";
     out << "  .sb-section { margin-bottom: 20px; }\n";
-    out << "  .sb-section-title { font-size: 11px; text-transform: uppercase; color: " << toCssRgba(textSecondary) << "; font-weight: bold; margin-bottom: 8px; letter-spacing: 0.5px; }\n";
+    out << "  .sb-section-title { font-family: var(--font-sans); font-size: 11px; text-transform: uppercase; color: " << toCssRgba(textSecondary) << "; font-weight: bold; margin-bottom: 8px; letter-spacing: 0.5px; }\n";
     out << "  pre.code-block { background: " << toCssRgba(codeBg) << "; border: 1px solid " << toCssRgba(sidebarBorder)
-        << "; padding: 10px; border-radius: 6px; overflow-x: auto; color: " << toCssRgba(textPrimary) << "; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; margin: 0; }\n";
-    out << "  .field-row { display: flex; margin-bottom: 8px; justify-content: space-between; align-items: center; }\n";
+        << "; padding: 10px; border-radius: 6px; overflow-x: auto; color: " << toCssRgba(textPrimary) << "; font-family: var(--font-mono); font-size: 12px; margin: 0; }\n";
+    out << "  .field-row { display: flex; margin-bottom: 8px; justify-content: space-between; align-items: center; font-family: var(--font-sans); }\n";
     out << "  .field-name { color: " << toCssRgba(textSecondary) << "; }\n";
     out << "  .field-val { color: " << toCssRgba(textPrimary) << "; font-weight: 500; text-align: right; word-break: break-word; }\n";
+    out << "  .field-val.mono { font-family: var(--font-mono); font-size: 12px; }\n";
 
     // Status badges
-    out << "  .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }\n";
+    out << "  .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-family: var(--font-sans); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }\n";
     out << "  .status-new { background: rgba(136, 192, 208, 0.2); color: #88c0d0; border: 1px solid #88c0d0; }\n";
     out << "  .status-changed { background: rgba(235, 203, 139, 0.2); color: #ebcb8b; border: 1px solid #ebcb8b; }\n";
     out << "  .status-approved { background: rgba(163, 190, 140, 0.2); color: #a3be8c; border: 1px solid #a3be8c; }\n";
@@ -1251,7 +1373,7 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
     out << "      document.getElementById('sb-body').innerHTML = `\n";
     out << "        <div class=\"sb-section\">\n";
     out << "          <div class=\"sb-section-title\">Identity & Status</div>\n";
-    out << "          <div class=\"field-row\"><span class=\"field-name\">ID</span><span class=\"field-val\">#${el.getAttribute('data-id')}</span></div>\n";
+    out << "          <div class=\"field-row\"><span class=\"field-name\">ID</span><span class=\"field-val mono\">#${el.getAttribute('data-id')}</span></div>\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">Name</span><span class=\"field-val\">${el.getAttribute('data-title')}</span></div>\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">Type</span><span class=\"field-val\">${el.getAttribute('data-type')}</span></div>\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">Status</span><span class=\"field-val\"><span class=\"status-badge status-${status.toLowerCase()}\">${status}</span></span></div>\n";
@@ -1260,7 +1382,7 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
     out << "        <div class=\"sb-section\">\n";
     out << "          <div class=\"sb-section-title\">Governance</div>\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">Reviewer</span><span class=\"field-val\">${reviewer}</span></div>\n";
-    out << "          <div class=\"field-row\"><span class=\"field-name\">Checksum</span><span class=\"field-val\">${checksum}</span></div>\n";
+    out << "          <div class=\"field-row\"><span class=\"field-name\">Checksum</span><span class=\"field-val mono\">${checksum}</span></div>\n";
     out << "        </div>\n";
     out << "        <div class=\"sb-section\">\n";
     out << "          <div class=\"sb-section-title\">Attributes</div>\n";
@@ -1297,7 +1419,7 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
     out << "      document.getElementById('sb-body').innerHTML = `\n";
     out << "        <div class=\"sb-section\">\n";
     out << "          <div class=\"sb-section-title\">Connection</div>\n";
-    out << "          <div class=\"field-row\"><span class=\"field-name\">ID</span><span class=\"field-val\">#${el.getAttribute('data-id')}</span></div>\n";
+    out << "          <div class=\"field-row\"><span class=\"field-name\">ID</span><span class=\"field-val mono\">#${el.getAttribute('data-id')}</span></div>\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">Type</span><span class=\"field-val\">${edgeType}</span></div>\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">From</span><span class=\"field-val\">${srcName} (#${srcId})</span></div>\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">To</span><span class=\"field-val\">${dstName} (#${dstId})</span></div>\n";
@@ -1306,7 +1428,7 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
     out << "        <div class=\"sb-section\">\n";
     out << "          <div class=\"sb-section-title\">Governance</div>\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">Reviewer</span><span class=\"field-val\">${reviewer}</span></div>\n";
-    out << "          <div class=\"field-row\"><span class=\"field-name\">Checksum</span><span class=\"field-val\">${checksum}</span></div>\n";
+    out << "          <div class=\"field-row\"><span class=\"field-name\">Checksum</span><span class=\"field-val mono\">${checksum}</span></div>\n";
     out << "        </div>\n";
     out << "        <div class=\"sb-section\">\n";
     out << "          <div class=\"sb-section-title\">Attributes</div>\n";

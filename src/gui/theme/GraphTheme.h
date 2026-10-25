@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QString>
 #include <QVector>
+#include <QMap>
 #include <Qt>
 
 /*
@@ -213,4 +214,71 @@ struct GraphTheme
     GraphPortTheme port;
     GraphSelectionTheme selection;
     GraphInteractionTheme interaction;
+
+    // Type-specific overrides (keys stored lowercase, e.g. "pwr", "lan", "service")
+    QMap<QString, GraphEdgeTheme> edgeTypeThemes;
+    QMap<QString, GraphComponentTheme> nodeTypeThemes;
+    QMap<QString, GraphComponentTheme> containerTypeThemes;
+
+    const GraphEdgeTheme& edgeThemeForType(const QString& type) const
+    {
+        if (!type.isEmpty() && !edgeTypeThemes.isEmpty())
+        {
+            auto it = edgeTypeThemes.find(type.trimmed().toLower());
+            if (it != edgeTypeThemes.end())
+                return it.value();
+        }
+        return edge;
+    }
+
+    const GraphComponentTheme& nodeThemeForType(const QString& type) const
+    {
+        if (!type.isEmpty() && !nodeTypeThemes.isEmpty())
+        {
+            auto it = nodeTypeThemes.find(type.trimmed().toLower());
+            if (it != nodeTypeThemes.end())
+                return it.value();
+        }
+        return node;
+    }
+
+    const GraphComponentTheme& containerThemeForType(const QString& type) const
+    {
+        if (!type.isEmpty())
+        {
+            QString key = type.trimmed().toLower();
+            auto it = containerTypeThemes.find(key);
+            if (it != containerTypeThemes.end())
+                return it.value();
+            // Fallback to nodeTypeThemes if someone specified node#<type>
+            auto itNode = nodeTypeThemes.find(key);
+            if (itNode != nodeTypeThemes.end())
+                return itNode.value();
+        }
+        return container;
+    }
+
+    const GraphEdgeState& edgeStateFor(const QString& type, bool selected, bool hovered) const
+    {
+        const auto& t = edgeThemeForType(type);
+        if (selected) return t.selected;
+        if (hovered)  return t.hover;
+        return t.normal;
+    }
+
+    const GraphComponentState& nodeStateFor(const QString& type, bool selected, bool hovered) const
+    {
+        const auto& t = nodeThemeForType(type);
+        if (selected) return t.selected;
+        if (hovered)  return t.hover;
+        return t.normal;
+    }
+
+    const GraphComponentState& containerStateFor(const QString& type, bool selected, bool hovered) const
+    {
+        const auto& t = containerThemeForType(type);
+        if (selected) return t.selected;
+        if (hovered)  return t.hover;
+        return t.normal;
+    }
 };

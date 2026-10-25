@@ -38,6 +38,7 @@
 #include "GraphEdgeItem.h"
 #include "GraphThemeManager.h"
 #include "ThemeEditorDock.h"
+#include "ThemeEditorWindow.h"
 #include "ShortcutManager.h"
 #include "ShortcutConfigDialog.h"
 #include "ConvertDialog.h"
@@ -108,7 +109,7 @@ void MainWindow::setupUi()
 
     architectureDock_ = new QDockWidget("Architecture", this);
     architectureDock_->setObjectName("ArchitectureDock");
-    architectureDock_->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
+    architectureDock_->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetClosable);
     architectureDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     architectureDock_->setWidget(navContainer);
     addDockWidget(Qt::LeftDockWidgetArea, architectureDock_);
@@ -128,9 +129,14 @@ void MainWindow::setupUi()
     centralStack_->addWidget(graphView_);
     setCentralWidget(centralStack_);
 
-    ThemeEditorDock* themeDock = new ThemeEditorDock(this);
-    themeDock->setObjectName("ThemeDock");
-    addDockWidget(Qt::RightDockWidgetArea, themeDock);
+    themeDock_ = new ThemeEditorDock(this);
+    themeDock_->setObjectName("ThemeDock");
+    themeDock_->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetClosable);
+    themeDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    addDockWidget(Qt::LeftDockWidgetArea, themeDock_);
+
+    tabifyDockWidget(architectureDock_, themeDock_);
+    architectureDock_->raise();
 
     connect(
         GraphThemeManager::instance(),
@@ -171,9 +177,9 @@ void MainWindow::showWelcome()
 {
     centralStack_->setCurrentWidget(welcomeWidget_);
     if (architectureDock_) architectureDock_->hide();
+    if (themeDock_) themeDock_->hide();
     if (graphToolBar_) graphToolBar_->setEnabled(false);
     if (layoutToolBar_) layoutToolBar_->setEnabled(false);
-    if (routingToolBar_) routingToolBar_->setEnabled(false);
     currentDbPath_.clear();
     if (actionExportJson_) actionExportJson_->setEnabled(false);
     if (actionExportSqlite_) actionExportSqlite_->setEnabled(false);
@@ -183,9 +189,10 @@ void MainWindow::showCanvas()
 {
     centralStack_->setCurrentWidget(graphView_);
     if (architectureDock_) architectureDock_->show();
+    if (themeDock_) themeDock_->show();
+    if (architectureDock_) architectureDock_->raise();
     if (graphToolBar_) graphToolBar_->setEnabled(true);
     if (layoutToolBar_) layoutToolBar_->setEnabled(true);
-    if (routingToolBar_) routingToolBar_->setEnabled(true);
 }
 
 void MainWindow::setupMenu()
@@ -309,6 +316,18 @@ void MainWindow::setupMenu()
     themeMenu_->addAction(actionSaveThemeAs_);
     themeMenu_->addSeparator();
     themeMenu_->addAction(actionResetTheme_);
+    themeMenu_->addSeparator();
+    if (themeDock_) {
+        QAction* toggleThemeDockAction = themeDock_->toggleViewAction();
+        toggleThemeDockAction->setText("Show &Theme Editor (Dock)");
+        themeMenu_->addAction(toggleThemeDockAction);
+    }
+
+    themeMenu_->addAction("Launch Standalone &Theme Editor...", this, [this]() {
+        auto* editor = new ThemeEditorWindow(this);
+        editor->setAttribute(Qt::WA_DeleteOnClose);
+        editor->show();
+    });
 
     populateThemeMenu();
 
@@ -402,16 +421,6 @@ void MainWindow::setupRoutingMenuAndControls()
 
     routingActionGroup_ = new QActionGroup(this);
 
-    routingCombo_ = new QComboBox(this);
-    routingCombo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-    routingCombo_->setMaxVisibleItems(15);
-    if (routingCombo_->view())
-    {
-        routingCombo_->view()->setMinimumWidth(260);
-        routingCombo_->view()->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    }
-    routingCombo_->setToolTip("Select Global Edge Routing Algorithm");
-
     const auto& algos = GraphEdgeItem::availableRoutingAlgorithms();
     for (auto algo : algos)
     {
@@ -420,8 +429,6 @@ void MainWindow::setupRoutingMenuAndControls()
         act->setCheckable(true);
         act->setData(static_cast<int>(algo));
         routingActionGroup_->addAction(act);
-
-        routingCombo_->addItem(name, static_cast<int>(algo));
 
         connect(act, &QAction::triggered, this, [this, algo]() {
             setGlobalRoutingAlgorithm(algo);
@@ -455,24 +462,9 @@ void MainWindow::setupRoutingMenuAndControls()
         statusBar()->showMessage(checked ? "Bridge hops enabled" : "Bridge hops disabled", 2000);
     });
 
-    connect(routingCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
-        if (index < 0) return;
-        auto algo = static_cast<EdgeRoutingAlgorithm>(routingCombo_->itemData(index).toInt());
-        setGlobalRoutingAlgorithm(algo);
-        for (auto* act : routingActionGroup_->actions()) {
-            if (act->data().toInt() == static_cast<int>(algo)) {
-                act->setChecked(true);
-                break;
-            }
-        }
-    });
-
     int saved = settings.value("Routing/Algorithm", static_cast<int>(EdgeRoutingAlgorithm::SmartOrthogonal)).toInt();
     auto currentAlgo = static_cast<EdgeRoutingAlgorithm>(saved);
     GraphEdgeItem::setGlobalRoutingAlgorithm(currentAlgo);
-
-    int idx = routingCombo_->findData(saved);
-    if (idx >= 0) routingCombo_->setCurrentIndex(idx);
 
     for (auto* act : routingActionGroup_->actions()) {
         if (act->data().toInt() == saved) {
@@ -489,9 +481,13 @@ void MainWindow::setGlobalRoutingAlgorithm(EdgeRoutingAlgorithm algo)
     QSettings settings;
     settings.setValue("Routing/Algorithm", static_cast<int>(algo));
 
-    if (routingCombo_ && routingCombo_->currentData().toInt() != static_cast<int>(algo)) {
-        int idx = routingCombo_->findData(static_cast<int>(algo));
-        if (idx >= 0) routingCombo_->setCurrentIndex(idx);
+    if (routingActionGroup_) {
+        for (auto* act : routingActionGroup_->actions()) {
+            if (act->data().toInt() == static_cast<int>(algo)) {
+                act->setChecked(true);
+                break;
+            }
+        }
     }
 
     if (scene_)
@@ -565,24 +561,6 @@ void MainWindow::setupToolbar()
 
     duplicateBtn_ = layoutToolBar_->addAction(QIcon(":/icons/copy.svg"), "Duplicate");
     connect(duplicateBtn_, &QAction::triggered, this, &MainWindow::copySelectedNode);
-
-    routingToolBar_ = addToolBar("Routing");
-    routingToolBar_->setObjectName("RoutingToolBar");
-    routingToolBar_->setIconSize(QSize(20, 20));
-
-    auto* routingLabel = new QLabel(" Routing: ", this);
-    routingToolBar_->addWidget(routingLabel);
-
-    if (routingCombo_)
-    {
-        routingToolBar_->addWidget(routingCombo_);
-    }
-
-    if (actionLineJumps_)
-    {
-        routingToolBar_->addSeparator();
-        routingToolBar_->addAction(actionLineJumps_);
-    }
 }
 
 void MainWindow::setupConnections()
@@ -869,6 +847,9 @@ void MainWindow::createNewDatabase()
 
 void MainWindow::populateNavigator()
 {
+    if (isRendering_ || !model_ || !navModel_)
+        return;
+
     navModel_->clear();
     navModel_->setHorizontalHeaderLabels({"Architecture"});
 
@@ -914,7 +895,7 @@ void MainWindow::populateNavigator()
 
 void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
 {
-    if (!model_ || !index.isValid()) return;
+    if (isRendering_ || !model_ || !index.isValid()) return;
 
     QModelIndex srcIndex = navProxyModel_ ? navProxyModel_->mapToSource(index) : index;
     auto* item = navModel_->itemFromIndex(srcIndex);
@@ -928,12 +909,16 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
         NodeEditorDialog dlg(model_, id, this);
         if (dlg.exec() == QDialog::Accepted)
         {
-            populateNavigator();
+            std::optional<LayerId> activeLayerId;
             QModelIndex curIdx = navigator_->currentIndex();
             if (curIdx.isValid() && static_cast<ItemType>(curIdx.data(NavRole::Type).toInt()) == ItemType::Layer)
             {
-                auto layerId = static_cast<LayerId>(curIdx.data(NavRole::Id).toULongLong());
-                renderGraph(model_->extractGraph(layerId));
+                activeLayerId = static_cast<LayerId>(curIdx.data(NavRole::Id).toULongLong());
+            }
+            populateNavigator();
+            if (activeLayerId)
+            {
+                renderGraph(model_->extractGraph(*activeLayerId));
             }
             else
             {
@@ -959,7 +944,7 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
 
 void MainWindow::onTreeItemClicked(const QModelIndex& index)
 {
-    if (!model_ || !index.isValid()) return;
+    if (isRendering_ || !model_ || !index.isValid()) return;
 
     QModelIndex srcIndex = navProxyModel_ ? navProxyModel_->mapToSource(index) : index;
     auto* item = navModel_->itemFromIndex(srcIndex);
@@ -969,7 +954,14 @@ void MainWindow::onTreeItemClicked(const QModelIndex& index)
 
     if (type == ItemType::Layer) {
         auto layerId = static_cast<LayerId>(item->data(NavRole::Id).toULongLong());
-        renderGraph(model_->extractGraph(layerId));
+        if (layerId > 0)
+        {
+            renderGraph(model_->extractGraph(layerId));
+        }
+        else
+        {
+            renderGraph(model_->extractGraph(std::nullopt));
+        }
     }
     else {
         renderGraph(model_->extractGraph(std::nullopt));
@@ -1053,6 +1045,8 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
     int vVal = graphView_->verticalScrollBar()->value();
 
     isRendering_ = true;
+    scene_->clearSelection();
+    primaryNode_ = nullptr;
     scene_->blockSignals(true);
     graphView_->setUpdatesEnabled(false);
 
@@ -1138,8 +1132,23 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
             auto pIt = currentNodes.find(*n.parentId);
             if (pIt != currentNodes.end() && pIt->second != nodeItem)
             {
-                nodeItem->setParentItem(pIt->second);
-                nodeItem->setZValue(pIt->second->zValue() + 1);
+                bool isCycle = false;
+                QGraphicsItem* anc = pIt->second;
+                while (anc)
+                {
+                    if (anc == nodeItem) { isCycle = true; break; }
+                    anc = anc->parentItem();
+                }
+                if (!isCycle)
+                {
+                    nodeItem->setParentItem(pIt->second);
+                    nodeItem->setZValue(pIt->second->zValue() + 1);
+                }
+                else
+                {
+                    nodeItem->setParentItem(nullptr);
+                    nodeItem->setZValue(0);
+                }
             }
             else
             {
@@ -1163,6 +1172,15 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
             {
                 scene_->addItem(nodeItem);
             }
+        }
+    }
+    for (const auto& n : snap.nodes)
+    {
+        GraphNodeItem* nodeItem = currentNodes[n.id];
+        if (nodeItem->scene() != scene_)
+        {
+            nodeItem->setParentItem(nullptr);
+            scene_->addItem(nodeItem);
         }
     }
 
@@ -1198,6 +1216,15 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
 
         nodeItem->refreshGeometry();
         ++i;
+    }
+
+    for (const auto& n : snap.nodes)
+    {
+        GraphNodeItem* nodeItem = currentNodes[n.id];
+        if (nodeItem && (nodeItem->isContainer() || nodeItem->canAcceptChildren()))
+        {
+            nodeItem->refreshGeometry();
+        }
     }
 
     for (const auto& e : snap.edges)
@@ -1244,11 +1271,24 @@ void MainWindow::saveLayout()
         QPointF p = nodeItem->pos();
 
         QJsonObject obj;
+        auto nodeOpt = model_->getNodeById(id);
+        if (nodeOpt && !nodeOpt->metadata.empty())
+        {
+            QJsonDocument existingDoc = QJsonDocument::fromJson(QString::fromStdString(nodeOpt->metadata).toUtf8());
+            if (existingDoc.isObject())
+            {
+                obj = existingDoc.object();
+            }
+        }
         obj["x"] = p.x();
         obj["y"] = p.y();
         if (nodeItem->isFolded())
         {
             obj["folded"] = true;
+        }
+        else
+        {
+            obj.remove("folded");
         }
 
         QJsonDocument doc(obj);
@@ -1274,6 +1314,14 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
     NodeId newId = newNode.id;
 
     QJsonObject obj;
+    if (!newNode.metadata.empty())
+    {
+        QJsonDocument existingDoc = QJsonDocument::fromJson(QString::fromStdString(newNode.metadata).toUtf8());
+        if (existingDoc.isObject())
+        {
+            obj = existingDoc.object();
+        }
+    }
     obj["x"] = pos.x();
     obj["y"] = pos.y();
 
@@ -1419,13 +1467,18 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
         return;
     }
 
-    populateNavigator();
-
+    std::optional<LayerId> activeLayerId;
     if (currentIndex.isValid() &&
         static_cast<ItemType>(currentIndex.data(NavRole::Type).toInt()) == ItemType::Layer)
     {
-        auto activeLayerId = static_cast<LayerId>(currentIndex.data(NavRole::Id).toULongLong());
-        renderGraph(model_->extractGraph(activeLayerId));
+        activeLayerId = static_cast<LayerId>(currentIndex.data(NavRole::Id).toULongLong());
+    }
+
+    populateNavigator();
+
+    if (activeLayerId)
+    {
+        renderGraph(model_->extractGraph(*activeLayerId));
     }
     else
     {
@@ -1605,13 +1658,18 @@ void MainWindow::deleteSelected()
         delete node;
     }
 
+    std::optional<LayerId> activeLayerId;
+    if (navigator_ && navigator_->currentIndex().isValid() &&
+        static_cast<ItemType>(navigator_->currentIndex().data(NavRole::Type).toInt()) == ItemType::Layer)
+    {
+        activeLayerId = static_cast<LayerId>(navigator_->currentIndex().data(NavRole::Id).toULongLong());
+    }
+
     populateNavigator();
 
-    QModelIndex index = navigator_->currentIndex();
-    if (index.isValid() && static_cast<ItemType>(index.data(NavRole::Type).toInt()) == ItemType::Layer)
+    if (activeLayerId)
     {
-        auto layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
-        renderGraph(model_->extractGraph(layerId));
+        renderGraph(model_->extractGraph(*activeLayerId));
     }
     else
     {
@@ -1644,12 +1702,9 @@ NodeId MainWindow::cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> new
         if (doc.isObject())
         {
             QJsonObject obj = doc.object();
-            if (obj.contains("x") && obj.contains("y"))
-            {
-                obj["x"] = obj["x"].toDouble() + offsetX;
-                obj["y"] = obj["y"].toDouble() + offsetY;
-                copyNode.metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
-            }
+            obj["x"] = obj.value("x").toDouble(0.0) + offsetX;
+            obj["y"] = obj.value("y").toDouble(0.0) + offsetY;
+            copyNode.metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
         }
     }
     if (copyNode.metadata.empty())
@@ -1709,13 +1764,18 @@ void MainWindow::copySelectedNode()
         return;
     }
 
+    std::optional<LayerId> activeLayerId;
+    if (navigator_ && navigator_->currentIndex().isValid() &&
+        static_cast<ItemType>(navigator_->currentIndex().data(NavRole::Type).toInt()) == ItemType::Layer)
+    {
+        activeLayerId = static_cast<LayerId>(navigator_->currentIndex().data(NavRole::Id).toULongLong());
+    }
+
     populateNavigator();
 
-    QModelIndex index = navigator_->currentIndex();
-    if (index.isValid() && static_cast<ItemType>(index.data(NavRole::Type).toInt()) == ItemType::Layer)
+    if (activeLayerId)
     {
-        auto layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
-        renderGraph(model_->extractGraph(layerId));
+        renderGraph(model_->extractGraph(*activeLayerId));
     }
     else
     {
@@ -1887,7 +1947,7 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
         {
             if (auto* node = dynamic_cast<GraphNodeItem*>(item))
             {
-                if (node->isContainer() && excludeIds.find(node->nodeId()) == excludeIds.end())
+                if (node->canAcceptChildren() && excludeIds.find(node->nodeId()) == excludeIds.end())
                 {
                     return node;
                 }
@@ -1964,13 +2024,18 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
         for (const auto& r : cutNodeIds_) movedIds.push_back(r.id);
         cutNodeIds_.clear();
 
+        std::optional<LayerId> activeLayerId;
+        if (navigator_ && navigator_->currentIndex().isValid() &&
+            static_cast<ItemType>(navigator_->currentIndex().data(NavRole::Type).toInt()) == ItemType::Layer)
+        {
+            activeLayerId = static_cast<LayerId>(navigator_->currentIndex().data(NavRole::Id).toULongLong());
+        }
+
         populateNavigator();
 
-        QModelIndex index = navigator_->currentIndex();
-        if (index.isValid() && static_cast<ItemType>(index.data(NavRole::Type).toInt()) == ItemType::Layer)
+        if (activeLayerId)
         {
-            auto layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
-            renderGraph(model_->extractGraph(layerId));
+            renderGraph(model_->extractGraph(*activeLayerId));
         }
         else
         {
@@ -2113,13 +2178,18 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
         pasteOffsetMultiplier_++;
     }
 
+    std::optional<LayerId> activeLayerId;
+    if (navigator_ && navigator_->currentIndex().isValid() &&
+        static_cast<ItemType>(navigator_->currentIndex().data(NavRole::Type).toInt()) == ItemType::Layer)
+    {
+        activeLayerId = static_cast<LayerId>(navigator_->currentIndex().data(NavRole::Id).toULongLong());
+    }
+
     populateNavigator();
 
-    QModelIndex index = navigator_->currentIndex();
-    if (index.isValid() && static_cast<ItemType>(index.data(NavRole::Type).toInt()) == ItemType::Layer)
+    if (activeLayerId)
     {
-        auto layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
-        renderGraph(model_->extractGraph(layerId));
+        renderGraph(model_->extractGraph(*activeLayerId));
     }
     else
     {

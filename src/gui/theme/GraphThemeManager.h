@@ -21,6 +21,7 @@ public:
 
     explicit GraphThemeManager(
         QObject* parent = nullptr);
+    ~GraphThemeManager() override;
 
     /*
      * SINGLETON

@@ -15,6 +15,9 @@
 #include <QGraphicsView>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsSceneContextMenuEvent>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <algorithm>
 #include <cmath>
 
@@ -100,6 +103,21 @@ bool GraphNodeItem::isContainer() const
             typeStr == "box" || typeStr == "package" || typeStr == "cluster");
 }
 
+bool GraphNodeItem::canAcceptChildren() const
+{
+    if (isContainer())
+        return true;
+
+    auto dims = getCustomDimensions();
+    if (dims.width.has_value() || dims.height.has_value() || dims.dimLock)
+        return true;
+
+    if (sizingMode_ == ContainerSizing::Manual)
+        return true;
+
+    return false;
+}
+
 void GraphNodeItem::setContainerSizing(ContainerSizing mode)
 {
     if (sizingMode_ != mode)
@@ -117,6 +135,77 @@ void GraphNodeItem::setManualContainerSize(qreal w, qreal h)
     {
         refreshGeometry();
     }
+}
+
+GraphNodeItem::CustomDimensions GraphNodeItem::getCustomDimensions() const
+{
+    CustomDimensions dims;
+    if (!model_) return dims;
+
+    auto nodeOpt = model_->getNodeById(nodeId_);
+    if (!nodeOpt || nodeOpt->metadata.empty())
+        return dims;
+
+    QJsonDocument doc = QJsonDocument::fromJson(QString::fromStdString(nodeOpt->metadata).toUtf8());
+    if (!doc.isObject())
+        return dims;
+
+    QJsonObject obj = doc.object();
+
+    if (obj.contains("_width"))
+    {
+        QJsonValue val = obj["_width"];
+        if (val.isDouble())
+        {
+            dims.width = val.toDouble();
+        }
+        else if (val.isString())
+        {
+            bool ok = false;
+            double d = val.toString().toDouble(&ok);
+            if (ok) dims.width = d;
+        }
+    }
+
+    if (obj.contains("_height"))
+    {
+        QJsonValue val = obj["_height"];
+        if (val.isDouble())
+        {
+            dims.height = val.toDouble();
+        }
+        else if (val.isString())
+        {
+            bool ok = false;
+            double d = val.toString().toDouble(&ok);
+            if (ok) dims.height = d;
+        }
+    }
+
+    if (obj.contains("_dim_lock"))
+    {
+        QJsonValue val = obj["_dim_lock"];
+        if (val.isBool())
+        {
+            dims.dimLock = val.toBool();
+        }
+        else if (val.isString())
+        {
+            QString s = val.toString().trimmed().toLower();
+            dims.dimLock = (s == "true" || s == "1");
+        }
+        else if (val.isDouble())
+        {
+            dims.dimLock = (val.toDouble() != 0.0);
+        }
+    }
+
+    return dims;
+}
+
+bool GraphNodeItem::isDimLocked() const
+{
+    return getCustomDimensions().dimLock;
 }
 
 QRectF GraphNodeItem::foldToggleRect() const
@@ -221,15 +310,12 @@ void GraphNodeItem::setFolded(bool folded)
 
     if (scene())
     {
-        GraphEdgeItem::updateSceneEdges(scene());
-    }
-
-    if (scene() && !scene()->views().isEmpty())
-    {
-        if (auto* mainWin = dynamic_cast<MainWindow*>(scene()->views().first()->window()))
+        if (auto* mainWin = dynamic_cast<MainWindow*>(scene()->views().isEmpty() ? nullptr : scene()->views().first()->window()))
         {
-            mainWin->populateNavigator();
+            if (mainWin->isRendering())
+                return;
         }
+        GraphEdgeItem::updateSceneEdges(scene());
     }
 }
 
@@ -250,22 +336,45 @@ void GraphNodeItem::adoptChild(GraphNodeItem* child)
         p = p->parentItem();
     }
 
+    auto* oldParent = dynamic_cast<GraphNodeItem*>(child->parentItem());
+
     QPointF originalScenePos = child->scenePos();
     QRectF childBounds = child->boundingRect();
 
     QPointF localPos = mapFromScene(originalScenePos);
-    qreal minY = cachedHeaderRect_.height() + 10.0;
+    qreal headerH = cachedHeaderRect_.height();
+    if (headerH <= 0.0)
+    {
+        const auto& theme = GraphThemeManager::instance()->theme();
+        const auto& containerTheme = theme.containerThemeForType(displayType());
+        QFont font;
+        font.setPointSize(containerTheme.normal.title.size > 0 ? containerTheme.normal.title.size : 12);
+        font.setBold(containerTheme.normal.title.bold);
+        QFontMetrics fm(font);
+        headerH = std::max<qreal>(fm.height() + containerTheme.normal.headerHeightPadding, 32.0);
+    }
+    qreal minY = headerH + 10.0;
     qreal minX = 10.0;
 
     localPos.setX(std::max(minX, localPos.x()));
     localPos.setY(std::max(minY, localPos.y()));
 
-    const qreal margin = 20.0;
-    qreal requiredWidth = localPos.x() + childBounds.width() + margin;
-    qreal requiredHeight = localPos.y() + childBounds.height() + margin;
+    if (isDimLocked())
+    {
+        qreal maxX = std::max(minX, cachedRect_.width() - childBounds.width() - 10.0);
+        qreal maxY = std::max(minY, cachedRect_.height() - childBounds.height() - 10.0);
+        localPos.setX(std::min(localPos.x(), maxX));
+        localPos.setY(std::min(localPos.y(), maxY));
+    }
+    else
+    {
+        const qreal margin = 20.0;
+        qreal requiredWidth = localPos.x() + childBounds.width() + margin;
+        qreal requiredHeight = localPos.y() + childBounds.height() + margin;
 
-    manualWidth_ = std::max(manualWidth_, requiredWidth);
-    manualHeight_ = std::max(manualHeight_, requiredHeight);
+        manualWidth_ = std::max(manualWidth_, requiredWidth);
+        manualHeight_ = std::max(manualHeight_, requiredHeight);
+    }
 
     child->setParentItem(this);
     child->setPos(localPos);
@@ -287,6 +396,10 @@ void GraphNodeItem::adoptChild(GraphNodeItem* child)
     }
 
     refreshGeometry();
+    if (oldParent)
+    {
+        oldParent->refreshGeometry();
+    }
 
     if (scene())
     {
@@ -342,7 +455,8 @@ void GraphNodeItem::releaseChild(GraphNodeItem* child)
 QRectF GraphNodeItem::calculateNodeRect()
 {
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphComponentState* state = isSelected() ? &theme.node.selected : (hovered_ ? &theme.node.hover : &theme.node.normal);
+    const auto& nodeTheme = theme.nodeThemeForType(displayType());
+    const GraphComponentState* state = isSelected() ? &nodeTheme.selected : (hovered_ ? &nodeTheme.hover : &nodeTheme.normal);
 
     cachedTitleFont_ = QFont();
     cachedTitleFont_.setPointSize(state->title.size);
@@ -370,16 +484,38 @@ QRectF GraphNodeItem::calculateNodeRect()
     const int padding = state->padding;
     const int spacing = 0;
 
-    qreal width = std::max(titleBounds.width(), bodyBounds.width()) + (padding * 2);
-    qreal height = titleBounds.height() + bodyBounds.height() + spacing + (padding * 2);
+    qreal reqWidth = std::max(titleBounds.width(), bodyBounds.width()) + (padding * 2);
+    qreal reqHeight = titleBounds.height() + bodyBounds.height() + spacing + (padding * 2);
 
-    width = std::max<qreal>(width, theme.node.minWidth);
-    height = std::max<qreal>(height, theme.node.minHeight);
+    reqWidth = std::max<qreal>(reqWidth, nodeTheme.minWidth);
+    reqHeight = std::max<qreal>(reqHeight, nodeTheme.minHeight);
+
+    CustomDimensions dims = getCustomDimensions();
+    qreal width = reqWidth;
+    qreal height = reqHeight;
+
+    if (dims.dimLock)
+    {
+        if (dims.width.has_value())
+            width = std::max(10.0, dims.width.value());
+        if (dims.height.has_value())
+            height = std::max(10.0, dims.height.value());
+    }
+    else
+    {
+        if (dims.width.has_value())
+            width = std::max(reqWidth, dims.width.value());
+        if (dims.height.has_value())
+            height = std::max(reqHeight, dims.height.value());
+    }
 
     cachedRect_ = QRectF(0, 0, width, height);
     QRectF contentRect = cachedRect_.adjusted(padding, padding, -padding, -padding);
 
-    cachedTitleRect_ = QRectF(contentRect.left(), contentRect.top(), contentRect.width(), titleBounds.height());
+    qreal totalTextHeight = titleBounds.height() + bodyBounds.height() + spacing;
+    qreal startY = contentRect.top() + std::max(0.0, (contentRect.height() - totalTextHeight) / 2.0);
+
+    cachedTitleRect_ = QRectF(contentRect.left(), startY, contentRect.width(), titleBounds.height());
     cachedBodyRect_  = QRectF(contentRect.left(), cachedTitleRect_.bottom() + spacing, contentRect.width(), bodyBounds.height());
     cachedTertiaryRect_ = QRectF();
 
@@ -411,8 +547,10 @@ QRectF GraphNodeItem::calculateNodeRect()
 QRectF GraphNodeItem::calculateContainerRect()
 {
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphComponentState* state = isSelected() ? &theme.container.selected : (hovered_ ? &theme.container.hover : &theme.container.normal);
-    const GraphComponentState* nodeState = isSelected() ? &theme.node.selected : (hovered_ ? &theme.node.hover : &theme.node.normal);
+    const auto& containerTheme = theme.containerThemeForType(displayType());
+    const auto& nodeTheme = theme.nodeThemeForType(displayType());
+    const GraphComponentState* state = isSelected() ? &containerTheme.selected : (hovered_ ? &containerTheme.hover : &containerTheme.normal);
+    const GraphComponentState* nodeState = isSelected() ? &nodeTheme.selected : (hovered_ ? &nodeTheme.hover : &nodeTheme.normal);
 
     cachedTitleFont_ = QFont();
     cachedTitleFont_.setPointSize(state->title.size);
@@ -448,45 +586,71 @@ QRectF GraphNodeItem::calculateContainerRect()
     }
 
     const qreal padding = 20.0;
-    const qreal minW = theme.container.minWidth;
-    const qreal minH = theme.container.minHeight;
+    const qreal minW = containerTheme.minWidth;
+    const qreal minH = containerTheme.minHeight;
+
+    CustomDimensions dims = getCustomDimensions();
 
     qreal computedWidth = 0.0;
     qreal computedHeight = 0.0;
 
-    if (sizingMode_ == ContainerSizing::AutoFit)
+    if (dims.dimLock)
     {
-        if (hasChildren)
-        {
-            computedWidth  = std::max(minW, childrenUnion.right() + padding);
-            computedHeight = std::max(minH, childrenUnion.bottom() + padding);
-        }
-        else
-        {
-            computedWidth  = minW;
-            computedHeight = minH;
-        }
+        // Locked absolute dimensions: ignore children expansion, keep _width and _height strictly as specified
+        qreal reqW = hasChildren ? std::max(minW, childrenUnion.right() + padding) : minW;
+        qreal reqH = hasChildren ? std::max(minH, childrenUnion.bottom() + padding) : minH;
+        reqH = std::max(reqH, headerHeight + minH);
+
+        computedWidth  = dims.width.has_value()  ? std::max(10.0, dims.width.value())  : reqW;
+        computedHeight = dims.height.has_value() ? std::max(headerHeight, dims.height.value()) : reqH;
     }
     else
     {
-        computedWidth  = manualWidth_;
-        computedHeight = manualHeight_;
-
-        if (hasChildren)
+        if (sizingMode_ == ContainerSizing::AutoFit)
         {
-            computedWidth  = std::max(computedWidth, childrenUnion.right() + padding);
-            computedHeight = std::max(computedHeight, childrenUnion.bottom() + padding);
-            manualWidth_ = computedWidth;
-            manualHeight_ = computedHeight;
+            if (hasChildren)
+            {
+                computedWidth  = std::max(minW, childrenUnion.right() + padding);
+                computedHeight = std::max(minH, childrenUnion.bottom() + padding);
+            }
+            else
+            {
+                computedWidth  = minW;
+                computedHeight = minH;
+            }
         }
+        else
+        {
+            computedWidth  = manualWidth_;
+            computedHeight = manualHeight_;
+
+            if (hasChildren)
+            {
+                computedWidth  = std::max(computedWidth, childrenUnion.right() + padding);
+                computedHeight = std::max(computedHeight, childrenUnion.bottom() + padding);
+                manualWidth_ = computedWidth;
+                manualHeight_ = computedHeight;
+            }
+        }
+
+        // Apply custom dimensions as minimum/base dimensions, expanding as required by subcontainers positions
+        if (dims.width.has_value())
+        {
+            computedWidth = std::max(computedWidth, dims.width.value());
+        }
+        if (dims.height.has_value())
+        {
+            computedHeight = std::max(computedHeight, dims.height.value());
+        }
+
+        computedHeight = std::max(computedHeight, headerHeight + minH);
     }
 
-    computedHeight = std::max(computedHeight, headerHeight + minH);
-
-    cachedHeaderRect_ = QRectF(0, 0, computedWidth, headerHeight);
+    qreal actualHeaderH = std::min(headerHeight, computedHeight);
+    cachedHeaderRect_ = QRectF(0, 0, computedWidth, actualHeaderH);
     cachedRect_       = QRectF(0, 0, computedWidth, computedHeight);
 
-    QRectF bodyArea(0, headerHeight, computedWidth, computedHeight - headerHeight);
+    QRectF bodyArea(0, actualHeaderH, computedWidth, std::max(0.0, computedHeight - actualHeaderH));
     if (isFolded_)
     {
         QRectF paddedBody = bodyArea.adjusted(12, 10, -12, -10);
@@ -557,7 +721,9 @@ QRectF GraphNodeItem::calculateContainerRect()
 QRectF GraphNodeItem::boundingRect() const
 {
     const auto& theme = GraphThemeManager::instance()->theme();
-    const auto* state = isContainer() ? &theme.container.normal : &theme.node.normal;
+    const auto* state = isContainer()
+        ? &theme.containerThemeForType(displayType()).normal
+        : &theme.nodeThemeForType(displayType()).normal;
     qreal penWidth = state->borderWidth;
     qreal pad = (penWidth / 2.0) + 1.0;
     QRectF r = cachedRect_.adjusted(-pad, -pad, pad, pad);
@@ -573,8 +739,8 @@ QPainterPath GraphNodeItem::shape() const
     QPainterPath path;
     const auto& theme = GraphThemeManager::instance()->theme();
     const auto* state = isContainer() 
-        ? (isSelected() ? &theme.container.selected : (hovered_ ? &theme.container.hover : &theme.container.normal))
-        : (isSelected() ? &theme.node.selected : (hovered_ ? &theme.node.hover : &theme.node.normal));
+        ? &theme.containerStateFor(displayType(), isSelected(), hovered_)
+        : &theme.nodeStateFor(displayType(), isSelected(), hovered_);
 
     path.addRoundedRect(cachedRect_, state->radius, state->radius);
     if (s_showGovernanceBadges && !cachedBadgeRect_.isEmpty())
@@ -624,8 +790,10 @@ void GraphNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
 
     if (isContainer())
     {
-        const GraphComponentState* state = isSelected() ? &theme.container.selected 
-                                        : (hovered_ ? &theme.container.hover : &theme.container.normal);
+        const auto& containerTheme = theme.containerThemeForType(displayType());
+        const auto& nodeTheme = theme.nodeThemeForType(displayType());
+        const GraphComponentState* state = isSelected() ? &containerTheme.selected
+                                        : (hovered_ ? &containerTheme.hover : &containerTheme.normal);
 
         QPainterPath bodyPath;
         bodyPath.addRoundedRect(cachedRect_, state->radius, state->radius);
@@ -690,8 +858,8 @@ void GraphNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
 
         if (isFolded_)
         {
-            const auto* nodeState = isSelected() ? &theme.node.selected
-                                                 : (hovered_ ? &theme.node.hover : &theme.node.normal);
+            const auto* nodeState = isSelected() ? &nodeTheme.selected
+                                                 : (hovered_ ? &nodeTheme.hover : &nodeTheme.normal);
             QColor bodyColor = (state->body.color.isValid() && state->body.color.alpha() > 0)
                              ? state->body.color
                              : nodeState->body.color;
@@ -737,8 +905,9 @@ void GraphNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     }
     else
     {
-        const GraphComponentState* state = isSelected() ? &theme.node.selected 
-                                        : (hovered_ ? &theme.node.hover : &theme.node.normal);
+        const auto& nodeTheme = theme.nodeThemeForType(displayType());
+        const GraphComponentState* state = isSelected() ? &nodeTheme.selected
+                                        : (hovered_ ? &nodeTheme.hover : &nodeTheme.normal);
 
         QPainterPath path;
         path.addRoundedRect(cachedRect_, state->radius, state->radius);
@@ -840,7 +1009,7 @@ QVariant GraphNodeItem::itemChange(QGraphicsItem::GraphicsItemChange change, con
                 newPos.setX(std::max(minX, newPos.x()));
                 newPos.setY(std::max(minY, newPos.y()));
 
-                if (parentNode->sizingMode_ == ContainerSizing::Manual)
+                if (parentNode->sizingMode_ == ContainerSizing::Manual || parentNode->isDimLocked())
                 {
                     qreal maxX = std::max(minX, parentNode->cachedRect_.width() - nodeRect().width() - 10.0);
                     qreal maxY = std::max(minY, parentNode->cachedRect_.height() - nodeRect().height() - 10.0);
@@ -1090,7 +1259,7 @@ void GraphNodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
                 p = p->parentItem();
             }
 
-            if (!isDescendant && candidate->isContainer())
+            if (!isDescendant && candidate->canAcceptChildren())
             {
                 targetParent = candidate;
                 break;
@@ -1102,7 +1271,7 @@ void GraphNodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
             for (QGraphicsItem* item : scene()->items())
             {
                 auto* candidate = dynamic_cast<GraphNodeItem*>(item);
-                if (!candidate || candidate == this || !candidate->isContainer())
+                if (!candidate || candidate == this || candidate == parentItem() || !candidate->canAcceptChildren())
                     continue;
 
                 bool isDescendant = false;
@@ -1125,7 +1294,27 @@ void GraphNodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
                 if (overlap.isValid() && !overlap.isEmpty())
                 {
                     qreal area = overlap.width() * overlap.height();
+                    bool isBetter = false;
                     if (area > bestOverlapArea)
+                    {
+                        isBetter = true;
+                    }
+                    else if (std::abs(area - bestOverlapArea) < 0.001 && targetParent)
+                    {
+                        // If equal overlap area, prefer the deeper descendant container
+                        QGraphicsItem* p2 = candidate->parentItem();
+                        while (p2)
+                        {
+                            if (p2 == targetParent)
+                            {
+                                isBetter = true;
+                                break;
+                            }
+                            p2 = p2->parentItem();
+                        }
+                    }
+
+                    if (isBetter)
                     {
                         bestOverlapArea = area;
                         targetParent = candidate;
@@ -1158,8 +1347,18 @@ void GraphNodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
                 {
                     QPointF lp = pos();
                     qreal minX = 10.0;
-                    qreal minY = curParent->cachedHeaderRect_.height() + 10.0;
-                    setPos(std::max(minX, lp.x()), std::max(minY, lp.y()));
+                    qreal headerH = curParent->cachedHeaderRect_.height() > 0 ? curParent->cachedHeaderRect_.height() : 32.0;
+                    qreal minY = headerH + 10.0;
+                    qreal x = std::max(minX, lp.x());
+                    qreal y = std::max(minY, lp.y());
+                    if (curParent->isDimLocked() || curParent->sizingMode_ == ContainerSizing::Manual)
+                    {
+                        qreal maxX = std::max(minX, curParent->cachedRect_.width() - boundingRect().width() - 10.0);
+                        qreal maxY = std::max(minY, curParent->cachedRect_.height() - boundingRect().height() - 10.0);
+                        x = std::min(x, maxX);
+                        y = std::min(y, maxY);
+                    }
+                    setPos(x, y);
                 }
                 refreshGeometry();
             }
@@ -1186,8 +1385,18 @@ void GraphNodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
                 {
                     QPointF lp = pos();
                     qreal minX = 10.0;
-                    qreal minY = curParent->cachedHeaderRect_.height() + 10.0;
-                    setPos(std::max(minX, lp.x()), std::max(minY, lp.y()));
+                    qreal headerH = curParent->cachedHeaderRect_.height() > 0 ? curParent->cachedHeaderRect_.height() : 32.0;
+                    qreal minY = headerH + 10.0;
+                    qreal x = std::max(minX, lp.x());
+                    qreal y = std::max(minY, lp.y());
+                    if (curParent->isDimLocked() || curParent->sizingMode_ == ContainerSizing::Manual)
+                    {
+                        qreal maxX = std::max(minX, curParent->cachedRect_.width() - boundingRect().width() - 10.0);
+                        qreal maxY = std::max(minY, curParent->cachedRect_.height() - boundingRect().height() - 10.0);
+                        x = std::min(x, maxX);
+                        y = std::min(y, maxY);
+                    }
+                    setPos(x, y);
                     refreshGeometry();
                 }
             }
@@ -1636,6 +1845,11 @@ void GraphNodeItem::refreshGeometry()
 
     if (scene())
     {
+        if (auto* mw = dynamic_cast<MainWindow*>(scene()->views().isEmpty() ? nullptr : scene()->views().first()->window()))
+        {
+            if (mw->isRendering())
+                return;
+        }
         GraphEdgeItem::updateSceneEdges(scene());
     }
     else

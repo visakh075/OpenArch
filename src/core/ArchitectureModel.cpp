@@ -909,12 +909,17 @@ GraphSnapshot ArchitectureModel::extractGraph(
     {
         for (const auto& nl : nodesInLayer(*layerId))
         {
-            visibleNodes.insert(nl.nodeId);
+            if (getNodeById(nl.nodeId).has_value())
+            {
+                visibleNodes.insert(nl.nodeId);
+            }
         }
 
         // Draw containers in a non-connected layer if any submodule is in the layer
         bool addedAny = true;
-        while (addedAny)
+        int maxDepth = static_cast<int>(nodes().size());
+        int iter = 0;
+        while (addedAny && iter++ <= maxDepth)
         {
             addedAny = false;
             for (const auto& n : nodes())
@@ -923,8 +928,11 @@ GraphSnapshot ArchitectureModel::extractGraph(
                 {
                     if (visibleNodes.find(*n.parentId) == visibleNodes.end())
                     {
-                        visibleNodes.insert(*n.parentId);
-                        addedAny = true;
+                        if (getNodeById(*n.parentId).has_value())
+                        {
+                            visibleNodes.insert(*n.parentId);
+                            addedAny = true;
+                        }
                     }
                 }
             }

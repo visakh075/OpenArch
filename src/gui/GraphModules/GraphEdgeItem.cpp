@@ -79,6 +79,25 @@ void GraphEdgeItem::setRoutingAlgorithmOverride(std::optional<EdgeRoutingAlgorit
     refreshPath();
 }
 
+QString GraphEdgeItem::edgeType() const
+{
+    if (!cachedEdgeType_.isEmpty())
+        return cachedEdgeType_;
+    if (model_)
+    {
+        auto edge = model_->getEdgeById(e_id);
+        if (edge)
+            return QString::fromStdString(edge->edgeType);
+        if (!consolidatedEdgeIds_.empty())
+        {
+            auto subEdge = model_->getEdgeById(consolidatedEdgeIds_.front());
+            if (subEdge)
+                return QString::fromStdString(subEdge->edgeType);
+        }
+    }
+    return QString();
+}
+
 EdgeRoutingAlgorithm GraphEdgeItem::effectiveRoutingAlgorithm() const
 {
     if (routingOverride_.has_value())
@@ -222,6 +241,9 @@ void GraphEdgeItem::setConsolidatedEdges(const std::vector<GraphEdgeItem*>& edge
 
     consolidatedHasIssues_ = (hasInvalid || hasChanged);
 
+    if (!consolidatedTypes_.isEmpty())
+        cachedEdgeType_ = consolidatedTypes_.front();
+
     refreshLayout();
 }
 
@@ -317,7 +339,7 @@ void GraphEdgeItem::updateSceneEdges(QGraphicsScene* scene)
     std::map<GraphEdgeItem*, Port> edgeDstPort;
     for (auto* edge : visibleEdges)
     {
-        Port sp, dp;
+        Port sp = Port::Right, dp = Port::Left;
         edge->autoSelectPorts(sp, dp);
         edgeSrcPort[edge] = sp;
         edgeDstPort[edge] = dp;
@@ -335,14 +357,16 @@ void GraphEdgeItem::updateSceneEdges(QGraphicsScene* scene)
     {
         auto* s = edge->effectiveSrcNode();
         auto* d = edge->effectiveDstNode();
+        if (!s || !d) continue;
+
         QPointF sCenter = s->mapToScene(s->nodeRect()).boundingRect().center();
         QPointF dCenter = d->mapToScene(d->nodeRect()).boundingRect().center();
 
-        Port sp = edgeSrcPort[edge];
+        Port sp = edgeSrcPort.count(edge) ? edgeSrcPort[edge] : Port::Right;
         qreal sKey = (sp == Port::Left || sp == Port::Right) ? dCenter.y() : dCenter.x();
         nodePortMap[{s, sp}].push_back({ edge, true, sKey });
 
-        Port dp = edgeDstPort[edge];
+        Port dp = edgeDstPort.count(edge) ? edgeDstPort[edge] : Port::Left;
         qreal dKey = (dp == Port::Left || dp == Port::Right) ? sCenter.y() : sCenter.x();
         nodePortMap[{d, dp}].push_back({ edge, false, dKey });
     }
@@ -355,7 +379,7 @@ void GraphEdgeItem::updateSceneEdges(QGraphicsScene* scene)
         GraphNodeItem* node = entry.first.first;
         Port port = entry.first.second;
         auto& list = entry.second;
-        if (list.empty()) continue;
+        if (list.empty() || !node) continue;
 
         std::sort(list.begin(), list.end(), [](const EndpointRef& a, const EndpointRef& b) {
             if (std::abs(a.sortKey - b.sortKey) > 1.0)
@@ -452,8 +476,7 @@ void GraphEdgeItem::updateSceneEdges(QGraphicsScene* scene)
         }
         qreal channelOffset = lane * 14.0;
 
-        const auto* state = edge->isSelected() ? &theme.edge.selected
-                          : (edge->isHovered() ? &theme.edge.hover : &theme.edge.normal);
+        const auto* state = &theme.edgeStateFor(edge->edgeType(), edge->isSelected(), edge->isHovered());
         qreal arrowWidth = state ? state->arrow.width : defaultArrowWidth;
 
         EdgeRoutingAlgorithm algo = edge->effectiveRoutingAlgorithm();
@@ -809,6 +832,9 @@ QPointF GraphEdgeItem::portScenePosition(GraphNodeItem* node, Port port) const
 
 void GraphEdgeItem::autoSelectPorts(Port& srcPort, Port& dstPort) const
 {
+    srcPort = Port::Right;
+    dstPort = Port::Left;
+
     GraphNodeItem* sNode = effectiveSrcNode();
     GraphNodeItem* dNode = effectiveDstNode();
     if (!sNode || !dNode)
@@ -1438,8 +1464,7 @@ void GraphEdgeItem::setCustomPath(const QPainterPath& localPath, const QPointF& 
     cachedArrowAngle_ = arrowAngle;
 
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = isSelected() ? &theme.edge.selected
-                                : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
+    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
 
     qreal extraMargin = State->lineWidth + State->label.offset + State->label.paddingY + 30.0;
     cachedBounds_ = cachedPath_.boundingRect();
@@ -2006,8 +2031,7 @@ void GraphEdgeItem::setWaypointsAndBuildPath(
     }
 
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = isSelected() ? &theme.edge.selected
-                                : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
+    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
 
     qreal arrowWidth = State->arrow.width;
     QPointF tip = localWaypoints.back();
@@ -2029,8 +2053,7 @@ void GraphEdgeItem::setWaypointsAndBuildPath(
 QRectF GraphEdgeItem::boundingRect() const
 {
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = isSelected() ? &theme.edge.selected 
-                                : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
+    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
 
     qreal extraMargin = State->lineWidth + State->label.offset + State->label.paddingY + 30.0;
     QRectF rect = cachedPath_.boundingRect();
@@ -2046,7 +2069,7 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
         return;
 
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = isSelected() ? &theme.edge.selected : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
+    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
 
     const auto& arrow = State->arrow;
     const auto& label = State->label;
@@ -2218,8 +2241,7 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
 QPainterPath GraphEdgeItem::shape() const
 {
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = isSelected() ? &theme.edge.selected 
-                                : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
+    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
 
     qreal tolerance = 5.0;
     qreal hitWidth = State->lineWidth + (tolerance * 2.0);
@@ -2667,8 +2689,7 @@ void GraphEdgeItem::refreshPath()
     cachedPath_ = buildPath();
 
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = isSelected() ? &theme.edge.selected 
-                                : (hovered_ ? &theme.edge.hover : &theme.edge.normal);
+    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
 
     qreal extraMargin = State->lineWidth + State->label.offset + State->label.paddingY + 30.0;
     cachedBounds_ = cachedPath_.boundingRect();
@@ -2708,7 +2729,8 @@ void GraphEdgeItem::refreshLayout()
     }
     else if (edge)
     {
-        cachedTitle_ = QString::fromStdString(edge->edgeType);
+        cachedEdgeType_ = QString::fromStdString(edge->edgeType);
+        cachedTitle_ = cachedEdgeType_;
         QString tip = QString("<b>Edge #%1</b> (%2)<br>"
                               "Status: <b>%3</b><br>"
                               "Reviewer: %4<br>"
@@ -2746,9 +2768,10 @@ void GraphEdgeItem::refreshLayout()
         }
     }
 
+    const auto& edgeTheme = theme.edgeThemeForType(edgeType());
     QFont font;
-    font.setPointSize(theme.edge.normal.label.fontSize);
-    font.setBold(theme.edge.normal.label.bold);
+    font.setPointSize(edgeTheme.normal.label.fontSize);
+    font.setBold(edgeTheme.normal.label.bold);
     QFontMetrics fm(font);
     cachedTitleRect_ = fm.boundingRect(cachedTitle_);
 

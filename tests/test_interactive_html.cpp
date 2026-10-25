@@ -223,7 +223,17 @@ int main(int argc, char* argv[])
         std::cout << " -> PASSED: Smooth Bezier exported as true SVG cubic curve (C cp1 cp2 ep).\n";
     }
 
-    // 12. Overwrite architecture.html if output directory exists
+    // 12. Test Font Export
+    std::cout << "[TEST] 10. Verifying Font Export in Interactive HTML...\n";
+    assert(html.contains("fonts.googleapis.com") && "Missing Google Fonts preconnect/link in HTML export!");
+    assert(html.contains("family=Inter") && "Missing Inter font import in HTML export!");
+    assert(html.contains("family=JetBrains+Mono") && "Missing JetBrains Mono font import in HTML export!");
+    assert(html.contains("--font-sans") && "Missing --font-sans in CSS variables!");
+    assert(html.contains("--font-mono") && "Missing --font-mono in CSS variables!");
+    assert(html.contains("svg text, text") && "Missing font-family rules on SVG text elements!");
+    std::cout << " -> PASSED: Typography web fonts and SVG font families successfully exported.\n";
+
+    // 13. Overwrite architecture.html if output directory exists
     QStringList htmlDestinations = {
         "/workspace/OpenArch/build/architecture.html",
         "build/architecture.html",

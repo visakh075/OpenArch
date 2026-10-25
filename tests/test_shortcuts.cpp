@@ -1,11 +1,20 @@
 #include <QApplication>
 #include <QAction>
+#include <QGraphicsScene>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <cassert>
 #include <iostream>
 #include "MainWindow.h"
 #include "ShortcutManager.h"
 #include "ShortcutConfigDialog.h"
 #include "GraphThemeManager.h"
+#include "GraphModules/GraphNodeItem.h"
+#include "GraphModules/GraphEdgeItem.h"
+#include "theme/ThemeEditorWindow.h"
+#include "theme/ThemeEditorDock.h"
+#include "db/DbManagerSQLite.h"
+#include <QTemporaryFile>
 
 int main(int argc, char** argv)
 {
@@ -116,8 +125,289 @@ int main(int argc, char** argv)
     ShortcutConfigDialog dlg(&window);
     std::cout << " -> PASSED: ShortcutConfigDialog successfully created and wired with MainWindow." << std::endl;
 
+    std::cout << "[TEST] 10. Verifying Node Custom Dimensions & Dimension Lock..." << std::endl;
+    DbManagerSQLite testDb;
+    assert(testDb.open(":memory:").ok);
+    ArchitectureModel model(testDb);
+    QGraphicsScene scene;
+
+    // 10.1 Container with _dim_lock = false
+    NodeData c1;
+    c1.name = "Container_Unlocked";
+    c1.type = "container";
+    c1.metadata = R"({"_width": 300, "_height": 200, "_dim_lock": false})";
+    NodeId c1Id = 0;
+    assert(model.addNode(c1, c1Id).ok);
+
+    auto* c1Item = new GraphNodeItem(&model, c1Id);
+    scene.addItem(c1Item);
+    c1Item->refreshGeometry();
+
+    assert(c1Item->isDimLocked() == false);
+    assert(c1Item->rect().width() >= 300.0);
+    assert(c1Item->rect().height() >= 200.0);
+
+    // Add child inside Container 1 that requires more space (pos 400, 300)
+    NodeData child1;
+    child1.name = "Child_In_C1";
+    child1.type = "service";
+    child1.parentId = c1Id;
+    NodeId child1Id = 0;
+    assert(model.addNode(child1, child1Id).ok);
+
+    auto* child1Item = new GraphNodeItem(&model, child1Id, c1Item);
+    child1Item->setPos(400.0, 300.0);
+    child1Item->refreshGeometry();
+    c1Item->refreshGeometry();
+
+    // Since _dim_lock is false, container expands to fit child positions
+    assert(c1Item->rect().width() > 400.0);
+    assert(c1Item->rect().height() > 300.0);
+    std::cout << " -> PASSED: Container with _dim_lock=false expands according to subcontainers/children positions." << std::endl;
+
+    // 10.2 Container with _dim_lock = true
+    NodeData c2;
+    c2.name = "Container_Locked";
+    c2.type = "container";
+    c2.metadata = R"({"_width": 300, "_height": 200, "_dim_lock": true})";
+    NodeId c2Id = 0;
+    assert(model.addNode(c2, c2Id).ok);
+
+    auto* c2Item = new GraphNodeItem(&model, c2Id);
+    scene.addItem(c2Item);
+    c2Item->refreshGeometry();
+
+    assert(c2Item->isDimLocked() == true);
+    assert(c2Item->rect().width() == 300.0);
+    assert(c2Item->rect().height() == 200.0);
+
+    // Add child positioned outside 300x200
+    NodeData child2;
+    child2.name = "Child_In_C2";
+    child2.type = "service";
+    child2.parentId = c2Id;
+    NodeId child2Id = 0;
+    assert(model.addNode(child2, child2Id).ok);
+
+    auto* child2Item = new GraphNodeItem(&model, child2Id, c2Item);
+    child2Item->setPos(400.0, 300.0);
+    child2Item->refreshGeometry();
+    c2Item->refreshGeometry();
+
+    // Since _dim_lock is true, dimensions remain strictly absolute
+    assert(c2Item->rect().width() == 300.0);
+    assert(c2Item->rect().height() == 200.0);
+    std::cout << " -> PASSED: Container with _dim_lock=true keeps _height and _width as absolute." << std::endl;
+
+    // 10.3 Leaf node with custom dimensions
+    NodeData leaf;
+    leaf.name = "LeafNode";
+    leaf.type = "service";
+    leaf.metadata = R"({"_width": 250, "_height": 180, "_dim_lock": true})";
+    NodeId leafId = 0;
+    assert(model.addNode(leaf, leafId).ok);
+
+    auto* leafItem = new GraphNodeItem(&model, leafId);
+    scene.addItem(leafItem);
+    leafItem->refreshGeometry();
+
+    assert(leafItem->isDimLocked() == true);
+    assert(leafItem->rect().width() == 250.0);
+    assert(leafItem->rect().height() == 180.0);
+    std::cout << " -> PASSED: Leaf node respects custom dimensions and dimension lock." << std::endl;
+
+    std::cout << "[TEST] 11. Verifying Manually Sized Node Drop & Collision Logic..." << std::endl;
+
+    // 11.1 Standard node without manual sizing cannot accept children
+    NodeData standardNode;
+    standardNode.name = "StandardService";
+    standardNode.type = "service";
+    NodeId stdId = 0;
+    assert(model.addNode(standardNode, stdId).ok);
+    auto* stdItem = new GraphNodeItem(&model, stdId);
+    scene.addItem(stdItem);
+    stdItem->refreshGeometry();
+    assert(!stdItem->isContainer());
+    assert(!stdItem->canAcceptChildren());
+    std::cout << " -> PASSED: Standard service node does not accept children." << std::endl;
+
+    // 11.2 Manually sized node (type="service") can accept children
+    NodeData manualNode;
+    manualNode.name = "ManualServiceBox";
+    manualNode.type = "service";
+    manualNode.metadata = R"({"_width": 350, "_height": 250, "_dim_lock": false})";
+    NodeId manualId = 0;
+    assert(model.addNode(manualNode, manualId).ok);
+    auto* manualItem = new GraphNodeItem(&model, manualId);
+    scene.addItem(manualItem);
+    manualItem->refreshGeometry();
+    assert(!manualItem->isContainer());
+    assert(manualItem->canAcceptChildren());
+    std::cout << " -> PASSED: Manually sized node canAcceptChildren() is true despite type != container." << std::endl;
+
+    // 11.3 Drop child into manually sized node
+    NodeData droppedChild;
+    droppedChild.name = "DroppedChild";
+    droppedChild.type = "service";
+    NodeId droppedChildId = 0;
+    assert(model.addNode(droppedChild, droppedChildId).ok);
+    auto* droppedChildItem = new GraphNodeItem(&model, droppedChildId);
+    scene.addItem(droppedChildItem);
+    droppedChildItem->setPos(100.0, 100.0);
+    droppedChildItem->refreshGeometry();
+
+    manualItem->adoptChild(droppedChildItem);
+    assert(droppedChildItem->parentItem() == manualItem);
+    assert(manualItem->isContainer());
+    assert(droppedChildItem->pos().y() >= 42.0); // Safe offset below container header
+    auto adoptedNodeOpt = model.getNodeById(droppedChildId);
+    assert(adoptedNodeOpt.has_value() && adoptedNodeOpt->parentId == manualId);
+    std::cout << " -> PASSED: Manually sized node successfully adopts child and converts to container with safe header offset." << std::endl;
+
+    // 11.4 Locked dimension node clamps adopted child within its bounds
+    NodeData lockedBox;
+    lockedBox.name = "LockedBox";
+    lockedBox.type = "box";
+    lockedBox.metadata = R"({"_width": 200, "_height": 200, "_dim_lock": true})";
+    NodeId lockedBoxId = 0;
+    assert(model.addNode(lockedBox, lockedBoxId).ok);
+    auto* lockedBoxItem = new GraphNodeItem(&model, lockedBoxId);
+    scene.addItem(lockedBoxItem);
+    lockedBoxItem->refreshGeometry();
+    assert(lockedBoxItem->canAcceptChildren());
+
+    NodeData farChild;
+    farChild.name = "FarChild";
+    farChild.type = "service";
+    NodeId farChildId = 0;
+    assert(model.addNode(farChild, farChildId).ok);
+    auto* farChildItem = new GraphNodeItem(&model, farChildId);
+    scene.addItem(farChildItem);
+    farChildItem->setPos(800.0, 800.0);
+    farChildItem->refreshGeometry();
+
+    lockedBoxItem->adoptChild(farChildItem);
+    assert(farChildItem->parentItem() == lockedBoxItem);
+    assert(farChildItem->pos().x() <= 200.0 - farChildItem->boundingRect().width());
+    assert(farChildItem->pos().y() <= 200.0 - farChildItem->boundingRect().height());
+    assert(lockedBoxItem->rect().width() == 200.0);
+    assert(lockedBoxItem->rect().height() == 200.0);
+    std::cout << " -> PASSED: Dimension-locked container clamps adopted child within absolute bounds." << std::endl;
+
+    std::cout << "[TEST] 12. Verifying Type-Specific Theme Styling (edge#pwr, edge#lan, node#pwr, node#lan)..." << std::endl;
+    // Reload Dark.json which has edge#pwr, edge#lan, node#pwr, node#lan
+    assert(themeManager.load("src/gui/theme/themes/Dark.json") == true);
+    const auto& currentTheme = themeManager.theme();
+
+    // 12.1 Verify type-specific map entries
+    assert(currentTheme.edgeTypeThemes.contains("pwr"));
+    assert(currentTheme.edgeTypeThemes.contains("lan"));
+    assert(currentTheme.nodeTypeThemes.contains("pwr"));
+    assert(currentTheme.nodeTypeThemes.contains("lan"));
+
+    // 12.2 Verify edge colors for pwr (yellow) and lan (cyan)
+    QColor pwrColor = currentTheme.edgeThemeForType("pwr").normal.lineColor;
+    QColor lanColor = currentTheme.edgeThemeForType("lan").normal.lineColor;
+    assert(pwrColor.red() == 255 && pwrColor.green() == 255 && pwrColor.blue() == 0); // #ffff00
+    assert(lanColor.red() == 0 && lanColor.green() == 255 && lanColor.blue() == 255); // #00ffff
+
+    // 12.3 Case-insensitive lookups
+    assert(currentTheme.edgeThemeForType("PWR").normal.lineColor == pwrColor);
+    assert(currentTheme.edgeThemeForType("LAN").normal.lineColor == lanColor);
+
+    // 12.4 Fallback for unknown edge type
+    assert(currentTheme.edgeThemeForType("unknown_custom").normal.lineColor == currentTheme.edge.normal.lineColor);
+
+    // 12.5 Node type overrides
+    QColor nodePwrBorder = currentTheme.nodeThemeForType("pwr").normal.border;
+    QColor nodeLanBorder = currentTheme.nodeThemeForType("lan").normal.border;
+    assert(nodePwrBorder.red() == 255 && nodePwrBorder.green() == 255 && nodePwrBorder.blue() == 0);
+    assert(nodeLanBorder.red() == 0 && nodeLanBorder.green() == 255 && nodeLanBorder.blue() == 255);
+
+    // 12.6 GraphEdgeItem effective state
+    EdgeData edgePwrData;
+    edgePwrData.srcNode = stdId;
+    edgePwrData.dstNode = manualId;
+    edgePwrData.edgeType = "pwr";
+    EdgeId pwrEdgeId = 0;
+    assert(model.addEdge(edgePwrData, pwrEdgeId).ok);
+
+    auto* edgePwrItem = new GraphEdgeItem(&model, pwrEdgeId, stdItem, manualItem);
+    scene.addItem(edgePwrItem);
+    edgePwrItem->refreshLayout();
+    assert(edgePwrItem->edgeType() == "pwr");
+    assert(currentTheme.edgeStateFor(edgePwrItem->edgeType(), false, false).lineColor == pwrColor);
+
+    EdgeData edgeLanData;
+    edgeLanData.srcNode = stdId;
+    edgeLanData.dstNode = manualId;
+    edgeLanData.edgeType = "lan";
+    EdgeId lanEdgeId = 0;
+    assert(model.addEdge(edgeLanData, lanEdgeId).ok);
+
+    auto* edgeLanItem = new GraphEdgeItem(&model, lanEdgeId, stdItem, manualItem);
+    scene.addItem(edgeLanItem);
+    edgeLanItem->refreshLayout();
+    assert(edgeLanItem->edgeType() == "lan");
+    assert(currentTheme.edgeStateFor(edgeLanItem->edgeType(), false, false).lineColor == lanColor);
+    std::cout << " -> PASSED: Edge and node type-specific styling resolves correctly for pwr, lan, and fallbacks." << std::endl;
+
+    // 12.7 Save and reload round-trip
+    QTemporaryFile tempThemeFile;
+    assert(tempThemeFile.open());
+    QString tempThemePath = tempThemeFile.fileName();
+    tempThemeFile.close();
+
+    assert(themeManager.save(tempThemePath) == true);
+    GraphThemeManager reloadedManager;
+    assert(reloadedManager.load(tempThemePath) == true);
+    const auto& reloadedTheme = reloadedManager.theme();
+    assert(reloadedTheme.edgeThemeForType("pwr").normal.lineColor == pwrColor);
+    assert(reloadedTheme.edgeThemeForType("lan").normal.lineColor == lanColor);
+    assert(reloadedTheme.nodeThemeForType("pwr").normal.border == nodePwrBorder);
+    assert(reloadedTheme.nodeThemeForType("lan").normal.border == nodeLanBorder);
+    std::cout << " -> PASSED: Theme save and reload round-trip preserves all type-specific overrides." << std::endl;
+
+    // 13. Tabified Architecture and Theme Editor Docks
+    std::cout << "\n[TEST] 13. Verifying Tabified Architecture and Theme Editor Docks in MainWindow..." << std::endl;
+    assert(window.architectureDock() != nullptr);
+    assert(window.themeDock() != nullptr);
+    auto tabbedDocks = window.tabifiedDockWidgets(window.architectureDock());
+    QDockWidget* themeDock = window.themeDock();
+    assert(tabbedDocks.contains(themeDock));
+    std::cout << " -> PASSED: Architecture and Theme Editor docks are tabified together in default view." << std::endl;
+
+    // 14. Standalone Theme Editor Window & Style Management
+    std::cout << "\n[TEST] 14. Verifying Standalone Theme Editor Window & Style Management..." << std::endl;
+    ThemeEditorWindow editorWin;
+    editorWin.resize(1200, 800);
+
+    auto& mgr = *GraphThemeManager::instance();
+    GraphComponentTheme sensorStyle = mgr.theme().node;
+    sensorStyle.normal.border = QColor("#ff00ffff");
+    mgr.mutableTheme().nodeTypeThemes["sensor"] = sensorStyle;
+    mgr.themeChanged();
+
+    assert(mgr.theme().nodeTypeThemes.contains("sensor"));
+    assert(mgr.theme().nodeThemeForType("sensor").normal.border == QColor("#ff00ffff"));
+
+    // Duplicate style to sensor_backup
+    mgr.mutableTheme().nodeTypeThemes["sensor_backup"] = mgr.theme().nodeTypeThemes["sensor"];
+    mgr.themeChanged();
+    assert(mgr.theme().nodeTypeThemes.contains("sensor_backup"));
+
+    // Remove sensor_backup
+    mgr.mutableTheme().nodeTypeThemes.remove("sensor_backup");
+    mgr.themeChanged();
+    assert(!mgr.theme().nodeTypeThemes.contains("sensor_backup"));
+
+    editorWin.refreshTree();
+    editorWin.resetLiveViewScene();
+    editorWin.refreshLiveView();
+    std::cout << " -> PASSED: Standalone Theme Editor initialized and verified with custom style lifecycle and live view." << std::endl;
+
     std::cout << "\n==============================================" << std::endl;
-    std::cout << " ALL SHORTCUT TESTS PASSED SUCCESSFULLY! (9/9)" << std::endl;
+    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (14/14)" << std::endl;
     std::cout << "==============================================" << std::endl;
 
     return 0;

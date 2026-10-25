@@ -45,6 +45,10 @@ private:
 
     InspectorPage createInspectorPage();
 
+    QWidget* createSection(
+        const QString& title,
+        QVBoxLayout*& contentLayout);
+
     QWidget* createCollapsibleSection(
         const QString& title,
         QVBoxLayout*& contentLayout);

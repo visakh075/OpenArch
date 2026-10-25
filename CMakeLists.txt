@@ -79,29 +79,33 @@ target_compile_options(openarch PRIVATE
 )
 
 # ------------------------------------------------------------
-# GUI target
+# GUI common sources
 # ------------------------------------------------------------
-add_executable(openarch-gui
+set(OPENARCH_GUI_COMMON_SOURCES
     resources.qrc
-
-    src/gui/main.cpp
     src/gui/MainWindow.cpp
     src/gui/ShortcutManager.cpp
     src/gui/ShortcutConfigDialog.cpp
     src/gui/ConvertDialog.cpp
-
     src/gui/EditorDialogs/NodeEditorDialog.cpp
     src/gui/EditorDialogs/LayerEditorDialog.cpp
     src/gui/EditorDialogs/EdgeEditorDialog.cpp
     src/gui/EditorDialogs/JsonTreeEditor.cpp
     src/gui/WelcomeWidget.cpp
-
     src/gui/GraphModules/GraphNodeItem.cpp
     src/gui/GraphModules/GraphEdgeItem.cpp
-
     src/gui/GraphView.cpp    
     src/gui/theme/GraphThemeManager.cpp
     src/gui/theme/ThemeEditorDock.cpp
+    src/gui/theme/ThemeEditorWindow.cpp
+)
+
+# ------------------------------------------------------------
+# GUI target
+# ------------------------------------------------------------
+add_executable(openarch-gui
+    src/gui/main.cpp
+    ${OPENARCH_GUI_COMMON_SOURCES}
 )
 
 target_link_libraries(openarch-gui PRIVATE
@@ -111,25 +115,25 @@ target_link_libraries(openarch-gui PRIVATE
 )
 
 # ------------------------------------------------------------
+# Theme Editor target (standalone application)
+# ------------------------------------------------------------
+add_executable(openarch-theme-editor
+    src/gui/theme/ThemeEditorMain.cpp
+    ${OPENARCH_GUI_COMMON_SOURCES}
+)
+
+target_link_libraries(openarch-theme-editor PRIVATE
+    openarch_core
+    Qt5::Widgets
+    Qt5::Svg
+)
+
+# ------------------------------------------------------------
 # Test target
 # ------------------------------------------------------------
 add_executable(test_shortcuts
-    resources.qrc
     tests/test_shortcuts.cpp
-    src/gui/MainWindow.cpp
-    src/gui/ShortcutManager.cpp
-    src/gui/ShortcutConfigDialog.cpp
-    src/gui/ConvertDialog.cpp
-    src/gui/EditorDialogs/NodeEditorDialog.cpp
-    src/gui/EditorDialogs/LayerEditorDialog.cpp
-    src/gui/EditorDialogs/EdgeEditorDialog.cpp
-    src/gui/EditorDialogs/JsonTreeEditor.cpp
-    src/gui/WelcomeWidget.cpp
-    src/gui/GraphModules/GraphNodeItem.cpp
-    src/gui/GraphModules/GraphEdgeItem.cpp
-    src/gui/GraphView.cpp    
-    src/gui/theme/GraphThemeManager.cpp
-    src/gui/theme/ThemeEditorDock.cpp
+    ${OPENARCH_GUI_COMMON_SOURCES}
 )
 
 target_link_libraries(test_shortcuts PRIVATE
@@ -147,22 +151,8 @@ target_link_libraries(test_db_converter PRIVATE
 )
 
 add_executable(test_interactive_html
-    resources.qrc
     tests/test_interactive_html.cpp
-    src/gui/MainWindow.cpp
-    src/gui/ShortcutManager.cpp
-    src/gui/ShortcutConfigDialog.cpp
-    src/gui/ConvertDialog.cpp
-    src/gui/EditorDialogs/NodeEditorDialog.cpp
-    src/gui/EditorDialogs/LayerEditorDialog.cpp
-    src/gui/EditorDialogs/EdgeEditorDialog.cpp
-    src/gui/EditorDialogs/JsonTreeEditor.cpp
-    src/gui/WelcomeWidget.cpp
-    src/gui/GraphModules/GraphNodeItem.cpp
-    src/gui/GraphModules/GraphEdgeItem.cpp
-    src/gui/GraphView.cpp    
-    src/gui/theme/GraphThemeManager.cpp
-    src/gui/theme/ThemeEditorDock.cpp
+    ${OPENARCH_GUI_COMMON_SOURCES}
 )
 
 target_link_libraries(test_interactive_html PRIVATE
