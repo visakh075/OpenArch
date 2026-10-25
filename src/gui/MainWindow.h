@@ -148,7 +148,6 @@ private:
     ArchitectureFilterProxyModel* navProxyModel_{nullptr};
     QLineEdit* treeSearchEdit_{nullptr};
     QComboBox* treeFilterCombo_{nullptr};
-    QPushButton* btnShowInGraph_{nullptr};
     QLabel* treeStatusLabel_{nullptr};
 
     QGraphicsScene* scene_{nullptr};

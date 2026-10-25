@@ -92,29 +92,18 @@ void MainWindow::setupUi()
     treeSearchEdit_->setPlaceholderText("Search architecture...");
     treeSearchEdit_->setClearButtonEnabled(true);
 
-    // Filter bar & action row
-    auto* navControlRow = new QHBoxLayout();
-    navControlRow->setContentsMargins(0, 0, 0, 0);
-    navControlRow->setSpacing(4);
-
+    // Filter bar
     treeFilterCombo_ = new QComboBox(navContainer);
     treeFilterCombo_->addItem("All Categories", 0);
     treeFilterCombo_->addItem("Nodes Only", 1);
     treeFilterCombo_->addItem("Layers Only", 2);
-
-    btnShowInGraph_ = new QPushButton(QIcon(":/icons/layers.svg"), "Show in Graph", navContainer);
-    btnShowInGraph_->setToolTip("Locate, select, and center the highlighted architecture item on the canvas");
-    btnShowInGraph_->setCursor(Qt::PointingHandCursor);
-
-    navControlRow->addWidget(treeFilterCombo_, 1);
-    navControlRow->addWidget(btnShowInGraph_);
 
     // Status label
     treeStatusLabel_ = new QLabel(navContainer);
     treeStatusLabel_->setStyleSheet("color: #888888; font-size: 11px; padding: 2px;");
 
     navLayout->addWidget(treeSearchEdit_);
-    navLayout->addLayout(navControlRow);
+    navLayout->addWidget(treeFilterCombo_);
     navLayout->addWidget(navigator_, 1);
     navLayout->addWidget(treeStatusLabel_);
 
@@ -588,11 +577,6 @@ void MainWindow::setupConnections()
     connect(navigator_, &QTreeView::activated, this, &MainWindow::showSelectedInGraph);
     navigator_->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(navigator_, &QTreeView::customContextMenuRequested, this, &MainWindow::onNavigatorContextMenu);
-
-    if (btnShowInGraph_)
-    {
-        connect(btnShowInGraph_, &QPushButton::clicked, this, &MainWindow::showSelectedInGraph);
-    }
 
     connect(treeSearchEdit_, &QLineEdit::textChanged, this, [this](const QString& text) {
         if (navProxyModel_) {
