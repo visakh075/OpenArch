@@ -236,8 +236,11 @@ Result DbManagerSQLite::createLayer(const LayerData& l, LayerId& outId) {
     sqlite3_bind_text(st, 7, l.reviewer.empty() ? nullptr : l.reviewer.c_str(),
                       -1, SQLITE_TRANSIENT);
 
-    sqlite3_step(st);
+    int rc = sqlite3_step(st);
     sqlite3_finalize(st);
+    if (rc != SQLITE_DONE) {
+        return Result::failure(sqlite3_errmsg(db_));
+    }
     outId = sqlite3_last_insert_rowid(db_);
     return Result::success();
 }
@@ -381,8 +384,11 @@ Result DbManagerSQLite::createEdge(const EdgeData& e, EdgeId& outId) {
     sqlite3_bind_text(st, 10, e.reviewer.empty() ? nullptr : e.reviewer.c_str(),
                       -1, SQLITE_TRANSIENT);
 
-    sqlite3_step(st);
+    int rc = sqlite3_step(st);
     sqlite3_finalize(st);
+    if (rc != SQLITE_DONE) {
+        return Result::failure(sqlite3_errmsg(db_));
+    }
     outId = sqlite3_last_insert_rowid(db_);
     return Result::success();
 }

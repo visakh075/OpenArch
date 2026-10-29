@@ -189,6 +189,42 @@ sudo pacman -S --needed \
     readline
 ```
 
+### Windows (Visual Studio 2019 / 2022 + vcpkg)
+
+Install dependencies using [vcpkg](https://github.com/microsoft/vcpkg):
+
+```cmd
+vcpkg install qt5-base:x64-windows qt5-svg:x64-windows sqlite3:x64-windows
+```
+
+Configure and build using Developer Command Prompt / PowerShell:
+
+```cmd
+cmake -B build -G "Visual Studio 17 2022" -A x64 ^
+    -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+cmake --build build --config Release
+```
+
+*(Note: GNU Readline is optional; on Windows/MSVC, `openarch` CLI automatically compiles with a clean standard console I/O fallback).*
+
+### Windows (MSYS2 / MinGW-w64)
+
+From an **MSYS2 MINGW64** terminal:
+
+```bash
+pacman -S --needed \
+    mingw-w64-x86_64-toolchain \
+    mingw-w64-x86_64-cmake \
+    mingw-w64-x86_64-ninja \
+    mingw-w64-x86_64-qt5-base \
+    mingw-w64-x86_64-qt5-svg \
+    mingw-w64-x86_64-sqlite3 \
+    mingw-w64-x86_64-readline
+
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+ninja -C build
+```
+
 ---
 
 ## Building OpenArch

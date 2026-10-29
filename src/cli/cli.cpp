@@ -5,8 +5,32 @@
 #include <cstring>
 #include <string>
 
+#ifdef HAVE_READLINE
 #include <readline/readline.h>
 #include <readline/history.h>
+#ifdef _WIN32
+#define strdup _strdup
+#endif
+#else
+// Cross-platform fallback line reader when GNU Readline is not present (e.g. Windows/MSVC)
+static char* fallback_readline(const char* prompt) {
+    if (prompt) {
+        std::cout << prompt << std::flush;
+    }
+    std::string line;
+    if (!std::getline(std::cin, line)) {
+        return nullptr;
+    }
+    char* buf = static_cast<char*>(malloc(line.size() + 1));
+    if (buf) {
+        std::memcpy(buf, line.c_str(), line.size() + 1);
+    }
+    return buf;
+}
+#define readline fallback_readline
+#define using_history() ((void)0)
+#define add_history(x) ((void)0)
+#endif
 
 #include "core/ArchitectureModel.h"
 #include "core/GraphJson.h"
@@ -55,6 +79,7 @@ enum class Command {
     HELP, EXIT, UNKNOWN
 };
 
+#ifdef HAVE_READLINE
 static char* command_generator(const char* text, int state) {
     static int index;
     static size_t len;
@@ -79,6 +104,7 @@ static char** cli_completion(const char* text, int start, int end) {
         return rl_completion_matches(text, command_generator);
     return nullptr;
 }
+#endif
 
 /* ============================================================
    Parsing
@@ -218,7 +244,9 @@ int main(int argc, char** argv) {
     ArchitectureModel model(*db);
     using_history();
     help();
+#ifdef HAVE_READLINE
     rl_attempted_completion_function = cli_completion;
+#endif
 
     while (true) {
         char* input = readline("> ");

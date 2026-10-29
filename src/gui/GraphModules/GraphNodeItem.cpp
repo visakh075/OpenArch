@@ -1984,7 +1984,25 @@ GraphNodeItem::PreviewLineData GraphNodeItem::buildPreviewData(
 
     QPointF p1, p2;
 
-    if (gapRight > 0)
+    if (!targetNode || targetNode == this)
+    {
+        p2 = targetScenePos;
+        double dx = targetScenePos.x() - srcCenter.x();
+        double dy = targetScenePos.y() - srcCenter.y();
+        if (targetScenePos.x() > srcRect.right())
+            p1 = QPointF(srcRect.right(), srcCenter.y());
+        else if (targetScenePos.x() < srcRect.left())
+            p1 = QPointF(srcRect.left(), srcCenter.y());
+        else if (targetScenePos.y() > srcRect.bottom())
+            p1 = QPointF(srcCenter.x(), srcRect.bottom());
+        else if (targetScenePos.y() < srcRect.top())
+            p1 = QPointF(srcCenter.x(), srcRect.top());
+        else
+            p1 = (std::abs(dx) > std::abs(dy))
+                ? ((dx > 0) ? QPointF(srcRect.right(), srcCenter.y()) : QPointF(srcRect.left(), srcCenter.y()))
+                : ((dy > 0) ? QPointF(srcCenter.x(), srcRect.bottom()) : QPointF(srcCenter.x(), srcRect.top()));
+    }
+    else if (gapRight > 0)
     {
         p1 = QPointF(srcRect.right(), srcCenter.y());
         p2 = QPointF(dstRect.left(), dstCenter.y());

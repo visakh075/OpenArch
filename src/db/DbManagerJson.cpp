@@ -250,6 +250,34 @@ static std::unordered_map<std::string, std::string> extractLayoutSection(const s
                 }
                 ++i;
             }
+        } else if (layoutBlock[i] == '"') {
+            size_t valStart = i + 1;
+            bool esc = false;
+            ++i;
+            while (i < layoutBlock.size()) {
+                char c = layoutBlock[i];
+                if (esc) { esc = false; ++i; continue; }
+                if (c == '\\') { esc = true; ++i; continue; }
+                if (c == '"') {
+                    std::string rawStr = layoutBlock.substr(valStart, i - valStart);
+                    std::string unescaped;
+                    unescaped.reserve(rawStr.size());
+                    for (size_t s = 0; s < rawStr.size(); ++s) {
+                        if (rawStr[s] == '\\' && s + 1 < rawStr.size()) {
+                            if (rawStr[s+1] == '"' || rawStr[s+1] == '\\') {
+                                unescaped += rawStr[s+1];
+                                ++s;
+                                continue;
+                            }
+                        }
+                        unescaped += rawStr[s];
+                    }
+                    dict[key] = trim(unescaped);
+                    ++i;
+                    break;
+                }
+                ++i;
+            }
         } else {
             size_t valStart = i;
             while (i < layoutBlock.size() && layoutBlock[i] != ',' && layoutBlock[i] != '}') ++i;

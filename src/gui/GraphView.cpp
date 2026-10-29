@@ -28,6 +28,10 @@
 #include "core/Types.h"
 #include <cmath>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 static QString toCssRgba(const QColor& c)
 {
     return QString("rgba(%1, %2, %3, %4)")

@@ -15,6 +15,7 @@
 #include "theme/ThemeEditorDock.h"
 #include "db/DbManagerSQLite.h"
 #include <QTemporaryFile>
+#include <QFileInfo>
 
 int main(int argc, char** argv)
 {
@@ -22,7 +23,10 @@ int main(int argc, char** argv)
 
     // Initialize theme manager with default theme
     GraphThemeManager themeManager;
-    themeManager.load("src/gui/theme/themes/Dark.json");
+    QString darkThemePath = "src/gui/theme/themes/Dark.json";
+    if (!QFile::exists(darkThemePath)) darkThemePath = "../src/gui/theme/themes/Dark.json";
+    if (!QFile::exists(darkThemePath)) darkThemePath = "themes/Dark.json";
+    themeManager.load(darkThemePath);
 
     // Construct MainWindow
     MainWindow window;
@@ -178,8 +182,8 @@ int main(int argc, char** argv)
     c2Item->refreshGeometry();
 
     assert(c2Item->isDimLocked() == true);
-    assert(c2Item->rect().width() == 300.0);
-    assert(c2Item->rect().height() == 200.0);
+    assert(c2Item->nodeRect().width() == 300.0);
+    assert(c2Item->nodeRect().height() == 200.0);
 
     // Add child positioned outside 300x200
     NodeData child2;
@@ -195,8 +199,8 @@ int main(int argc, char** argv)
     c2Item->refreshGeometry();
 
     // Since _dim_lock is true, dimensions remain strictly absolute
-    assert(c2Item->rect().width() == 300.0);
-    assert(c2Item->rect().height() == 200.0);
+    assert(c2Item->nodeRect().width() == 300.0);
+    assert(c2Item->nodeRect().height() == 200.0);
     std::cout << " -> PASSED: Container with _dim_lock=true keeps _height and _width as absolute." << std::endl;
 
     // 10.3 Leaf node with custom dimensions
@@ -212,8 +216,8 @@ int main(int argc, char** argv)
     leafItem->refreshGeometry();
 
     assert(leafItem->isDimLocked() == true);
-    assert(leafItem->rect().width() == 250.0);
-    assert(leafItem->rect().height() == 180.0);
+    assert(leafItem->nodeRect().width() == 250.0);
+    assert(leafItem->nodeRect().height() == 180.0);
     std::cout << " -> PASSED: Leaf node respects custom dimensions and dimension lock." << std::endl;
 
     std::cout << "[TEST] 11. Verifying Manually Sized Node Drop & Collision Logic..." << std::endl;
@@ -290,13 +294,13 @@ int main(int argc, char** argv)
     assert(farChildItem->parentItem() == lockedBoxItem);
     assert(farChildItem->pos().x() <= 200.0 - farChildItem->boundingRect().width());
     assert(farChildItem->pos().y() <= 200.0 - farChildItem->boundingRect().height());
-    assert(lockedBoxItem->rect().width() == 200.0);
-    assert(lockedBoxItem->rect().height() == 200.0);
+    assert(lockedBoxItem->nodeRect().width() == 200.0);
+    assert(lockedBoxItem->nodeRect().height() == 200.0);
     std::cout << " -> PASSED: Dimension-locked container clamps adopted child within absolute bounds." << std::endl;
 
     std::cout << "[TEST] 12. Verifying Type-Specific Theme Styling (edge#pwr, edge#lan, node#pwr, node#lan)..." << std::endl;
     // Reload Dark.json which has edge#pwr, edge#lan, node#pwr, node#lan
-    assert(themeManager.load("src/gui/theme/themes/Dark.json") == true);
+    assert(themeManager.load(darkThemePath) == true);
     const auto& currentTheme = themeManager.theme();
 
     // 12.1 Verify type-specific map entries
@@ -325,9 +329,19 @@ int main(int argc, char** argv)
     assert(nodeLanBorder.red() == 0 && nodeLanBorder.green() == 255 && nodeLanBorder.blue() == 255);
 
     // 12.6 GraphEdgeItem effective state
+    LayerData defaultLayer;
+    defaultLayer.name = "DefaultLayer";
+    defaultLayer.kind = "Logic";
+    LayerId defaultLayerId = 0;
+    assert(model.addLayer(defaultLayer, defaultLayerId).ok);
+    assert(model.addNodeToLayer(stdId, defaultLayerId).ok);
+    assert(model.addNodeToLayer(manualId, defaultLayerId).ok);
+
     EdgeData edgePwrData;
     edgePwrData.srcNode = stdId;
+    edgePwrData.srcLayer = defaultLayerId;
     edgePwrData.dstNode = manualId;
+    edgePwrData.dstLayer = defaultLayerId;
     edgePwrData.edgeType = "pwr";
     EdgeId pwrEdgeId = 0;
     assert(model.addEdge(edgePwrData, pwrEdgeId).ok);
@@ -340,7 +354,9 @@ int main(int argc, char** argv)
 
     EdgeData edgeLanData;
     edgeLanData.srcNode = stdId;
+    edgeLanData.srcLayer = defaultLayerId;
     edgeLanData.dstNode = manualId;
+    edgeLanData.dstLayer = defaultLayerId;
     edgeLanData.edgeType = "lan";
     EdgeId lanEdgeId = 0;
     assert(model.addEdge(edgeLanData, lanEdgeId).ok);
@@ -372,9 +388,12 @@ int main(int argc, char** argv)
     std::cout << "\n[TEST] 13. Verifying Tabified Architecture and Theme Editor Docks in MainWindow..." << std::endl;
     assert(window.architectureDock() != nullptr);
     assert(window.themeDock() != nullptr);
+    window.architectureDock()->show();
+    window.themeDock()->show();
     auto tabbedDocks = window.tabifiedDockWidgets(window.architectureDock());
     QDockWidget* themeDock = window.themeDock();
     assert(tabbedDocks.contains(themeDock));
+    std::cout << " -> PASSED: Architecture and Theme Editor docks are tabified together in default view." << std::endl;
     std::cout << " -> PASSED: Architecture and Theme Editor docks are tabified together in default view." << std::endl;
 
     // 14. Standalone Theme Editor Window & Style Management
@@ -497,7 +516,12 @@ int main(int argc, char** argv)
         "src/gui/theme/themes/Paper Light.json"
     };
 
-    for (const QString& themePath : lightThemes) {
+    for (QString themePath : lightThemes) {
+        if (!QFile::exists(themePath)) themePath = "../" + themePath;
+        if (!QFile::exists(themePath)) {
+            QFileInfo fi(themePath);
+            themePath = "themes/" + fi.fileName();
+        }
         GraphThemeManager mgr;
         assert(mgr.load(themePath) == true);
         const auto& t = mgr.theme();

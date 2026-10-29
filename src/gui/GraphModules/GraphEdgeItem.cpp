@@ -21,6 +21,10 @@
 #include <queue>
 #include <vector>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 EdgeRoutingAlgorithm GraphEdgeItem::s_globalRoutingAlgorithm = EdgeRoutingAlgorithm::SmartOrthogonal;
 bool GraphEdgeItem::s_lineJumpsEnabled = true;
 

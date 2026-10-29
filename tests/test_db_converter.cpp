@@ -4,13 +4,24 @@
 #include <fstream>
 #include <memory>
 #include <vector>
+#include <filesystem>
 
 #include "db/DbConverter.h"
 #include "db/DbManagerSQLite.h"
 #include "db/DbManagerJson.h"
 
 static void removeIfExists(const std::string& path) {
-    std::remove(path.c_str());
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+}
+
+static std::string getTempFilePath(const std::string& filename) {
+    std::error_code ec;
+    auto tempDir = std::filesystem::temp_directory_path(ec);
+    if (ec) {
+        return filename;
+    }
+    return (tempDir / filename).string();
 }
 
 static const NodeData* findNode(const std::vector<NodeData>& list, NodeId id) {
@@ -39,9 +50,24 @@ int main()
 
     // 2. Conversion JSON -> SQLite -> JSON Roundtrip
     std::cout << "[TEST] 2. Verifying JSON -> SQLite -> JSON roundtrip...\n";
-    std::string sampleJson = "build/architecture.json";
-    std::string tempDb = "/tmp/test_roundtrip.db";
-    std::string tempJson = "/tmp/test_roundtrip.json";
+    std::string sampleJson;
+    std::vector<std::string> candidates = {
+        "build/architecture.json",
+        "../build/architecture.json",
+        "examples/enterprise_cloud_architecture.json",
+        "../examples/enterprise_cloud_architecture.json"
+    };
+    for (const auto& c : candidates) {
+        std::ifstream f(c);
+        if (f.good()) {
+            sampleJson = c;
+            break;
+        }
+    }
+    assert(!sampleJson.empty() && "No sample architecture JSON found for test");
+
+    std::string tempDb = getTempFilePath("test_roundtrip.db");
+    std::string tempJson = getTempFilePath("test_roundtrip.json");
 
     removeIfExists(tempDb);
     removeIfExists(tempJson);
@@ -118,13 +144,13 @@ int main()
 
     // 3. Test generic convert API with auto-detection
     std::cout << "[TEST] 3. Verifying generic convert API with auto-detection...\n";
-    std::string autoDb = "/tmp/test_auto.db";
+    std::string autoDb = getTempFilePath("test_auto.db");
     removeIfExists(autoDb);
 
     Result rAuto = DbConverter::convert(tempJson, autoDb, true);
     assert(rAuto.ok);
 
-    std::string autoJson = "/tmp/test_auto.json";
+    std::string autoJson = getTempFilePath("test_auto.json");
     removeIfExists(autoJson);
 
     Result rAutoRev = DbConverter::convert(autoDb, autoJson, true);
@@ -133,18 +159,18 @@ int main()
 
     // 4. Test error handling (missing file, same source and target, invalid format)
     std::cout << "[TEST] 4. Verifying error handling...\n";
-    Result rErr1 = DbConverter::convert("/tmp/definitely_does_not_exist_12345.json", "/tmp/out.db", true);
+    Result rErr1 = DbConverter::convert(getTempFilePath("definitely_does_not_exist_12345.json"), getTempFilePath("out.db"), true);
     assert(!rErr1.ok);
 
     Result rErr2 = DbConverter::convert(tempJson, tempJson, true);
     assert(!rErr2.ok);
 
-    std::string dummyTxt = "/tmp/dummy.txt";
+    std::string dummyTxt = getTempFilePath("dummy.txt");
     {
         std::ofstream ofs(dummyTxt);
         ofs << "not a db or json";
     }
-    Result rErr3 = DbConverter::convert(dummyTxt, "/tmp/out.db", true);
+    Result rErr3 = DbConverter::convert(dummyTxt, getTempFilePath("out.db"), true);
     assert(!rErr3.ok);
     std::cout << " -> PASSED: Error handling handled invalid inputs correctly.\n";
 
@@ -153,6 +179,7 @@ int main()
     removeIfExists(tempJson);
     removeIfExists(autoDb);
     removeIfExists(autoJson);
+    removeIfExists(dummyTxt);
     removeIfExists(dummyTxt);
 
     std::cout << "==============================================\n";

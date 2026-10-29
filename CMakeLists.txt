@@ -5,12 +5,26 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
-if(ENABLE_ASAN)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g")
-    set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+
+# ------------------------------------------------------------
+# Cross-Platform Compiler & OS Configurations
+# ------------------------------------------------------------
+if(MSVC)
+    add_compile_options(/W4 /utf-8 /permissive-)
+    add_compile_definitions(NOMINMAX _USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)
+else()
+    add_compile_options(-Wall -Wextra)
 endif()
 
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+if(ENABLE_ASAN)
+    if(MSVC)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fsanitize=address")
+    else()
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g")
+        set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+    endif()
+endif()
 
 # ------------------------------------------------------------
 # Qt (REQUIRED for GUI)
@@ -26,13 +40,27 @@ find_package(Qt5 REQUIRED COMPONENTS Widgets Svg)
 # ------------------------------------------------------------
 find_package(SQLite3 REQUIRED)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(READLINE REQUIRED readline)
+# GNU Readline (optional - CLI falls back to standard console I/O if not found)
+find_package(PkgConfig QUIET)
+set(READLINE_FOUND FALSE)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(READLINE QUIET readline)
+endif()
+
+if(NOT READLINE_FOUND)
+    find_path(READLINE_INCLUDE_DIR readline/readline.h)
+    find_library(READLINE_LIBRARY NAMES readline)
+    if(READLINE_INCLUDE_DIR AND READLINE_LIBRARY)
+        set(READLINE_FOUND TRUE)
+        set(READLINE_INCLUDE_DIRS ${READLINE_INCLUDE_DIR})
+        set(READLINE_LIBRARIES ${READLINE_LIBRARY})
+    endif()
+endif()
 
 # ------------------------------------------------------------
 # Core library (shared by CLI + GUI)
 # ------------------------------------------------------------
-add_library(openarch_core
+add_library(openarch_core STATIC
     src/core/Checksum.cpp
     src/core/ArchitectureModel.cpp
     src/core/GraphJson.cpp
@@ -62,21 +90,25 @@ add_executable(openarch
     src/cli/cli.cpp
 )
 
-target_include_directories(openarch PRIVATE
-    ${READLINE_INCLUDE_DIRS}
-)
+if(READLINE_FOUND)
+    target_compile_definitions(openarch PRIVATE HAVE_READLINE)
+    target_include_directories(openarch PRIVATE ${READLINE_INCLUDE_DIRS})
+    target_link_libraries(openarch PRIVATE ${READLINE_LIBRARIES})
+    if(READLINE_CFLAGS_OTHER)
+        target_compile_options(openarch PRIVATE ${READLINE_CFLAGS_OTHER})
+    endif()
+    message(STATUS "GNU Readline found: CLI will have full tab-completion and history.")
+else()
+    message(STATUS "GNU Readline not found: CLI will use standard line input fallback.")
+endif()
 
 target_link_libraries(openarch PRIVATE
     openarch_core
-    ${READLINE_LIBRARIES}
 )
 
-target_compile_options(openarch PRIVATE
-    ${READLINE_CFLAGS_OTHER}
-    -Wall
-    -Wextra
-    -Wpedantic
-)
+if(NOT MSVC)
+    target_compile_options(openarch PRIVATE -Wpedantic)
+endif()
 
 # ------------------------------------------------------------
 # GUI common sources
@@ -103,7 +135,7 @@ set(OPENARCH_GUI_COMMON_SOURCES
 # ------------------------------------------------------------
 # GUI target
 # ------------------------------------------------------------
-add_executable(openarch-gui
+add_executable(openarch-gui WIN32
     src/gui/main.cpp
     ${OPENARCH_GUI_COMMON_SOURCES}
 )
@@ -114,10 +146,19 @@ target_link_libraries(openarch-gui PRIVATE
     Qt5::Svg
 )
 
+# Deploy theme presets to build/runtime directory
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/src/gui/theme/themes DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+add_custom_command(TARGET openarch-gui POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/gui/theme/themes
+        $<TARGET_FILE_DIR:openarch-gui>/themes
+    COMMENT "Deploying theme presets to runtime folder"
+)
+
 # ------------------------------------------------------------
 # Theme Editor target (standalone application)
 # ------------------------------------------------------------
-add_executable(openarch-theme-editor
+add_executable(openarch-theme-editor WIN32
     src/gui/theme/ThemeEditorMain.cpp
     ${OPENARCH_GUI_COMMON_SOURCES}
 )
@@ -128,9 +169,18 @@ target_link_libraries(openarch-theme-editor PRIVATE
     Qt5::Svg
 )
 
+add_custom_command(TARGET openarch-theme-editor POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/gui/theme/themes
+        $<TARGET_FILE_DIR:openarch-theme-editor>/themes
+    COMMENT "Deploying theme presets to theme editor folder"
+)
+
 # ------------------------------------------------------------
-# Test target
+# Test targets
 # ------------------------------------------------------------
+enable_testing()
+
 add_executable(test_shortcuts
     tests/test_shortcuts.cpp
     ${OPENARCH_GUI_COMMON_SOURCES}
@@ -160,3 +210,7 @@ target_link_libraries(test_interactive_html PRIVATE
     Qt5::Widgets
     Qt5::Svg
 )
+
+add_test(NAME TestShortcuts COMMAND test_shortcuts)
+add_test(NAME TestDbConverter COMMAND test_db_converter)
+add_test(NAME TestInteractiveHtml COMMAND test_interactive_html)
