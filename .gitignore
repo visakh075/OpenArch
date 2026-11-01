@@ -1,6 +1,8 @@
 build/
 build-*/
 build-release/
+release/
+release-*/
 Ref
 src/gui.7z
 tests_old/
