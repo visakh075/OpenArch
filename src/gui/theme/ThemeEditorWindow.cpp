@@ -626,34 +626,11 @@ void ThemeEditorWindow::setupMenusAndToolbars()
     // Presets Menu
     // ==========================================
     auto* presetsMenu = menuBar()->addMenu("&Presets");
-    QDir themeDir("themes");
-    if (!themeDir.exists()) {
-        themeDir = QDir(QCoreApplication::applicationDirPath() + "/themes");
-    }
-    if (!themeDir.exists()) {
-        themeDir = QDir(QCoreApplication::applicationDirPath() + "/../src/gui/theme/themes");
-    }
-    if (!themeDir.exists()) {
-        themeDir = QDir("src/gui/theme/themes");
-    }
-
-    if (themeDir.exists()) {
-        QStringList filters;
-        filters << "*.json";
-        QFileInfoList list = themeDir.entryInfoList(filters, QDir::Files, QDir::Name);
-        for (const QFileInfo& fi : list) {
-            QString path = fi.absoluteFilePath();
-            QString name = fi.baseName();
-            presetsMenu->addAction(QString("Load %1").arg(name), this, [this, path]() {
-                loadTheme(path);
-            });
-        }
-    } else {
-        presetsMenu->addAction("Load Dark Theme", this, [this]() {
-            loadTheme("src/gui/theme/themes/Dark.json");
-        });
-        presetsMenu->addAction("Load Light Theme", this, [this]() {
-            loadTheme("src/gui/theme/themes/Light.json");
+    const auto presets = GraphThemeManager::availablePresets();
+    for (const auto& preset : presets) {
+        const QString path = preset.path;
+        presetsMenu->addAction(QString("Load %1").arg(preset.name), this, [this, path]() {
+            loadTheme(path);
         });
     }
 
@@ -2242,7 +2219,8 @@ bool ThemeEditorWindow::saveTheme()
 
 bool ThemeEditorWindow::saveThemeAs()
 {
-    QString path = QFileDialog::getSaveFileName(this, "Save Theme As", "src/gui/theme/themes", "Theme Files (*.json)");
+    QString initialName = GraphThemeManager::instance()->theme().name + ".json";
+    QString path = QFileDialog::getSaveFileName(this, "Save Theme As", initialName, "Theme Files (*.json)");
     if (path.isEmpty()) return false;
 
     if (!path.endsWith(".json", Qt::CaseInsensitive))

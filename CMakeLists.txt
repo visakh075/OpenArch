@@ -128,6 +128,7 @@ set(OPENARCH_GUI_COMMON_SOURCES
     src/gui/GraphModules/GraphEdgeItem.cpp
     src/gui/GraphView.cpp    
     src/gui/theme/GraphThemeManager.cpp
+    src/gui/theme/ApplicationThemeManager.cpp
     src/gui/theme/ThemeEditorDock.cpp
     src/gui/theme/ThemeEditorWindow.cpp
 )
@@ -148,10 +149,16 @@ target_link_libraries(openarch-gui PRIVATE
 
 # Deploy theme presets to build/runtime directory
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/src/gui/theme/themes DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/themes/ui)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/themes/ui DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/themes)
+endif()
 add_custom_command(TARGET openarch-gui POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/src/gui/theme/themes
         $<TARGET_FILE_DIR:openarch-gui>/themes
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/themes/ui
+        $<TARGET_FILE_DIR:openarch-gui>/themes/ui
     COMMENT "Deploying theme presets to runtime folder"
 )
 
@@ -173,6 +180,9 @@ add_custom_command(TARGET openarch-theme-editor POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/src/gui/theme/themes
         $<TARGET_FILE_DIR:openarch-theme-editor>/themes
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/themes/ui
+        $<TARGET_FILE_DIR:openarch-theme-editor>/themes/ui
     COMMENT "Deploying theme presets to theme editor folder"
 )
 

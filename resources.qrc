@@ -23,4 +23,15 @@
         <file alias="connect.svg">assets/resources/icons/network.svg</file>
         <file alias="add-node.svg">assets/resources/icons/plus-square.svg</file>
     </qresource>
+    <qresource prefix="/themes">
+        <file alias="Dark.json">src/gui/theme/themes/Dark.json</file>
+        <file alias="Light.json">src/gui/theme/themes/Light.json</file>
+        <file alias="Nord.json">src/gui/theme/themes/Nord.json</file>
+        <file alias="Dracula.json">src/gui/theme/themes/Dracula.json</file>
+        <file alias="Blueprint.json">src/gui/theme/themes/Blueprint.json</file>
+        <file alias="GitHub Light.json">src/gui/theme/themes/GitHub Light.json</file>
+        <file alias="Solarized Light.json">src/gui/theme/themes/Solarized Light.json</file>
+        <file alias="Nord Light.json">src/gui/theme/themes/Nord Light.json</file>
+        <file alias="Paper Light.json">src/gui/theme/themes/Paper Light.json</file>
+    </qresource>
 </RCC>

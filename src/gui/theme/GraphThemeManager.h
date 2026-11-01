@@ -6,6 +6,10 @@
 
 #include <QObject>
 #include <QString>
+#include <QList>
+#include <QPalette>
+
+class QApplication;
 
 /*
  * =========================================================
@@ -19,6 +23,14 @@ class GraphThemeManager : public QObject
 
 public:
 
+    struct PresetThemeInfo
+    {
+        QString id;
+        QString name;
+        QString path;
+        bool isBuiltIn{false};
+    };
+
     explicit GraphThemeManager(
         QObject* parent = nullptr);
     ~GraphThemeManager() override;
@@ -28,6 +40,14 @@ public:
      */
 
     static GraphThemeManager* instance();
+
+    /*
+     * PRESETS & RESOLUTION (SELF-CONTAINED)
+     */
+
+    static QString defaultThemePath();
+    static QString resolveThemePath(const QString& path);
+    static QList<PresetThemeInfo> availablePresets();
 
     /*
      * LOAD / SAVE

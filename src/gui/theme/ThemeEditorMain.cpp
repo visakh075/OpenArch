@@ -2,6 +2,7 @@
 #include <QFileInfo>
 #include "ThemeEditorWindow.h"
 #include "GraphThemeManager.h"
+#include "ApplicationThemeManager.h"
 
 int main(int argc, char* argv[])
 {
@@ -14,14 +15,13 @@ int main(int argc, char* argv[])
     app.setApplicationName("OpenArch Theme Editor");
     app.setOrganizationName("OpenArch");
 
+    // Initialize cross-platform application UI theme (independent of graph theme)
+    ApplicationThemeManager::initialize(&app);
+
     GraphThemeManager themeManager;
 
-    // Load default theme initially if available
-    if (QFileInfo::exists("src/gui/theme/themes/Dark.json")) {
-        themeManager.load("src/gui/theme/themes/Dark.json");
-    } else if (QFileInfo::exists("themes/Dark.json")) {
-        themeManager.load("themes/Dark.json");
-    }
+    // Load default theme initially from self-contained presets
+    themeManager.load(GraphThemeManager::defaultThemePath());
 
     ThemeEditorWindow window;
     window.resize(1320, 820);

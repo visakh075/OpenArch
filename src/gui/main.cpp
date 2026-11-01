@@ -7,6 +7,7 @@
 
 #include "MainWindow.h"
 #include "GraphThemeManager.h"
+#include "theme/ApplicationThemeManager.h"
 
 int main(int argc, char *argv[])
 {
@@ -16,6 +17,11 @@ int main(int argc, char *argv[])
 #endif
 
     QApplication app(argc, argv);
+    app.setApplicationName("OpenArch");
+    app.setOrganizationName("OpenArch");
+
+    // Initialize cross-platform application UI theme (independent of graph theme)
+    ApplicationThemeManager::initialize(&app);
 
     QCommandLineParser parser;
     parser.setApplicationDescription("OpenArch GUI");
@@ -57,31 +63,8 @@ int main(int argc, char *argv[])
      * THEME INITIALIZATION
      */
     GraphThemeManager themeManager;
-
-    if (!themePath.isEmpty())
-    {
-        themeManager.load(themePath);
-    }
-    else
-    {
-        QString defaultTheme = "dark.json";
-        if (!QFile::exists(defaultTheme)) {
-            QStringList candidates = {
-                QCoreApplication::applicationDirPath() + "/dark.json",
-                QCoreApplication::applicationDirPath() + "/themes/Dark.json",
-                "themes/Dark.json",
-                "src/gui/theme/themes/Dark.json",
-                QCoreApplication::applicationDirPath() + "/../src/gui/theme/themes/Dark.json"
-            };
-            for (const auto& candidate : candidates) {
-                if (QFile::exists(candidate)) {
-                    defaultTheme = candidate;
-                    break;
-                }
-            }
-        }
-        themeManager.load(defaultTheme);
-    }
+    const QString initialTheme = themePath.isEmpty() ? GraphThemeManager::defaultThemePath() : themePath;
+    themeManager.load(initialTheme);
 
     /*
      * MAIN WINDOW

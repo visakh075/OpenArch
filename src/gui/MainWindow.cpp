@@ -30,6 +30,8 @@
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QDesktopServices>
+#include <QUrl>
 
 #include "ArchitectureFilterProxyModel.h"
 #include "NodeEditorDialog.h"
@@ -37,6 +39,7 @@
 #include "GraphNodeItem.h"
 #include "GraphEdgeItem.h"
 #include "GraphThemeManager.h"
+#include "theme/ApplicationThemeManager.h"
 #include "ThemeEditorDock.h"
 #include "ThemeEditorWindow.h"
 #include "ShortcutManager.h"
@@ -296,6 +299,10 @@ void MainWindow::setupMenu()
 
     themeMenu_ = menuBar()->addMenu("&Theme");
 
+    appThemeMenu_ = themeMenu_->addMenu("Application &UI Theme");
+    setupApplicationThemeMenu(appThemeMenu_);
+    themeMenu_->addSeparator();
+
     actionOpenTheme_ = new QAction("&Open Theme File...", this);
     connect(actionOpenTheme_, &QAction::triggered, this, &MainWindow::loadThemeFromFile);
 
@@ -323,7 +330,7 @@ void MainWindow::setupMenu()
         themeMenu_->addAction(toggleThemeDockAction);
     }
 
-    themeMenu_->addAction("Launch Standalone &Theme Editor...", this, [this]() {
+    themeMenu_->addAction("Launch Standalone &Theme Editor...", this, []() {
         auto* editor = new ThemeEditorWindow(nullptr);
         editor->setAttribute(Qt::WA_DeleteOnClose);
         editor->show();
@@ -351,7 +358,75 @@ void MainWindow::setupMenu()
     setupRoutingMenuAndControls();
 
     auto* settingsMenu = menuBar()->addMenu("&Settings");
+    auto* appThemeSettings = settingsMenu->addMenu("Application &UI Theme");
+    setupApplicationThemeMenu(appThemeSettings);
     settingsMenu->addAction("Configure Shortcuts...", this, &MainWindow::openShortcutConfigDialog);
+}
+
+void MainWindow::setupApplicationThemeMenu(QMenu* parentMenu)
+{
+    if (!parentMenu)
+        return;
+
+    parentMenu->clear();
+
+    auto* group = new QActionGroup(parentMenu);
+    const QString currentId = ApplicationThemeManager::currentThemeId();
+
+    const auto themes = ApplicationThemeManager::availableThemes();
+    bool hasCustom = false;
+
+    for (const auto& th : themes) {
+        if (!th.isBuiltIn && !hasCustom) {
+            parentMenu->addSeparator();
+            hasCustom = true;
+        }
+
+        QAction* act = parentMenu->addAction(th.name);
+        act->setCheckable(true);
+        if (th.id.compare(currentId, Qt::CaseInsensitive) == 0) {
+            act->setChecked(true);
+        }
+
+        const QString id = th.id;
+        connect(act, &QAction::triggered, this, [this, id]() {
+            ApplicationThemeManager::setThemeById(id);
+            if (appThemeMenu_) setupApplicationThemeMenu(appThemeMenu_);
+        });
+        group->addAction(act);
+    }
+
+    parentMenu->addSeparator();
+    parentMenu->addAction("&Load Custom UI Theme File...", this, &MainWindow::loadCustomApplicationTheme);
+    parentMenu->addAction("&Open Custom Themes Folder...", this, &MainWindow::openCustomApplicationThemesFolder);
+}
+
+void MainWindow::loadCustomApplicationTheme()
+{
+    const QString customDir = ApplicationThemeManager::customThemesDirectory();
+    QString file = QFileDialog::getOpenFileName(
+        this,
+        "Load Custom Application UI Theme",
+        customDir,
+        "UI Theme Files (*.json *.qss);;JSON Theme (*.json);;QSS Stylesheet (*.qss);;All Files (*.*)"
+    );
+
+    if (file.isEmpty())
+        return;
+
+    QString error;
+    if (ApplicationThemeManager::loadCustomThemeFile(file, &error)) {
+        statusBar()->showMessage(QString("Loaded application UI theme: %1").arg(QFileInfo(file).baseName()), 3000);
+        if (appThemeMenu_) setupApplicationThemeMenu(appThemeMenu_);
+    } else {
+        QMessageBox::warning(this, "Theme Error", error.isEmpty() ? "Failed to load custom UI theme." : error);
+    }
+}
+
+void MainWindow::openCustomApplicationThemesFolder()
+{
+    const QString dir = ApplicationThemeManager::customThemesDirectory();
+    QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
 }
 
 void MainWindow::populateThemeMenu()
@@ -374,44 +449,29 @@ void MainWindow::populateThemeMenu()
     delete presetActionGroup_;
     presetActionGroup_ = new QActionGroup(this);
 
-    QDir themeDir("themes");
-    if (!themeDir.exists()) {
-        themeDir = QDir(QCoreApplication::applicationDirPath() + "/themes");
-    }
-    if (!themeDir.exists()) {
-        themeDir = QDir(QCoreApplication::applicationDirPath() + "/../src/gui/theme/themes");
-    }
-    if (!themeDir.exists()) {
-        themeDir = QDir("src/gui/theme/themes");
-    }
+    const auto presets = GraphThemeManager::availablePresets();
+    const QString activePath = GraphThemeManager::instance()->currentThemePath();
+    const QString activeThemeName = GraphThemeManager::instance()->theme().name;
 
-    if (themeDir.exists()) {
-        QStringList filters;
-        filters << "*.json";
-        QFileInfoList list = themeDir.entryInfoList(filters, QDir::Files);
+    for (const auto& preset : presets) {
+        QAction* act = new QAction(preset.name, this);
+        act->setCheckable(true);
+        const QString path = preset.path;
+        connect(act, &QAction::triggered, this, [this, path]() {
+            switchThemePreset(path);
+        });
 
-        QString activePath = GraphThemeManager::instance()->currentThemePath();
-        QFileInfo activeFi(activePath);
-
-        for (const QFileInfo& fi : list) {
-            QString path = fi.absoluteFilePath();
-            QString name = fi.baseName();
-            QAction* act = new QAction(name, this);
-            act->setCheckable(true);
-            connect(act, &QAction::triggered, this, [this, path]() {
-                switchThemePreset(path);
-            });
-            if (!activePath.isEmpty() && (fi.canonicalFilePath() == activeFi.canonicalFilePath() || path == activePath)) {
-                act->setChecked(true);
-            }
-            presetActionGroup_->addAction(act);
-            themeMenu_->insertAction(actionOpenTheme_, act);
-            presetActions_.append(act);
+        if (activePath == path || (!preset.id.isEmpty() && activeThemeName.compare(preset.id, Qt::CaseInsensitive) == 0)) {
+            act->setChecked(true);
         }
 
-        if (!presetActions_.isEmpty()) {
-            presetSeparator_ = themeMenu_->insertSeparator(actionOpenTheme_);
-        }
+        presetActionGroup_->addAction(act);
+        themeMenu_->insertAction(actionOpenTheme_, act);
+        presetActions_.append(act);
+    }
+
+    if (!presetActions_.isEmpty()) {
+        presetSeparator_ = themeMenu_->insertSeparator(actionOpenTheme_);
     }
 }
 
@@ -2571,7 +2631,7 @@ void MainWindow::switchThemePreset(const QString& path)
 void MainWindow::saveTheme()
 {
     QString curPath = GraphThemeManager::instance()->currentThemePath();
-    if (curPath.isEmpty()) {
+    if (curPath.isEmpty() || curPath.startsWith(":/")) {
         saveThemeAs();
         return;
     }
@@ -2587,24 +2647,10 @@ void MainWindow::saveThemeAs()
 {
     QString defaultDir;
     QString curPath = GraphThemeManager::instance()->currentThemePath();
-    if (!curPath.isEmpty()) {
+    if (!curPath.isEmpty() && !curPath.startsWith(":/")) {
         defaultDir = curPath;
     } else {
-        QDir themeDir("themes");
-        if (!themeDir.exists()) {
-            themeDir = QDir(QCoreApplication::applicationDirPath() + "/themes");
-        }
-        if (!themeDir.exists()) {
-            themeDir = QDir(QCoreApplication::applicationDirPath() + "/../src/gui/theme/themes");
-        }
-        if (!themeDir.exists()) {
-            themeDir = QDir("src/gui/theme/themes");
-        }
-        if (themeDir.exists()) {
-            defaultDir = themeDir.absoluteFilePath(GraphThemeManager::instance()->theme().name + ".json");
-        } else {
-            defaultDir = GraphThemeManager::instance()->theme().name + ".json";
-        }
+        defaultDir = GraphThemeManager::instance()->theme().name + ".json";
     }
 
     QString file = QFileDialog::getSaveFileName(

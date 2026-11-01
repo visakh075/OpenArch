@@ -2,6 +2,7 @@
 #include "GraphNodeItem.h"
 #include "GraphEdgeItem.h"
 #include "GraphThemeManager.h"
+#include "theme/ApplicationThemeManager.h"
 #include "MainWindow.h"
 
 #include <QMouseEvent>
@@ -122,6 +123,11 @@ void GraphView::setupModeOverlay()
         });
     }
 
+    if (auto* am = ApplicationThemeManager::instance())
+    {
+        connect(am, &ApplicationThemeManager::themeChanged, this, &GraphView::updateOverlayStyle);
+    }
+
     if (auto* tm = GraphThemeManager::instance())
     {
         connect(tm, &GraphThemeManager::themeChanged, this, &GraphView::updateOverlayStyle);
@@ -177,64 +183,60 @@ void GraphView::updateOverlayStyle()
 {
     if (!modeOverlay_) return;
 
-    const auto& theme = GraphThemeManager::instance()->theme();
-    bool isLight = (theme.view.background.lightness() > 140);
+    const auto colors = ApplicationThemeManager::currentThemeColors();
 
-    QString sheet;
-    if (isLight)
+    QColor bg = colors.window;
+    bg.setAlpha(colors.isDark ? 238 : 246);
+
+    QColor borderColor = colors.border;
+    if (!borderColor.isValid())
     {
-        sheet =
-            "#modeOverlay {"
-            "  background-color: rgba(255, 255, 255, 0.95);"
-            "  border: 1px solid rgba(0, 0, 0, 0.16);"
-            "  border-radius: 14px;"
-            "}"
-            "#modeOverlay QPushButton {"
-            "  background-color: transparent;"
-            "  color: #475569;"
-            "  border: none;"
-            "  border-radius: 11px;"
-            "  padding: 4px 14px;"
-            "  font-size: 11px;"
-            "  font-weight: 600;"
-            "}"
-            "#modeOverlay QPushButton:hover {"
-            "  background-color: rgba(0, 0, 0, 0.06);"
-            "  color: #0f172a;"
-            "}"
-            "#modeOverlay QPushButton:checked {"
-            "  background-color: #2563eb;"
-            "  color: #ffffff;"
-            "  font-weight: bold;"
-            "}";
+        borderColor = colors.isDark ? QColor(255, 255, 255, 45) : QColor(0, 0, 0, 40);
     }
-    else
-    {
-        sheet =
-            "#modeOverlay {"
-            "  background-color: rgba(26, 28, 34, 0.92);"
-            "  border: 1px solid rgba(255, 255, 255, 0.18);"
-            "  border-radius: 14px;"
-            "}"
-            "#modeOverlay QPushButton {"
-            "  background-color: transparent;"
-            "  color: rgba(255, 255, 255, 0.70);"
-            "  border: none;"
-            "  border-radius: 11px;"
-            "  padding: 4px 14px;"
-            "  font-size: 11px;"
-            "  font-weight: 600;"
-            "}"
-            "#modeOverlay QPushButton:hover {"
-            "  background-color: rgba(255, 255, 255, 0.12);"
-            "  color: #ffffff;"
-            "}"
-            "#modeOverlay QPushButton:checked {"
-            "  background-color: #3b82f6;"
-            "  color: #ffffff;"
-            "  font-weight: bold;"
-            "}";
-    }
+
+    QColor unselectedText = colors.text;
+    unselectedText.setAlpha(colors.isDark ? 175 : 185);
+
+    const QColor hoverBg = colors.isDark ? QColor(255, 255, 255, 24) : QColor(0, 0, 0, 18);
+
+    const qreal accentLum = 0.299 * colors.accent.redF() + 0.587 * colors.accent.greenF() + 0.114 * colors.accent.blueF();
+    const QString checkedTextColor = (accentLum < 0.55) ? QStringLiteral("#ffffff") : QStringLiteral("#000000");
+
+    const QString sheet = QString(R"(
+        #modeOverlay {
+            background-color: rgba(%1, %2, %3, %4);
+            border: 1px solid %5;
+            border-radius: 14px;
+        }
+        #modeOverlay QPushButton {
+            background-color: transparent;
+            color: %6;
+            border: none;
+            border-radius: 11px;
+            padding: 4px 14px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        #modeOverlay QPushButton:hover {
+            background-color: %7;
+            color: %8;
+        }
+        #modeOverlay QPushButton:checked {
+            background-color: %9;
+            color: %10;
+            font-weight: bold;
+        }
+    )")
+    .arg(bg.red())
+    .arg(bg.green())
+    .arg(bg.blue())
+    .arg(bg.alphaF(), 0, 'f', 2)
+    .arg(borderColor.name(QColor::HexRgb))
+    .arg(unselectedText.name(QColor::HexArgb))
+    .arg(hoverBg.name(QColor::HexArgb))
+    .arg(colors.text.name(QColor::HexRgb))
+    .arg(colors.accent.name(QColor::HexRgb))
+    .arg(checkedTextColor);
 
     modeOverlay_->setStyleSheet(sheet);
 }

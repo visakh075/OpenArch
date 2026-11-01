@@ -180,6 +180,10 @@ private:
     QAction* actionExportSqlite_{nullptr};
     QAction* duplicateBtn_{nullptr};
     QMenu*   themeMenu_{nullptr};
+    QMenu*   appThemeMenu_{nullptr};
+    void setupApplicationThemeMenu(QMenu* parentMenu);
+    void loadCustomApplicationTheme();
+    void openCustomApplicationThemesFolder();
     QAction* actionOpenTheme_{nullptr};
     QAction* actionSaveTheme_{nullptr};
     QAction* actionSaveThemeAs_{nullptr};

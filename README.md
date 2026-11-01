@@ -19,6 +19,8 @@ Whether managing enterprise system designs, conducting formal architecture revie
 - [System Architecture](#system-architecture)
 - [Prerequisites & Dependencies](#prerequisites--dependencies)
 - [Building OpenArch](#building-openarch)
+  - [Native Linux / Host Build](#native-linux--host-build)
+  - [Cross-Compiling for Windows via Docker (Isolated)](#cross-compiling-for-windows-via-docker-isolated)
 - [GUI Usage & Controls](#gui-usage--controls)
   - [Canvas Navigation & Zoom](#canvas-navigation--zoom)
   - [Selection & Inspection](#selection--inspection)
@@ -26,6 +28,8 @@ Whether managing enterprise system designs, conducting formal architecture revie
   - [Alignment & Distribution](#alignment--distribution)
   - [Modes & Keyboard Shortcuts](#modes--keyboard-shortcuts)
 - [Theme Engine](#theme-engine)
+  - [Graph Canvas Themes](#graph-canvas-themes)
+  - [Application UI Themes & Extensibility](#application-ui-themes--extensibility)
 - [CLI Reference](#cli-reference)
   - [Interactive Shell Mode](#interactive-shell-mode)
   - [Command List](#command-list)
@@ -58,10 +62,15 @@ Whether managing enterprise system designs, conducting formal architecture revie
   - Interactive hover effects highlighting incoming and outgoing edges with glowing accents.
   - Built-in pan, zoom, reset HUD controls, and touch/wheel gesture support.
   - High-resolution SVG export for current viewport or whole diagram.
-- **Real-Time Live Theming Engine**:
-  - Five pre-configured modern themes: **Dark**, **Light**, **Nord**, **Dracula**, and **Blueprint**.
-  - Built-in Theme Editor dock with live visual updates across all canvas elements without restarts.
-  - Custom themes can be exported, shared, and loaded as standard JSON definitions.
+- **Decoupled Dual Theming Engine**:
+  - **Independent Graph Themes**: 5 pre-configured canvas themes (**Dark**, **Light**, **Nord**, **Dracula**, and **Blueprint**) styling nodes, layers, edges, and canvas grid.
+  - **Independent Application UI Themes**: 7 built-in application styling themes (**Dark**, **Light**, **Nord Dark**, **Midnight OLED**, **Solarized Dark**, **Solarized Light**, and **System Default**).
+  - **Dynamic Overlay Theming**: View/Edit segmented control floating overlay automatically synchronizes with active UI theme colors.
+  - **Custom Theme Extensibility**: Real-time Theme Editor dock for graph themes, plus JSON/QSS custom theme loader with user custom themes directory.
+- **Docker-Isolated Windows Cross-Compilation**:
+  - One-command cross-compilation pipeline from Linux to Windows x86_64 using Fedora MinGW.
+  - Generates standalone `openarch-gui.exe`, `openarch.exe`, and `openarch-theme-editor.exe`.
+  - Automated deployment collecting all required Qt5 Windows DLLs, MinGW runtime DLLs, SQLite, Qt plugins, and packaging into a ready-to-run `.zip`.
 - **Configurable Shortcut System**:
   - Fully customizable keyboard shortcuts with collision detection and conflict prevention.
   - Preserves standard OS conventions (e.g., Cut `Ctrl+X`, Copy `Ctrl+C`, Paste `Ctrl+V`).
@@ -229,24 +238,19 @@ ninja -C build
 
 ## Building OpenArch
 
-OpenArch uses CMake (>= 3.16) with out-of-source builds. Ninja is recommended for fast parallel compilation.
+OpenArch uses CMake (>= 3.16) with out-of-source builds. You can compile natively on Linux, build natively on Windows, or cross-compile Windows binaries from Linux using Docker.
 
-### 1. Clone the Repository
+### Native Linux / Host Build
 
-```bash
-git clone https://github.com/your-org/OpenArch.git
-cd OpenArch
-```
-
-### 2. Configure with CMake
+#### 1. Configure with CMake
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 ```
 
-*(Alternatively, use the default Unix Makefiles generator: `cmake -B build -DCMAKE_BUILD_TYPE=Release`)*
+*(Alternatively, use Unix Makefiles: `cmake -B build -DCMAKE_BUILD_TYPE=Release`)*
 
-### 3. Compile All Targets
+#### 2. Compile All Targets
 
 ```bash
 ninja -C build
@@ -258,9 +262,56 @@ The build produces the following binaries under `build/`:
 | :--- | :--- |
 | `build/openarch-gui` | Qt5 Graphical User Interface |
 | `build/openarch` | GNU Readline CLI Shell & Converter |
-| `build/test_shortcuts` | Unit tests for configurable shortcut manager |
+| `build/openarch-theme-editor` | Standalone Graph Theme Editor |
+| `build/test_shortcuts` | Unit tests for shortcuts & application UI themes |
 | `build/test_db_converter` | Unit tests for bidirectional SQLite ⇄ JSON conversion |
 | `build/test_interactive_html` | Unit tests for interactive HTML5 export and SVG rendering |
+
+---
+
+### Cross-Compiling for Windows via Docker (Isolated)
+
+You can build 64-bit Windows executables (`x86_64`) from any Linux host without installing MinGW or Windows Qt libraries locally. OpenArch provides a containerized cross-compiler pipeline powered by Docker/Podman and Fedora MinGW.
+
+#### One-Command Build
+
+Run the automated host build script:
+
+```bash
+./scripts/build-windows-docker.sh
+```
+
+This single command:
+1. Builds a lightweight, isolated builder container (`docker/Dockerfile.windows`) with Fedora 40 MinGW GCC, precompiled Qt5 Windows libraries, SQLite3, and CMake.
+2. Cross-compiles `openarch-gui.exe`, `openarch.exe`, and `openarch-theme-editor.exe`.
+3. Recursively analyzes and extracts all runtime DLL dependencies (Qt5Core, Qt5Gui, Qt5Widgets, Qt5Svg, MinGW runtime, SQLite3).
+4. Deploys mandatory Qt plugins (`platforms/qwindows.dll`, `imageformats/qsvg.dll`, `iconengines/qsvgicon.dll`) and `qt.conf`.
+5. Copies all built-in graph and UI theme presets.
+6. Compiles a professional 64-bit NSIS Windows Installer (`OpenArch-Setup-x86_64.exe`) complete with Start Menu shortcuts, Desktop shortcut, Add/Remove Programs integration, and uninstaller.
+7. Also packages a portable ZIP archive for direct execution without installation.
+
+#### Output Artifacts
+
+After completion, the generated Windows artifacts are located in:
+
+- **NSIS Windows Installer**: `build-win64/OpenArch-Setup-x86_64.exe`
+  - Automated installation wizard (defaults to `C:\Program Files\OpenArch`).
+  - Creates Start Menu shortcuts for `OpenArch` and `OpenArch Theme Editor`.
+  - Creates Desktop shortcut.
+  - Registers in Windows **Settings -> Installed Apps** (Add/Remove Programs) with version, publisher, icon, and uninstaller (`Uninstall.exe`).
+- **Portable Zip**: `build-win64/OpenArch-windows-x86_64.zip`
+- **Unpacked Folder**: `build-win64/dist/`
+  - `openarch-gui.exe`
+  - `openarch.exe`
+  - `openarch-theme-editor.exe`
+  - `qt.conf`
+  - `platforms/qwindows.dll`
+  - `imageformats/qsvg.dll`
+  - `iconengines/qsvgicon.dll`
+  - `themes/` and `themes/ui/`
+  - All runtime `.dll` dependencies
+
+Run `OpenArch-Setup-x86_64.exe` on any Windows 10 or Windows 11 machine to install OpenArch system-wide.
 
 ---
 
@@ -355,16 +406,53 @@ OpenArch features both standard shortcuts and configurable actions via **Setting
 
 ## Theme Engine
 
-OpenArch includes an embedded theme manager with a real-time property editor:
+OpenArch features a completely decoupled dual-theming architecture: **Graph Canvas Themes** and **Application UI Themes** are managed independently, giving users full freedom to mix and match canvas diagram aesthetics with overall application styles.
 
-- **Built-in Presets**:
+### Graph Canvas Themes
+
+Canvas themes dictate the appearance of diagram elements (node headers, bodies, layers, orthogonal edges, selection rings, labels, and canvas backgrounds).
+
+- **Built-in Canvas Presets**:
   - `Dark` (Default high-contrast developer theme)
   - `Light` (Clean print/documentation theme)
   - `Nord` (Arctic, elegant dark palette)
   - `Dracula` (Vibrant modern developer theme)
-  - `Blueprint` (Engineering cad-style blueprint palette)
-- **Live Canvas Updates**: Changes made in the Theme Editor dock immediately invalidate scene render caches and refresh node headers, body fills, connection strokes, labels, and badges.
-- **Custom Themes**: Load or save custom JSON theme definitions under `src/gui/theme/themes/` or any custom path.
+  - `Blueprint` (Engineering CAD-style blueprint palette)
+- **Live Canvas Updates**: Changes made in the Theme Editor dock or selected from **Theme -> Graph Canvas Theme** immediately invalidate scene render caches and refresh all elements without application restart.
+- **Custom Graph Themes**: Export or load custom JSON graph theme definitions via the Theme Editor dock.
+
+### Application UI Themes & Extensibility
+
+Application UI themes govern the host Qt widget hierarchy (menus, toolbars, docks, dialogs, buttons, list views, and floating HUD overlays).
+
+- **Built-in UI Themes**:
+  - `Dark` (Modern neutral dark UI)
+  - `Light` (Clean, crisp light desktop UI)
+  - `Nord Dark` (Nordic slate-blue dark aesthetic)
+  - `Midnight OLED` (Pure black `#000000` OLED contrast styling)
+  - `Solarized Dark` (Classic warm-amber & teal dark palette)
+  - `Solarized Light` (Classic Solarized low-contrast daylight palette)
+  - `System Default` (Native OS styling)
+- **Reactive Mode Pill Overlay**: The floating **View / Edit** segmented switch on the graph canvas automatically detects and adapts its colors (background, active pill highlight, border, text) to the current Application UI Theme.
+- **Custom UI Themes & Extensibility**:
+  - **Menu Actions**: Access **Theme -> Application UI Theme -> Load Custom UI Theme File...** (or via **Settings -> Application UI Theme**) to load any `.json` or `.qss` file.
+  - **Custom Themes Folder**: Click **Open Custom Themes Folder...** to place custom `.json` themes into `themes/ui/` (or `~/.config/OpenArch/themes/ui`). OpenArch scans this directory automatically and lists them in the menu.
+  - **Sample Themes**: Pre-bundled samples in `themes/ui/`: `Emerald_Dark.json`, `Cyberpunk_Neon.json`, and `Amethyst_Purple.json`.
+
+```json
+{
+  "name": "Custom Theme",
+  "base": "dark",
+  "palette": {
+    "windowBackground": "#181a1f",
+    "surfaceBackground": "#21252b",
+    "primary": "#61afef",
+    "primaryHover": "#528bcc",
+    "text": "#abb2bf",
+    "border": "#3b4048"
+  }
+}
+```
 
 ---
 

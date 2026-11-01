@@ -13,9 +13,11 @@
 #include "GraphModules/GraphEdgeItem.h"
 #include "theme/ThemeEditorWindow.h"
 #include "theme/ThemeEditorDock.h"
+#include "theme/ApplicationThemeManager.h"
 #include "db/DbManagerSQLite.h"
 #include <QTemporaryFile>
 #include <QFileInfo>
+#include <QDir>
 
 int main(int argc, char** argv)
 {
@@ -541,8 +543,61 @@ int main(int argc, char** argv)
     assert(window.themeMenu() != nullptr);
     std::cout << " -> PASSED: All 4 new light themes load cleanly, validate as light backgrounds, and register in theme menus." << std::endl;
 
+    // 18. Verifying Application UI Themes & Custom UI Theme Extensibility
+    std::cout << "\n[TEST] 18. Verifying Application UI Themes & Custom UI Theme Extensibility..." << std::endl;
+    const auto uiThemes = ApplicationThemeManager::availableThemes();
+    assert(uiThemes.size() >= 7);
+
+    QStringList expectedBuiltIn = {"dark", "light", "nord", "midnight", "solarized_dark", "solarized_light", "system"};
+    for (const auto& id : expectedBuiltIn) {
+        bool found = false;
+        for (const auto& th : uiThemes) {
+            if (th.id == id && th.isBuiltIn) {
+                found = true;
+                break;
+            }
+        }
+        assert(found);
+    }
+
+    // Switch UI themes
+    ApplicationThemeManager::setThemeById("nord");
+    assert(ApplicationThemeManager::currentThemeId() == "nord");
+
+    ApplicationThemeManager::setThemeById("midnight");
+    assert(ApplicationThemeManager::currentThemeId() == "midnight");
+
+    ApplicationThemeManager::setThemeById("dark");
+    assert(ApplicationThemeManager::currentThemeId() == "dark");
+
+    // Verify custom UI theme loading from file
+    QTemporaryFile tempCustomTheme(QDir::tempPath() + QStringLiteral("/test_custom_XXXXXX.json"));
+    assert(tempCustomTheme.open());
+    tempCustomTheme.write(R"({
+        "name": "Test Neon Custom",
+        "mode": "dark",
+        "window": "#200030",
+        "base": "#100018",
+        "text": "#ffffff",
+        "button": "#300048",
+        "border": "#500078",
+        "accent": "#ff00ff"
+    })");
+    tempCustomTheme.close();
+
+    QString loadErr;
+    assert(ApplicationThemeManager::loadCustomThemeFile(tempCustomTheme.fileName(), &loadErr) == true);
+    assert(ApplicationThemeManager::currentThemeId().startsWith("custom:"));
+
+    // Verify that changing graph theme does NOT alter application theme
+    const QString preGraphAppTheme = ApplicationThemeManager::currentThemeId();
+    themeManager.load(":/themes/Blueprint.json");
+    assert(ApplicationThemeManager::currentThemeId() == preGraphAppTheme);
+
+    std::cout << " -> PASSED: Application UI theme options and custom UI theme loading verified independently." << std::endl;
+
     std::cout << "\n==============================================" << std::endl;
-    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (17/17)" << std::endl;
+    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (18/18)" << std::endl;
     std::cout << "==============================================" << std::endl;
 
     return 0;

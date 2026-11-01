@@ -1,12 +1,18 @@
 #include "GraphThemeManager.h"
 
+#include <QApplication>
 #include <QCoreApplication>
 #include <QDebug>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPalette>
+#include <QSet>
+#include <QStyle>
+#include <QStyleFactory>
 
 GraphThemeManager* GraphThemeManager::s_instance = nullptr;
 
@@ -567,7 +573,7 @@ GraphEdgeTheme loadEdgeThemeOverride(const GraphEdgeTheme& baseTheme, const QJso
     return theme;
 }
 
-void mergeComponentState(GraphComponentState& state, const QJsonObject& obj, bool isContainer = false)
+void mergeComponentState(GraphComponentState& state, const QJsonObject& obj, bool /*isContainer*/ = false)
 {
     if (obj.contains("background"))
         state.background = loadColor(obj, "background", state.background.name(QColor::HexArgb));
@@ -719,6 +725,135 @@ GraphThemeManager* GraphThemeManager::instance()
     return s_instance;
 }
 
+QString GraphThemeManager::defaultThemePath()
+{
+    return QStringLiteral(":/themes/Dark.json");
+}
+
+QString GraphThemeManager::resolveThemePath(const QString& path)
+{
+    if (path.isEmpty())
+    {
+        return defaultThemePath();
+    }
+
+    // Direct match (filesystem or resource)
+    if (QFile::exists(path))
+    {
+        return path;
+    }
+
+    // Check embedded resource aliases: :/themes/<name>, :/themes/<name>.json
+    const QString resDirect = QString(":/themes/%1").arg(path);
+    if (QFile::exists(resDirect))
+    {
+        return resDirect;
+    }
+
+    if (!path.endsWith(".json", Qt::CaseInsensitive))
+    {
+        const QString resJson = QString(":/themes/%1.json").arg(path);
+        if (QFile::exists(resJson))
+        {
+            return resJson;
+        }
+    }
+
+    // If path has directory components, try matching its filename in :/themes/
+    QFileInfo fi(path);
+    const QString baseName = fi.completeBaseName();
+    const QString fileName = fi.fileName();
+    if (!fileName.isEmpty() && QFile::exists(QString(":/themes/%1").arg(fileName)))
+    {
+        return QString(":/themes/%1").arg(fileName);
+    }
+    if (!baseName.isEmpty() && QFile::exists(QString(":/themes/%1.json").arg(baseName)))
+    {
+        return QString(":/themes/%1.json").arg(baseName);
+    }
+
+    // Check filesystem candidate locations
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QStringList filesystemCandidates = {
+        path,
+        path + ".json",
+        "themes/" + path,
+        "themes/" + path + ".json",
+        "themes/" + fileName,
+        appDir + "/themes/" + path,
+        appDir + "/themes/" + path + ".json",
+        appDir + "/themes/" + fileName,
+        appDir + "/../src/gui/theme/themes/" + fileName,
+        "src/gui/theme/themes/" + fileName
+    };
+
+    for (const QString& candidate : filesystemCandidates)
+    {
+        if (!candidate.isEmpty() && QFile::exists(candidate))
+        {
+            return candidate;
+        }
+    }
+
+    // Fallback to default built-in theme
+    return defaultThemePath();
+}
+
+QList<GraphThemeManager::PresetThemeInfo> GraphThemeManager::availablePresets()
+{
+    QList<PresetThemeInfo> result;
+    QSet<QString> seenIds;
+
+    // 1. Built-in themes from Qt resources (:/themes)
+    QDir resDir(":/themes");
+    if (resDir.exists())
+    {
+        const QStringList entries = resDir.entryList(QStringList() << "*.json", QDir::Files, QDir::Name);
+        for (const QString& file : entries)
+        {
+            PresetThemeInfo info;
+            info.path = resDir.filePath(file);
+            info.id = QFileInfo(file).completeBaseName();
+            info.name = info.id;
+            info.isBuiltIn = true;
+            seenIds.insert(info.id.toLower());
+            result.append(info);
+        }
+    }
+
+    // 2. Extra filesystem themes if present in themes/ folder
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QStringList extraDirs = {
+        "themes",
+        appDir + "/themes"
+    };
+
+    for (const QString& dirPath : extraDirs)
+    {
+        QDir dir(dirPath);
+        if (!dir.exists())
+            continue;
+
+        const QStringList entries = dir.entryList(QStringList() << "*.json", QDir::Files, QDir::Name);
+        for (const QString& file : entries)
+        {
+            const QString id = QFileInfo(file).completeBaseName();
+            if (seenIds.contains(id.toLower()))
+                continue;
+
+            PresetThemeInfo info;
+            info.path = dir.absoluteFilePath(file);
+            info.id = id;
+            info.name = id;
+            info.isBuiltIn = false;
+            seenIds.insert(id.toLower());
+            result.append(info);
+        }
+    }
+
+    return result;
+}
+
 void GraphThemeManager::initializeDefaults()
 {
     m_theme.name = "OpenArch Dark";
@@ -849,18 +984,36 @@ void GraphThemeManager::initializeDefaults()
 
 void GraphThemeManager::resetDefaults()
 {
-    m_currentPath.clear();
-    initializeDefaults();
-    emit themeChanged();
+    const QString defPath = defaultThemePath();
+    if (!load(defPath))
+    {
+        m_currentPath.clear();
+        initializeDefaults();
+        emit themeChanged();
+    }
 }
 
 bool GraphThemeManager::load(const QString& path)
 {
-    QFile file(path);
+    QString resolved = resolveThemePath(path);
+    QFile file(resolved);
     if (!file.open(QIODevice::ReadOnly))
     {
-        qDebug() << "Failed to open theme file:" << path;
-        return false;
+        qDebug() << "Failed to open theme file:" << path << "(resolved:" << resolved << ")";
+        if (resolved != defaultThemePath())
+        {
+            resolved = defaultThemePath();
+            file.setFileName(resolved);
+            if (!file.open(QIODevice::ReadOnly))
+            {
+                qDebug() << "Failed to open fallback default theme:" << resolved;
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
     }
 
     QJsonParseError error;
@@ -872,8 +1025,8 @@ bool GraphThemeManager::load(const QString& path)
     }
 
     QJsonObject root = doc.object();
-    m_theme.name = root.value("name").toString("Unnamed Theme");
-    m_currentPath = path;
+    m_theme.name = root.value("name").toString(QFileInfo(resolved).baseName());
+    m_currentPath = resolved;
 
     // View & Grid
     {
@@ -977,21 +1130,21 @@ bool GraphThemeManager::load(const QString& path)
         }
     }
 
-    emit themeLoaded(path);
+    emit themeLoaded(resolved);
     emit themeChanged();
     return true;
 }
 
 bool GraphThemeManager::save()
 {
-    if (m_currentPath.isEmpty())
+    if (m_currentPath.isEmpty() || m_currentPath.startsWith(":/"))
         return false;
     return save(m_currentPath);
 }
 
 bool GraphThemeManager::save(const QString& path)
 {
-    if (path.isEmpty())
+    if (path.isEmpty() || path.startsWith(":/"))
         return false;
 
     if (m_theme.name.isEmpty()) {

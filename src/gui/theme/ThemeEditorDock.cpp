@@ -1277,7 +1277,7 @@ void ThemeEditorDock::updateStatusDisplay(const QString& message)
 void ThemeEditorDock::saveTheme()
 {
     QString path = GraphThemeManager::instance()->currentThemePath();
-    if (path.isEmpty()) {
+    if (path.isEmpty() || path.startsWith(":/")) {
         saveThemeAs();
         return;
     }
@@ -1296,24 +1296,10 @@ void ThemeEditorDock::saveThemeAs()
 {
     QString initialDir;
     QString curPath = GraphThemeManager::instance()->currentThemePath();
-    if (!curPath.isEmpty()) {
+    if (!curPath.isEmpty() && !curPath.startsWith(":/")) {
         initialDir = curPath;
     } else {
-        QDir themeDir("themes");
-        if (!themeDir.exists()) {
-            themeDir = QDir(QCoreApplication::applicationDirPath() + "/themes");
-        }
-        if (!themeDir.exists()) {
-            themeDir = QDir(QCoreApplication::applicationDirPath() + "/../src/gui/theme/themes");
-        }
-        if (!themeDir.exists()) {
-            themeDir = QDir("src/gui/theme/themes");
-        }
-        if (themeDir.exists()) {
-            initialDir = themeDir.absoluteFilePath(GraphThemeManager::instance()->theme().name + ".json");
-        } else {
-            initialDir = GraphThemeManager::instance()->theme().name + ".json";
-        }
+        initialDir = GraphThemeManager::instance()->theme().name + ".json";
     }
 
     QString file = QFileDialog::getSaveFileName(
