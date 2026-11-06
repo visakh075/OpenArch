@@ -448,7 +448,11 @@ Result DbManagerJson::loadFromFile() {
         if (!sl.empty()) e.srcLayer = static_cast<LayerId>(std::stoull(sl));
         if (!dn.empty()) e.dstNode = static_cast<NodeId>(std::stoull(dn));
         if (!dl.empty()) e.dstLayer = static_cast<LayerId>(std::stoull(dl));
+        e.name       = extractField(blk, "name");
         e.edgeType   = extractField(blk, "edge_type");
+        if (e.edgeType.empty()) {
+            e.edgeType = extractField(blk, "type");
+        }
         e.attributes = extractField(blk, "attributes");
         std::string csStr = extractField(blk, "checksum");
         if (!csStr.empty()) e.checksum = static_cast<uint32_t>(std::stoul(csStr));
@@ -529,6 +533,7 @@ Result DbManagerJson::saveToFile() {
         const auto& e = edges_[i];
         os << "    {\n"
            << "      \"id\": " << e.id << ",\n"
+           << "      \"name\": \"" << escapeJson(e.name) << "\",\n"
            << "      \"src_node_id\": " << e.srcNode << ",\n"
            << "      \"src_layer_id\": " << e.srcLayer << ",\n"
            << "      \"dst_node_id\": " << e.dstNode << ",\n"

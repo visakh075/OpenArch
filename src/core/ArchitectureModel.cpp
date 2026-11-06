@@ -60,7 +60,8 @@ uint32_t ArchitectureModel::computeEdgeChecksum(
 {
     std::ostringstream os;
 
-    os << e.srcNode << "|"
+    os << e.name << "|"
+       << e.srcNode << "|"
        << e.srcLayer << "|"
        << e.dstNode << "|"
        << e.dstLayer << "|"
@@ -1100,7 +1101,8 @@ ArchitectureModel::GovernanceAuditReport ArchitectureModel::auditGovernance() co
         countStatus(e.status);
         if (computeEdgeChecksum(e) != e.checksum) {
             report.tamperedEdges++;
-            report.issues.push_back("Edge ID " + std::to_string(e.id) + " (" + e.edgeType + ") checksum mismatch! Stored: " + std::to_string(e.checksum) + ", Computed: " + std::to_string(computeEdgeChecksum(e)));
+            std::string edgeDesc = e.name.empty() ? e.edgeType : (e.name + " [" + e.edgeType + "]");
+            report.issues.push_back("Edge ID " + std::to_string(e.id) + " (" + edgeDesc + ") checksum mismatch! Stored: " + std::to_string(e.checksum) + ", Computed: " + std::to_string(computeEdgeChecksum(e)));
         }
     }
 

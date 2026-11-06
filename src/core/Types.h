@@ -91,11 +91,17 @@ struct EdgeData {
     EdgeId id{0};
 
     // Core (checksum-relevant)
+    std::string name;
+    std::string edgeType;
+
+    // Convenience accessors for structural symmetry with NodeData
+    const std::string& type() const { return edgeType; }
+    void setType(const std::string& t) { edgeType = t; }
+
     NodeId  srcNode{0};
     LayerId srcLayer{0};
     NodeId  dstNode{0};
     LayerId dstLayer{0};
-    std::string edgeType;
 
     // Non-checksum
     std::string metadata;

@@ -34,10 +34,14 @@ EdgeEditorDialog::EdgeEditorDialog(ArchitectureModel* model,
         edge = *opt;
     }
 
-    // General Type Form
-    typeEdit_ = new QLineEdit(QString::fromStdString(edge.edgeType));
+    // General Form
+    nameEdit_ = new QLineEdit(QString::fromStdString(edge.name), this);
+    nameEdit_->setPlaceholderText("Edge Name (optional, e.g. ReplicationLink, AuthFlow)");
+    typeEdit_ = new QLineEdit(QString::fromStdString(edge.edgeType), this);
+    typeEdit_->setPlaceholderText("Connection / Protocol Type (e.g. pwr, lan, grpc, rest)");
     auto* form = new QFormLayout;
-    form->addRow("Connection / Protocol Type", typeEdit_);
+    form->addRow("Edge Name:", nameEdit_);
+    form->addRow("Connection / Protocol Type:", typeEdit_);
 
     routingCombo_ = new QComboBox(this);
     routingCombo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
@@ -205,7 +209,8 @@ void EdgeEditorDialog::onSave()
     }
 
     EdgeData edge = *opt;
-    edge.edgeType   = typeEdit_->text().toStdString();
+    edge.name       = nameEdit_ ? nameEdit_->text().toStdString() : edge.name;
+    edge.edgeType   = typeEdit_ ? typeEdit_->text().toStdString() : edge.edgeType;
     edge.attributes = attributesEditor_->toJsonString(QJsonDocument::Compact).toStdString();
 
     QString metaJsonStr = metadataEditor_->toJsonString(QJsonDocument::Compact);

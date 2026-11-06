@@ -9,6 +9,7 @@
 #include "db/DbConverter.h"
 #include "db/DbManagerSQLite.h"
 #include "db/DbManagerJson.h"
+#include <sqlite3.h>
 
 static void removeIfExists(const std::string& path) {
     std::error_code ec;
@@ -173,6 +174,94 @@ int main()
     Result rErr3 = DbConverter::convert(dummyTxt, getTempFilePath("out.db"), true);
     assert(!rErr3.ok);
     std::cout << " -> PASSED: Error handling handled invalid inputs correctly.\n";
+
+    // 5. Test Edge Name Migration & Bidirectional Persistence
+    std::cout << "[TEST] 5. Verifying Edge Name migration and conversion...\n";
+    std::string legacyDbPath = getTempFilePath("legacy_no_name.db");
+    removeIfExists(legacyDbPath);
+    {
+        // Create a raw SQLite DB with edges table WITHOUT the name column
+        sqlite3* rawDb = nullptr;
+        assert(sqlite3_open(legacyDbPath.c_str(), &rawDb) == SQLITE_OK);
+        const char* legacySchema = 
+            "CREATE TABLE nodes (id INTEGER PRIMARY KEY, name TEXT, type TEXT, parent_id INTEGER, metadata TEXT, attributes TEXT, checksum INTEGER, status TEXT, reviewer TEXT);"
+            "CREATE TABLE layers (id INTEGER PRIMARY KEY, name TEXT, kind TEXT, metadata TEXT, attributes TEXT, checksum INTEGER, status TEXT, reviewer TEXT);"
+            "CREATE TABLE node_layers (node_id INTEGER, layer_id INTEGER, PRIMARY KEY (node_id, layer_id));"
+            "CREATE TABLE edges (id INTEGER PRIMARY KEY, src_node_id INTEGER, src_layer_id INTEGER, dst_node_id INTEGER, dst_layer_id INTEGER, edge_type TEXT, metadata TEXT, attributes TEXT, checksum INTEGER, status TEXT, reviewer TEXT);"
+            "INSERT INTO nodes(id, name, type) VALUES(1, 'NodeA', 'service'), (2, 'NodeB', 'service');"
+            "INSERT INTO layers(id, name, kind) VALUES(1, 'Default', 'logical');"
+            "INSERT INTO node_layers(node_id, layer_id) VALUES(1, 1), (2, 1);"
+            "INSERT INTO edges(id, src_node_id, src_layer_id, dst_node_id, dst_layer_id, edge_type, attributes, checksum, status) VALUES(1, 1, 1, 2, 1, 'legacy_type', '{}', 999, 'new');";
+        char* err = nullptr;
+        assert(sqlite3_exec(rawDb, legacySchema, nullptr, nullptr, &err) == SQLITE_OK);
+        sqlite3_close(rawDb);
+
+        // Open via DbManagerSQLite (which executes the auto-migration ALTER TABLE edges ADD COLUMN name)
+        DbManagerSQLite mgr;
+        Result rOpen = mgr.open(legacyDbPath);
+        assert(rOpen.ok);
+
+        auto edges = mgr.getAllEdges();
+        assert(edges.size() == 1);
+        assert(edges[0].name.empty());
+        assert(edges[0].edgeType == "legacy_type");
+
+        // Now create a new edge with an explicit name
+        EdgeData newEdge;
+        newEdge.srcNode = 1;
+        newEdge.srcLayer = 1;
+        newEdge.dstNode = 2;
+        newEdge.dstLayer = 1;
+        newEdge.name = "SecureChannel";
+        newEdge.edgeType = "tls";
+        newEdge.status = Status::Approved;
+        EdgeId newEdgeId = 0;
+        assert(mgr.createEdge(newEdge, newEdgeId).ok);
+
+        auto updatedEdges = mgr.getAllEdges();
+        assert(updatedEdges.size() == 2);
+        assert(updatedEdges[1].name == "SecureChannel");
+        assert(updatedEdges[1].edgeType == "tls");
+        mgr.close();
+
+        // Convert SQLite -> JSON
+        std::string migratedJsonPath = getTempFilePath("migrated_edges.json");
+        removeIfExists(migratedJsonPath);
+        Result rConv = DbConverter::sqliteToJson(legacyDbPath, migratedJsonPath, true);
+        assert(rConv.ok);
+
+        // Verify JSON contains both edges with proper name
+        DbManagerJson jsonDb;
+        assert(jsonDb.open(migratedJsonPath).ok);
+        auto jsonEdges = jsonDb.getAllEdges();
+        assert(jsonEdges.size() == 2);
+        assert(jsonEdges[0].name.empty());
+        assert(jsonEdges[0].edgeType == "legacy_type");
+        assert(jsonEdges[1].name == "SecureChannel");
+        assert(jsonEdges[1].edgeType == "tls");
+        jsonDb.close();
+
+        // Convert back JSON -> SQLite
+        std::string roundtripDbPath = getTempFilePath("roundtrip_edges.db");
+        removeIfExists(roundtripDbPath);
+        Result rConvBack = DbConverter::jsonToSqlite(migratedJsonPath, roundtripDbPath, true);
+        assert(rConvBack.ok);
+
+        DbManagerSQLite roundtripDb;
+        assert(roundtripDb.open(roundtripDbPath).ok);
+        auto roundtripEdges = roundtripDb.getAllEdges();
+        assert(roundtripEdges.size() == 2);
+        assert(roundtripEdges[0].name.empty());
+        assert(roundtripEdges[0].edgeType == "legacy_type");
+        assert(roundtripEdges[1].name == "SecureChannel");
+        assert(roundtripEdges[1].edgeType == "tls");
+        roundtripDb.close();
+
+        removeIfExists(legacyDbPath);
+        removeIfExists(migratedJsonPath);
+        removeIfExists(roundtripDbPath);
+        std::cout << " -> PASSED: Legacy DB migration, edge name round-trip across SQLite & JSON validated.\n";
+    }
 
     // Cleanup
     removeIfExists(tempDb);

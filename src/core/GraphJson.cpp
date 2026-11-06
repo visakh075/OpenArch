@@ -48,6 +48,7 @@ std::string toJson(const GraphSnapshot& g) {
         const auto& e = g.edges[i];
         os << "    {\n";
         os << "      \"id\": " << e.id << ",\n";
+        os << "      \"name\": \"" << esc(e.name) << "\",\n";
         os << "      \"srcNode\": " << e.srcNode << ",\n";
         os << "      \"srcLayer\": " << e.srcLayer << ",\n";
         os << "      \"dstNode\": " << e.dstNode << ",\n";

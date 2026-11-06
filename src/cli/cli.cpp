@@ -170,8 +170,8 @@ Node-Layer:
   list_layer_nodes <layerId>
 
 Edges:
-  add_edge <srcNode> <srcLayer> <dstNode> <dstLayer> <type>
-  update_edge <id> <type>
+  add_edge <srcNode> <srcLayer> <dstNode> <dstLayer> <type> [name]
+  update_edge <id> <type> [name]
   set_edge_meta <id> <json>
   set_edge_attr <id> <json>
   review_edge <id> <reviewer>
@@ -430,14 +430,34 @@ int main(int argc, char** argv) {
             is >> e.srcNode >> e.srcLayer
                >> e.dstNode >> e.dstLayer
                >> e.edgeType;
+            if (!is.eof()) {
+                std::string n;
+                if (is >> n)
+                    e.name = n;
+            }
             printResult(model.addEdge(e, id));
             break;
         }
 
         case Command::UPDATE_EDGE: {
-            EdgeData e;
-            is >> e.id >> e.edgeType;
-            printResult(model.updateEdge(e));
+            EdgeId id; std::string type;
+            if (is >> id >> type) {
+                auto opt = model.getEdgeById(id);
+                if (!opt) {
+                    printResult(Result::failure("Edge not found"));
+                    break;
+                }
+                EdgeData e = *opt;
+                e.edgeType = type;
+                if (!is.eof()) {
+                    std::string n;
+                    if (is >> n)
+                        e.name = n;
+                }
+                printResult(model.updateEdge(e));
+            } else {
+                std::cout << "[ERR] Usage: update_edge <id> <type> [name]\n";
+            }
             break;
         }
 
@@ -472,14 +492,16 @@ int main(int argc, char** argv) {
         }
 
         case Command::LIST_EDGES:
-            for (auto& e : model.edges())
-                std::cout << e.id << ": ("
+            for (auto& e : model.edges()) {
+                std::string nameInfo = e.name.empty() ? "" : ("'" + e.name + "' ");
+                std::cout << e.id << ": " << nameInfo << "("
                           << e.srcNode << "," << e.srcLayer << ") -> ("
                           << e.dstNode << "," << e.dstLayer << ") "
                           << e.edgeType << " ["
                           << to_string(e.status) << "] chk="
                           << e.checksum << " reviewer="
                           << e.reviewer << "\n";
+            }
             break;
 
         /* ===================== Graph Dumps ===================== */
@@ -506,7 +528,8 @@ int main(int argc, char** argv) {
 
             std::cout << "Edges:\n";
             for (const auto& e : snap.edges) {
-                std::cout << "  [" << e.id << "] ("
+                std::string nameInfo = e.name.empty() ? "" : ("'" + e.name + "' ");
+                std::cout << "  [" << e.id << "] " << nameInfo << "("
                           << e.srcNode << ":" << e.srcLayer
                           << " -> "
                           << e.dstNode << ":" << e.dstLayer

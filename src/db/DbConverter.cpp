@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS node_layers (
 
 CREATE TABLE IF NOT EXISTS edges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL DEFAULT '',
     src_node_id INTEGER NOT NULL,
     src_layer_id INTEGER NOT NULL,
     dst_node_id INTEGER NOT NULL,
@@ -271,22 +272,23 @@ Result jsonToSqlite(const std::string& jsonPath, const std::string& sqlitePath, 
     // 6. Insert Edges
     {
         sqlite3_stmt* st = nullptr;
-        const char* sql = "INSERT INTO edges(id, src_node_id, src_layer_id, dst_node_id, dst_layer_id, "
+        const char* sql = "INSERT INTO edges(id, name, src_node_id, src_layer_id, dst_node_id, dst_layer_id, "
                           "edge_type, metadata, attributes, checksum, status, reviewer) "
-                          "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                          "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
         if (sqlite3_prepare_v2(db, sql, -1, &st, nullptr) == SQLITE_OK) {
             for (const auto& e : edges) {
                 sqlite3_bind_int64(st, 1, static_cast<sqlite3_int64>(e.id));
-                sqlite3_bind_int64(st, 2, static_cast<sqlite3_int64>(e.srcNode));
-                sqlite3_bind_int64(st, 3, static_cast<sqlite3_int64>(e.srcLayer));
-                sqlite3_bind_int64(st, 4, static_cast<sqlite3_int64>(e.dstNode));
-                sqlite3_bind_int64(st, 5, static_cast<sqlite3_int64>(e.dstLayer));
-                sqlite3_bind_text(st, 6, e.edgeType.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(st, 7, e.metadata.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(st, 8, e.attributes.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_int(st, 9, static_cast<int>(e.checksum));
-                sqlite3_bind_text(st, 10, to_string(e.status).c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(st, 11, e.reviewer.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(st, 2, e.name.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_int64(st, 3, static_cast<sqlite3_int64>(e.srcNode));
+                sqlite3_bind_int64(st, 4, static_cast<sqlite3_int64>(e.srcLayer));
+                sqlite3_bind_int64(st, 5, static_cast<sqlite3_int64>(e.dstNode));
+                sqlite3_bind_int64(st, 6, static_cast<sqlite3_int64>(e.dstLayer));
+                sqlite3_bind_text(st, 7, e.edgeType.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(st, 8, e.metadata.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(st, 9, e.attributes.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_int(st, 10, static_cast<int>(e.checksum));
+                sqlite3_bind_text(st, 11, to_string(e.status).c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(st, 12, e.reviewer.c_str(), -1, SQLITE_TRANSIENT);
 
                 sqlite3_step(st);
                 sqlite3_reset(st);
@@ -401,6 +403,7 @@ Result sqliteToJson(const std::string& sqlitePath, const std::string& jsonPath, 
         const auto& e = edges[i];
         os << "    {\n"
            << "      \"id\": " << e.id << ",\n"
+           << "      \"name\": \"" << escapeJson(e.name) << "\",\n"
            << "      \"src_node_id\": " << e.srcNode << ",\n"
            << "      \"src_layer_id\": " << e.srcLayer << ",\n"
            << "      \"dst_node_id\": " << e.dstNode << ",\n"
