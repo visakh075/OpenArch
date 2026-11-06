@@ -2748,7 +2748,21 @@ void GraphEdgeItem::refreshLayout()
     {
         cachedEdgeType_ = QString::fromStdString(edge->edgeType);
         cachedName_ = QString::fromStdString(edge->name);
-        cachedTitle_ = !cachedName_.trimmed().isEmpty() ? cachedName_ : cachedEdgeType_;
+
+        QString cleanName = cachedName_.trimmed();
+        QString cleanType = cachedEdgeType_.trimmed();
+        if (!cleanName.isEmpty() && !cleanType.isEmpty())
+        {
+            cachedTitle_ = QString("%1/%2").arg(cleanName, cleanType);
+        }
+        else if (!cleanName.isEmpty())
+        {
+            cachedTitle_ = cleanName;
+        }
+        else
+        {
+            cachedTitle_ = cleanType;
+        }
 
         QString namePart = edge->name.empty()
             ? QString("<b>Edge #%1</b>").arg(e_id)

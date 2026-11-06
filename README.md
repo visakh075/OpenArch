@@ -405,8 +405,39 @@ OpenArch features both standard shortcuts and configurable actions via **Setting
 | **Duplicate** | `Ctrl+D` | Configurable | Duplicates selected nodes in place |
 | **Save Layout** | `Ctrl+S` | Configurable | Commits coordinates and dimensions to database |
 | **Connect Selected** | `Ctrl+K` | Configurable | Prompts to connect selected nodes |
+| **Focus into Container** | `Ctrl+Down` | Configurable | Drills down into selected container for isolated editing |
+| **Exit Container Scope** | `Escape` / `Ctrl+Up` | Configurable | Steps up to parent container or full architecture diagram |
 | **Align Left / Top** | Configurable | Configurable | Aligns multi-selection to Primary Node |
 | **Distribute H / V** | Configurable | Configurable | Spreads selected nodes evenly |
+
+### Isolated Container Editing & Hierarchical Drill-Down
+
+For enterprise-scale architectures with dozens of microservices, cloud subsystems, and nested groups, OpenArch provides **Isolated Container Scope Mode**:
+
+```
++--------------------------------------------------------------------------------------------------------+
+| [ ⬅ Back to Parent (Esc) ]  🏠 Root Architecture  ›  📦 Cloud Platform  ›  📦 Payment Subsystem         |
+|                                                     [ ➕ Add Child Node ] [ 🔍 Frame View ] [ ✕ Exit ]  |
++--------------------------------------------------------------------------------------------------------+
+| [View] [Edit]                                                                                          |
+|                                                                                                        |
+|      +---------------------+                  +---------------------+                                  |
+|      |   Payment Gateway   | ───────────────► |   Ledger Service    |                                  |
+|      +---------------------+                  +---------------------+                                  |
+|                 │                                        │                                             |
+|                 ▼                                        ▼                                             |
+|      +---------------------+                  +---------------------+                                  |
+|      |    Fraud Detector   | ───────────────► |   Payment DB (sql)  |                                  |
+|      +---------------------+                  +---------------------+                                  |
+|                                                                                                        |
++--------------------------------------------------------------------------------------------------------+
+```
+
+- **One-Click Drill-Down**: Click the `[ ⤢ ]` drill-down icon on any container header, press **`Ctrl+Down`**, double-click a container with `Ctrl`, or choose **Drill Down / Edit Container Separately** from the context menu (or Architecture Navigator).
+- **Full-Screen Sub-Diagram Redraw (Zero Outer Edges)**: The container's interior becomes the entire canvas workspace. Outer nodes and external edges are 100% excluded from the scoped scene graph, completely eliminating visual clutter. Direct child nodes become top-level canvas items positioned at their local coordinates, and sub-containers remain hierarchically nested.
+- **Interactive Breadcrumb Navigation**: A top bar (`🏠 Root > 📦 Cloud Platform > 📦 Payment Subsystem`) allows instant 1-click navigation between any tier, along with **`⬅ Back (Esc)`**, **`+ Add Node Here`**, **`🔍 Frame View`**, and **`✕ Exit Isolation`**.
+- **Automatic Child Adoption**: Creating a new node while inside container isolation automatically assigns `parentId` to the scoped container, eliminating the need to drag components in from the outside.
+- **Instant Layout Re-Integration**: Exiting isolation commits child positions to metadata, automatically recalculates container bounds to snugly fit any newly added or rearranged components, and restores full root diagram visibility without data loss.
 
 ### Preferences, Auto-Save & Database Status
 
@@ -487,6 +518,10 @@ Canvas themes dictate the appearance of diagram elements (node headers, bodies, 
   3. **Type-Only (`type`)**: Broad semantic category styling (e.g., `service`, `db`, `lan`, `pwr`).
   4. **Base Component Theme**: Fallback default for any elements without specific overrides.
   This specificity cascade applies identically to Qt Canvas rendering and interactive HTML5/SVG exported styles.
+- **`edgename/edgetype` Diagram Label Badges**:
+  - Connection edges render badges displaying `edgename/edgetype` (e.g., `AuthChannel/grpc`, `SyncLink/lan`) directly on the diagram path when both are present.
+  - Gracefully falls back to `edgename` (if name only) or `edgetype` (if type only).
+  - Automatically sizes pill background, text geometry, and hit boundaries, rotating cleanly along segment angles in both the desktop canvas and interactive HTML5/SVG exports.
 
 ### Standalone Theme Editor (`openarch-theme-editor`)
 

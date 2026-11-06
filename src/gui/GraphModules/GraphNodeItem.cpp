@@ -305,6 +305,17 @@ QRectF GraphNodeItem::foldToggleRect() const
                   iconSize, iconSize);
 }
 
+QRectF GraphNodeItem::focusIconRect() const
+{
+    if (!isContainer())
+        return QRectF();
+    qreal h = cachedHeaderRect_.height();
+    qreal iconSize = 14.0;
+    return QRectF(cachedHeaderRect_.right() - 24.0,
+                  cachedHeaderRect_.top() + (h - iconSize) / 2.0,
+                  iconSize, iconSize);
+}
+
 GraphNodeItem* GraphNodeItem::effectiveVisibleNode() const
 {
     const GraphNodeItem* current = this;
@@ -939,8 +950,25 @@ void GraphNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
         painter->drawPath(triPath);
 
         painter->setPen(state->title.color);
-        QRectF titleTextRect = cachedHeaderRect_.adjusted(26, 0, -10, 0);
+        QRectF titleTextRect = cachedHeaderRect_.adjusted(26, 0, -32, 0);
         painter->drawText(titleTextRect, Qt::AlignVCenter | Qt::AlignLeft | Qt::TextSingleLine, displayTitle());
+
+        // Focus / Drill-down icon ⤢
+        QRectF fRect = focusIconRect();
+        painter->save();
+        QPen fPen(state->title.color, 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        painter->setPen(fPen);
+        painter->setBrush(Qt::NoBrush);
+        qreal fx = fRect.left() + 2.0;
+        qreal fy = fRect.top() + 2.0;
+        qreal fw = fRect.width() - 4.0;
+        qreal fh = fRect.height() - 4.0;
+        painter->drawLine(QPointF(fx + fw * 0.5, fy), QPointF(fx + fw, fy));
+        painter->drawLine(QPointF(fx + fw, fy), QPointF(fx + fw, fy + fh * 0.5));
+        painter->drawLine(QPointF(fx, fy + fh * 0.5), QPointF(fx, fy + fh));
+        painter->drawLine(QPointF(fx, fy + fh), QPointF(fx + fw * 0.5, fy + fh));
+        painter->drawLine(QPointF(fx + fw * 0.25, fy + fh * 0.75), QPointF(fx + fw * 0.85, fy + fh * 0.15));
+        painter->restore();
 
         if (isFolded_)
         {
@@ -1220,6 +1248,17 @@ void GraphNodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
 
     if (isContainer() && event->button() == Qt::LeftButton)
     {
+        if (focusIconRect().adjusted(-3, -3, 3, 3).contains(event->pos()))
+        {
+            if (scene() && !scene()->views().isEmpty())
+            {
+                auto* mainWin = dynamic_cast<MainWindow*>(scene()->views().first()->window());
+                if (mainWin) mainWin->focusIntoContainer(nodeId_);
+            }
+            event->accept();
+            return;
+        }
+
         if (foldToggleRect().adjusted(-4, -4, 4, 4).contains(event->pos()))
         {
             toggleFold();
@@ -1513,6 +1552,14 @@ void GraphNodeItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
 
     if (isContainer())
     {
+        if (event->modifiers() & Qt::ControlModifier)
+        {
+            auto* mainWin = dynamic_cast<MainWindow*>(scene()->views().first()->window());
+            if (mainWin) mainWin->focusIntoContainer(nodeId_);
+            event->accept();
+            return;
+        }
+
         if (isFolded_ || cachedHeaderRect_.contains(event->pos()))
         {
             toggleFold();
@@ -1563,10 +1610,12 @@ void GraphNodeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     }
 
     QMenu menu;
+    QAction* focusAct = nullptr;
     QAction* foldAct  = nullptr;
     if (isContainer())
     {
-        foldAct = menu.addAction(isFolded_ ? "Expand Container" : "Fold Container");
+        focusAct = menu.addAction(QIcon(":/icons/layers.svg"), "Drill Down / Edit Container Separately (Ctrl+Down)");
+        foldAct  = menu.addAction(isFolded_ ? "Expand Container" : "Fold Container");
         menu.addSeparator();
     }
 
@@ -1605,7 +1654,11 @@ void GraphNodeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     QAction* delAct   = menu.addAction("Delete");
 
     QAction* selected = menu.exec(event->screenPos());
-    if (selected == foldAct)
+    if (selected == focusAct)
+    {
+        if (mainWin) mainWin->focusIntoContainer(nodeId_);
+    }
+    else if (selected == foldAct)
     {
         toggleFold();
     }

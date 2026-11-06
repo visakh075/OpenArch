@@ -77,6 +77,7 @@ public:
     void toggleFold();
     GraphNodeItem* effectiveVisibleNode() const;
     QRectF foldToggleRect() const;
+    QRectF focusIconRect() const;
     void updateChildrenVisibility();
     void updateAllConnectedEdges();
 

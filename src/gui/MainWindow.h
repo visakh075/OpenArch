@@ -47,6 +47,7 @@ class QLabel;
 class QMenu;
 class QAction;
 class ThemeEditorDock;
+class ContainerScopeBar;
 
 class MainWindow : public QMainWindow
 {
@@ -100,6 +101,17 @@ public slots:
     void showSelectedInGraph();
     void showNodeInGraph(NodeId nodeId);
     void showLayerInGraph(LayerId layerId);
+    void focusIntoContainer(NodeId containerId);
+    void stepUpContainerScope();
+    void exitContainerScope();
+    void applyContainerScope(std::optional<NodeId> containerId);
+    void focusSelectedContainer();
+    std::optional<NodeId> activeContainerScope() const { return activeContainerScope_; }
+    ContainerScopeBar* containerScopeBar() const { return scopeBar_; }
+    std::unordered_set<NodeId> collectScopedNodeIds(NodeId rootContainerId) const;
+    GraphSnapshot extractScopedSnapshot(NodeId containerId) const;
+    void refreshActiveGraph();
+    QGraphicsScene* scene() const { return scene_; }
 
 private slots:
     void saveLayout();
@@ -280,4 +292,11 @@ private:
     QLabel* saveStatusIndicator_{nullptr};
     QLabel* saveStatusLabel_{nullptr};
     DbSaveState currentSaveState_{DbSaveState::NoDb};
+
+    QWidget* canvasContainer_{nullptr};
+    ContainerScopeBar* scopeBar_{nullptr};
+    std::optional<NodeId> activeContainerScope_{std::nullopt};
+    std::vector<NodeId> containerBreadcrumbTrail_;
+    QAction* actionFocusContainer_{nullptr};
+    QAction* actionExitContainerScope_{nullptr};
 };

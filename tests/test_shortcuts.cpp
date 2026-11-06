@@ -19,6 +19,7 @@
 #include "theme/ApplicationThemeManager.h"
 #include "config/ApplicationConfig.h"
 #include "PreferencesDialog.h"
+#include "ContainerScopeBar.h"
 #include "db/DbManagerSQLite.h"
 #include <QTemporaryFile>
 #include <QFileInfo>
@@ -732,22 +733,32 @@ int main(int argc, char** argv)
         assert(optUpdated->status == Status::Changed);
         assert(optUpdated->checksum != originalChecksum);
 
-        // Verify GraphEdgeItem rendering and label resolution
+        // Verify GraphEdgeItem rendering and label resolution (edgename/edgetype)
         auto* edgeItem = new GraphEdgeItem(&model, namedEdgeId, stdItem, manualItem);
         scene.addItem(edgeItem);
         edgeItem->refreshLayout();
         assert(edgeItem->name() == "RenamedChannel");
         assert(edgeItem->edgeType() == "grpc");
-        assert(edgeItem->title() == "RenamedChannel");
+        assert(edgeItem->title() == "RenamedChannel/grpc");
         assert(edgeItem->toolTip().contains("RenamedChannel"));
         assert(edgeItem->toolTip().contains("grpc"));
 
         // Verify fallback to edgeType when name is empty
         modifiedEdge.name = "";
+        modifiedEdge.setType("grpc");
         assert(model.updateEdge(modifiedEdge).ok);
         edgeItem->refreshLayout();
         assert(edgeItem->name().isEmpty());
         assert(edgeItem->title() == "grpc");
+
+        // Verify fallback to name when edgeType is empty
+        modifiedEdge.name = "SoloNameChannel";
+        modifiedEdge.setType("");
+        assert(model.updateEdge(modifiedEdge).ok);
+        edgeItem->refreshLayout();
+        assert(edgeItem->name() == "SoloNameChannel");
+        assert(edgeItem->edgeType().isEmpty());
+        assert(edgeItem->title() == "SoloNameChannel");
 
         std::cout << " -> PASSED: Edge Name, Type, Checksum, and Canvas Label rendering verified." << std::endl;
     }
@@ -965,8 +976,164 @@ int main(int argc, char** argv)
         std::cout << " -> PASSED: Editing existing named styles, AddStyleDialog pre-filling, validation, and theme data migration verified." << std::endl;
     }
 
+    // =========================================================================
+    // TEST 24: Verifying Isolated Container Scope, Breadcrumb Trail & Drill-Down
+    // =========================================================================
+    {
+        std::cout << "\n[TEST] 24. Verifying Isolated Container Scope, Breadcrumbs & Drill-Down..." << std::endl;
+
+        QTemporaryFile tempDb;
+        assert(tempDb.open());
+        QString dbPath = tempDb.fileName();
+        tempDb.close();
+
+        MainWindow scopeWindow;
+        scopeWindow.setDb(dbPath.toStdString());
+        ArchitectureModel* mdl = scopeWindow.model();
+        assert(mdl != nullptr);
+
+        // 1. Setup Architecture: Top-level container, child node, nested container, sub-child, outside node
+        NodeData vpcContainer;
+        vpcContainer.name = "VPC-East";
+        vpcContainer.type = "container";
+        NodeId vpcId = 0;
+        assert(mdl->addNode(vpcContainer, vpcId).ok);
+
+        NodeData authSvc;
+        authSvc.name = "AuthService";
+        authSvc.type = "service";
+        authSvc.parentId = vpcId;
+        NodeId authId = 0;
+        assert(mdl->addNode(authSvc, authId).ok);
+
+        NodeData k8sCluster;
+        k8sCluster.name = "KubernetesCluster";
+        k8sCluster.type = "container";
+        k8sCluster.parentId = vpcId;
+        NodeId k8sId = 0;
+        assert(mdl->addNode(k8sCluster, k8sId).ok);
+
+        NodeData podService;
+        podService.name = "PaymentPod";
+        podService.type = "service";
+        podService.parentId = k8sId;
+        NodeId podId = 0;
+        assert(mdl->addNode(podService, podId).ok);
+
+        NodeData outsideNode;
+        outsideNode.name = "ExternalClient";
+        outsideNode.type = "service";
+        NodeId outsideId = 0;
+        assert(mdl->addNode(outsideNode, outsideId).ok);
+
+        // Edges: Internal (auth -> pod), External (outside -> auth)
+        EdgeData internalEdge;
+        internalEdge.srcNode = authId;
+        internalEdge.dstNode = podId;
+        internalEdge.edgeType = "grpc";
+        EdgeId intEdgeId = 0;
+        assert(mdl->addEdge(internalEdge, intEdgeId).ok);
+
+        EdgeData externalEdge;
+        externalEdge.srcNode = outsideId;
+        externalEdge.dstNode = authId;
+        externalEdge.edgeType = "https";
+        EdgeId extEdgeId = 0;
+        assert(mdl->addEdge(externalEdge, extEdgeId).ok);
+
+        scopeWindow.showNodeInGraph(vpcId);
+
+        // Verify initial root state: scope bar hidden
+        assert(!scopeWindow.activeContainerScope().has_value());
+        assert(!scopeWindow.containerScopeBar()->isScoped());
+
+        // 2. Focus into VPC container
+        scopeWindow.focusIntoContainer(vpcId);
+        assert(scopeWindow.activeContainerScope().has_value());
+        assert(*scopeWindow.activeContainerScope() == vpcId);
+        assert(scopeWindow.containerScopeBar()->isScoped());
+
+        // Verify descendant collection
+        auto scopedSet = scopeWindow.collectScopedNodeIds(vpcId);
+        assert(scopedSet.count(authId) > 0);
+        assert(scopedSet.count(k8sId) > 0);
+        assert(scopedSet.count(podId) > 0);
+        assert(scopedSet.count(outsideId) == 0);
+
+        // Verify Full-Screen Redraw Snapshot (Zero Outer Edges)
+        GraphSnapshot vpcSnap = scopeWindow.extractScopedSnapshot(vpcId);
+        assert(vpcSnap.nodes.size() == 3); // authId, k8sId, podId (vpcId itself is NOT a node item)
+        assert(vpcSnap.edges.size() == 1); // internalEdge only! externalEdge is 100% excluded!
+        assert(vpcSnap.edges.front().srcNode == authId);
+        assert(vpcSnap.edges.front().dstNode == podId);
+
+        // Verify direct children of vpcId have parentId == nullopt in scoped snapshot (canvas top-level)
+        for (const auto& sn : vpcSnap.nodes) {
+            if (sn.id == authId || sn.id == k8sId) {
+                assert(!sn.parentId.has_value()); // Direct children are top-level on scoped canvas
+            } else if (sn.id == podId) {
+                assert(sn.parentId.has_value() && *sn.parentId == k8sId); // Nested child retains its parent
+            }
+        }
+
+        // Verify Scene items in scopeWindow: exactly 3 GraphNodeItems, 1 GraphEdgeItem
+        int sceneNodeCount = 0;
+        int sceneEdgeCount = 0;
+        for (QGraphicsItem* it : scopeWindow.scene()->items()) {
+            if (auto* n = dynamic_cast<GraphNodeItem*>(it)) {
+                sceneNodeCount++;
+                assert(n->nodeId() != vpcId); // Container itself is NOT in scene
+                assert(n->nodeId() != outsideId); // External node is NOT in scene
+            } else if (auto* e = dynamic_cast<GraphEdgeItem*>(it)) {
+                sceneEdgeCount++;
+                assert(e->srcNode()->nodeId() == authId);
+                assert(e->dstNode()->nodeId() == podId);
+            }
+        }
+        assert(sceneNodeCount == 3);
+        assert(sceneEdgeCount == 1); // ZERO outer edges!
+
+        // 3. Drill deeper into nested k8s cluster
+        scopeWindow.focusIntoContainer(k8sId);
+        assert(scopeWindow.activeContainerScope().has_value());
+        assert(*scopeWindow.activeContainerScope() == k8sId);
+
+        auto k8sScoped = scopeWindow.collectScopedNodeIds(k8sId);
+        assert(k8sScoped.count(podId) > 0);
+        assert(k8sScoped.count(authId) == 0);
+
+        GraphSnapshot k8sSnap = scopeWindow.extractScopedSnapshot(k8sId);
+        assert(k8sSnap.nodes.size() == 1);
+        assert(k8sSnap.nodes.front().id == podId);
+        assert(!k8sSnap.nodes.front().parentId.has_value()); // pod is now top-level on k8s canvas!
+        assert(k8sSnap.edges.empty()); // No internal edges inside pod alone
+
+        // 4. Step back up to VPC
+        scopeWindow.stepUpContainerScope();
+        assert(scopeWindow.activeContainerScope().has_value());
+        assert(*scopeWindow.activeContainerScope() == vpcId);
+        assert(scopeWindow.extractScopedSnapshot(vpcId).nodes.size() == 3);
+
+        // 5. Exit container scope back to root
+        scopeWindow.exitContainerScope();
+        assert(!scopeWindow.activeContainerScope().has_value());
+        assert(!scopeWindow.containerScopeBar()->isScoped());
+
+        // In root diagram: all 5 nodes and 2 edges are restored!
+        int rootNodeCount = 0;
+        int rootEdgeCount = 0;
+        for (QGraphicsItem* it : scopeWindow.scene()->items()) {
+            if (dynamic_cast<GraphNodeItem*>(it)) rootNodeCount++;
+            else if (dynamic_cast<GraphEdgeItem*>(it)) rootEdgeCount++;
+        }
+        assert(rootNodeCount == 5);
+        assert(rootEdgeCount == 2);
+
+        std::cout << " -> PASSED: Full-screen container sub-diagram redraw, zero outer edges, and hierarchical navigation verified." << std::endl;
+    }
+
     std::cout << "\n==============================================" << std::endl;
-    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (23/23)" << std::endl;
+    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (24/24)" << std::endl;
     std::cout << "==============================================" << std::endl;
 
     return 0;

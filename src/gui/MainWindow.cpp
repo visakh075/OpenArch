@@ -51,6 +51,7 @@
 #include "db/DbConverter.h"
 #include "config/ApplicationConfig.h"
 #include "PreferencesDialog.h"
+#include "ContainerScopeBar.h"
 #include <QFontDialog>
 #include <QTime>
 #include <QCloseEvent>
@@ -136,8 +137,42 @@ void MainWindow::setupUi()
     centralStack_ = new QStackedWidget(this);
     welcomeWidget_ = new WelcomeWidget(this);
 
+    canvasContainer_ = new QWidget(this);
+    auto* canvasLayout = new QVBoxLayout(canvasContainer_);
+    canvasLayout->setContentsMargins(0, 0, 0, 0);
+    canvasLayout->setSpacing(0);
+
+    scopeBar_ = new ContainerScopeBar(this);
+    canvasLayout->addWidget(scopeBar_);
+    canvasLayout->addWidget(graphView_);
+
+    connect(scopeBar_, &ContainerScopeBar::backClicked, this, &MainWindow::stepUpContainerScope);
+    connect(scopeBar_, &ContainerScopeBar::rootClicked, this, &MainWindow::exitContainerScope);
+    connect(scopeBar_, &ContainerScopeBar::crumbClicked, this, &MainWindow::focusIntoContainer);
+    connect(scopeBar_, &ContainerScopeBar::exitClicked, this, &MainWindow::exitContainerScope);
+    connect(scopeBar_, &ContainerScopeBar::addChildNodeClicked, this, [this]() {
+        if (activeContainerScope_.has_value()) {
+            QPointF targetPos(100, 100);
+            if (scene_ && !scene_->items().isEmpty()) {
+                QRectF b = scene_->itemsBoundingRect();
+                if (!b.isEmpty()) {
+                    targetPos = QPointF(b.right() + 40, b.top());
+                }
+            }
+            handleAddNodeAtPosition(targetPos);
+        }
+    });
+    connect(scopeBar_, &ContainerScopeBar::frameViewClicked, this, [this]() {
+        if (scene_ && graphView_) {
+            QRectF r = scene_->itemsBoundingRect();
+            if (!r.isEmpty()) {
+                graphView_->fitInView(r.adjusted(-80, -80, 80, 80), Qt::KeepAspectRatio);
+            }
+        }
+    });
+
     centralStack_->addWidget(welcomeWidget_);
-    centralStack_->addWidget(graphView_);
+    centralStack_->addWidget(canvasContainer_);
     setCentralWidget(centralStack_);
 
     themeDock_ = new ThemeEditorDock(this);
@@ -210,7 +245,14 @@ void MainWindow::showWelcome()
 
 void MainWindow::showCanvas()
 {
-    centralStack_->setCurrentWidget(graphView_);
+    if (canvasContainer_)
+    {
+        centralStack_->setCurrentWidget(canvasContainer_);
+    }
+    else
+    {
+        centralStack_->setCurrentWidget(graphView_);
+    }
     if (architectureDock_) architectureDock_->show();
     if (themeDock_) themeDock_->show();
     if (architectureDock_) architectureDock_->raise();
@@ -359,6 +401,17 @@ void MainWindow::setupMenu()
         if (graphView_ && scene_) graphView_->fitInView(scene_->itemsBoundingRect(), Qt::KeepAspectRatio);
     });
     actZoomFit->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
+
+    viewMenu_->addSeparator();
+    auto* scopeSubMenu = viewMenu_->addMenu("&Container Scope");
+    actionFocusContainer_ = scopeSubMenu->addAction(QIcon(":/icons/layers.svg"), "Drill Down / Focus into Container", this, &MainWindow::focusSelectedContainer);
+    actionFocusContainer_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Down));
+
+    actionExitContainerScope_ = scopeSubMenu->addAction("Step Up / Exit Container Scope", this, &MainWindow::stepUpContainerScope);
+    actionExitContainerScope_->setShortcut(QKeySequence(Qt::Key_Escape));
+
+    addAction(actionFocusContainer_);
+    addAction(actionExitContainerScope_);
 
     viewMenu_->addSeparator();
     auto* panelsMenu = viewMenu_->addMenu("&Panels");
@@ -804,6 +857,10 @@ void MainWindow::setupShortcuts()
     sm->registerAction("mode.view", "View Mode", "Mode", QKeySequence(Qt::Key_V), actionView_, "Switch canvas interaction to View mode");
     sm->registerAction("mode.edit", "Edit Mode", "Mode", QKeySequence(Qt::Key_L), actionEdit_, "Switch canvas interaction to Edit mode");
 
+    // Container Scope
+    sm->registerAction("view.focus_container", "Focus into Container", "View", QKeySequence(Qt::CTRL | Qt::Key_Down), actionFocusContainer_, "Drill down and isolate the selected container");
+    sm->registerAction("view.exit_container_scope", "Exit Container Scope", "View", QKeySequence(Qt::Key_Escape), actionExitContainerScope_, "Step up to parent or exit container scope");
+
     // Edit
     sm->registerAction("edit.duplicate", "Duplicate Node", "Edit", QKeySequence(Qt::CTRL | Qt::Key_D), actionDuplicate_, "Duplicate the currently selected node");
     sm->registerAction("edit.connect", "Connect Selected Nodes", "Edit", QKeySequence(Qt::CTRL | Qt::Key_K), actionConnect_, "Connect the selected nodes with an edge");
@@ -990,6 +1047,7 @@ void MainWindow::setDb(const std::string& db_path)
 
     model_ = new ArchitectureModel(*db_);
 
+    exitContainerScope();
     populateNavigator();
     renderGraph(model_->extractGraph(std::nullopt));
     showCanvas();
@@ -1201,10 +1259,18 @@ void MainWindow::showNodeInGraph(NodeId nodeId)
         }
     }
 
-    // 2. If node is not on canvas (e.g. filtered by a layer), render the full graph
+    // 2. If node is not on canvas (e.g. filtered by a layer or outside current container scope),
+    // restore the graph so the node can be shown
     if (!targetItem)
     {
-        renderGraph(model_->extractGraph(std::nullopt));
+        if (activeContainerScope_.has_value())
+        {
+            exitContainerScope();
+        }
+        else
+        {
+            renderGraph(model_->extractGraph(std::nullopt));
+        }
         for (QGraphicsItem* item : scene_->items())
         {
             if (auto* nodeItem = dynamic_cast<GraphNodeItem*>(item))
@@ -1254,6 +1320,16 @@ void MainWindow::showLayerInGraph(LayerId layerId)
     if (!model_ || !scene_ || !graphView_) return;
 
     showCanvas();
+
+    if (activeContainerScope_.has_value())
+    {
+        activeContainerScope_ = std::nullopt;
+        containerBreadcrumbTrail_.clear();
+        if (scopeBar_)
+        {
+            scopeBar_->clearScope();
+        }
+    }
 
     if (layerId > 0)
     {
@@ -1326,10 +1402,24 @@ void MainWindow::createNewNode()
     if (!model_) return;
 
     NodeEditorDialog dlg(model_, 0, this);
-    dlg.exec();
-
-    populateNavigator();
-    renderGraph(model_->extractGraph(std::nullopt));
+    if (dlg.exec() == QDialog::Accepted)
+    {
+        if (activeContainerScope_.has_value())
+        {
+            auto nodes = model_->nodes();
+            if (!nodes.empty())
+            {
+                NodeData& newNode = nodes.back();
+                if (!newNode.parentId.has_value())
+                {
+                    newNode.parentId = *activeContainerScope_;
+                    model_->updateNode(newNode);
+                }
+            }
+        }
+        populateNavigator();
+        refreshActiveGraph();
+    }
 }
 
 void MainWindow::createNewLayer()
@@ -1340,7 +1430,7 @@ void MainWindow::createNewLayer()
     dlg.exec();
 
     populateNavigator();
-    renderGraph(model_->extractGraph(std::nullopt));
+    refreshActiveGraph();
 }
 
 void MainWindow::renderGraph(const GraphSnapshot& snap)
@@ -1635,8 +1725,33 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
             obj = existingDoc.object();
         }
     }
-    obj["x"] = pos.x();
-    obj["y"] = pos.y();
+    if (activeContainerScope_.has_value())
+    {
+        newNode.parentId = *activeContainerScope_;
+        // Inherit parent container's layers
+        if (!navigator_ || !navigator_->currentIndex().isValid() ||
+            static_cast<ItemType>(navigator_->currentIndex().data(NavRole::Type).toInt()) != ItemType::Layer)
+        {
+            for (const auto& layer : model_->layers())
+            {
+                for (const auto& nl : model_->nodesInLayer(layer.id))
+                {
+                    if (nl.nodeId == *activeContainerScope_)
+                    {
+                        model_->addNodeToLayer(newId, layer.id);
+                        break;
+                    }
+                }
+            }
+        }
+        obj["x"] = pos.x();
+        obj["y"] = pos.y();
+    }
+    else
+    {
+        obj["x"] = pos.x();
+        obj["y"] = pos.y();
+    }
 
     QJsonDocument doc(obj);
     model_->setNodeMetadata(newId, doc.toJson(QJsonDocument::Compact).toStdString());
@@ -1648,14 +1763,14 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
             auto layerId = static_cast<LayerId>(index.data(NavRole::Id).toULongLong());
             model_->addNodeToLayer(newId, layerId);
             populateNavigator();
-            renderGraph(model_->extractGraph(layerId));
+            refreshActiveGraph();
             setSaveStatus(DbSaveState::Saved, QString("Added node '%1'").arg(QString::fromStdString(newNode.name)));
             return;
         }
     }
 
     populateNavigator();
-    renderGraph(model_->extractGraph(std::nullopt));
+    refreshActiveGraph();
     setSaveStatus(DbSaveState::Saved, QString("Added node '%1'").arg(QString::fromStdString(newNode.name)));
 }
 
@@ -1797,23 +1912,8 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
         return;
     }
 
-    std::optional<LayerId> activeLayerId;
-    if (currentIndex.isValid() &&
-        static_cast<ItemType>(currentIndex.data(NavRole::Type).toInt()) == ItemType::Layer)
-    {
-        activeLayerId = static_cast<LayerId>(currentIndex.data(NavRole::Id).toULongLong());
-    }
-
     populateNavigator();
-
-    if (activeLayerId)
-    {
-        renderGraph(model_->extractGraph(*activeLayerId));
-    }
-    else
-    {
-        renderGraph(model_->extractGraph(std::nullopt));
-    }
+    refreshActiveGraph();
 
     setSaveStatus(DbSaveState::Saved, QString("Connected %1 -> %2").arg(srcName, dstName));
 }
@@ -1990,22 +2090,22 @@ void MainWindow::deleteSelected()
         delete node;
     }
 
-    std::optional<LayerId> activeLayerId;
-    if (navigator_ && navigator_->currentIndex().isValid() &&
-        static_cast<ItemType>(navigator_->currentIndex().data(NavRole::Type).toInt()) == ItemType::Layer)
-    {
-        activeLayerId = static_cast<LayerId>(navigator_->currentIndex().data(NavRole::Id).toULongLong());
-    }
-
     populateNavigator();
 
-    if (activeLayerId)
+    if (activeContainerScope_.has_value())
     {
-        renderGraph(model_->extractGraph(*activeLayerId));
+        if (allNodeIdsToDelete.count(*activeContainerScope_) > 0)
+        {
+            stepUpContainerScope();
+        }
+        else
+        {
+            refreshActiveGraph();
+        }
     }
     else
     {
-        renderGraph(model_->extractGraph(std::nullopt));
+        refreshActiveGraph();
     }
 
     onSelectionChanged();
@@ -2099,23 +2199,8 @@ void MainWindow::copySelectedNode()
         return;
     }
 
-    std::optional<LayerId> activeLayerId;
-    if (navigator_ && navigator_->currentIndex().isValid() &&
-        static_cast<ItemType>(navigator_->currentIndex().data(NavRole::Type).toInt()) == ItemType::Layer)
-    {
-        activeLayerId = static_cast<LayerId>(navigator_->currentIndex().data(NavRole::Id).toULongLong());
-    }
-
     populateNavigator();
-
-    if (activeLayerId)
-    {
-        renderGraph(model_->extractGraph(*activeLayerId));
-    }
-    else
-    {
-        renderGraph(model_->extractGraph(std::nullopt));
-    }
+    refreshActiveGraph();
 
     setSaveStatus(DbSaveState::Saved, QString("Node duplicated (New ID: %1)").arg(copiedId));
 }
@@ -2359,23 +2444,8 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
         for (const auto& r : cutNodeIds_) movedIds.push_back(r.id);
         cutNodeIds_.clear();
 
-        std::optional<LayerId> activeLayerId;
-        if (navigator_ && navigator_->currentIndex().isValid() &&
-            static_cast<ItemType>(navigator_->currentIndex().data(NavRole::Type).toInt()) == ItemType::Layer)
-        {
-            activeLayerId = static_cast<LayerId>(navigator_->currentIndex().data(NavRole::Id).toULongLong());
-        }
-
         populateNavigator();
-
-        if (activeLayerId)
-        {
-            renderGraph(model_->extractGraph(*activeLayerId));
-        }
-        else
-        {
-            renderGraph(model_->extractGraph(std::nullopt));
-        }
+        refreshActiveGraph();
 
         for (QGraphicsItem* item : scene_->items())
         {
@@ -2458,7 +2528,7 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
             }
             else
             {
-                copyData.parentId = std::nullopt;
+                copyData.parentId = activeContainerScope_;
                 finalX = thisRootScenePos.x();
                 finalY = thisRootScenePos.y();
             }
@@ -2515,23 +2585,8 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
         pasteOffsetMultiplier_++;
     }
 
-    std::optional<LayerId> activeLayerId;
-    if (navigator_ && navigator_->currentIndex().isValid() &&
-        static_cast<ItemType>(navigator_->currentIndex().data(NavRole::Type).toInt()) == ItemType::Layer)
-    {
-        activeLayerId = static_cast<LayerId>(navigator_->currentIndex().data(NavRole::Id).toULongLong());
-    }
-
     populateNavigator();
-
-    if (activeLayerId)
-    {
-        renderGraph(model_->extractGraph(*activeLayerId));
-    }
-    else
-    {
-        renderGraph(model_->extractGraph(std::nullopt));
-    }
+    refreshActiveGraph();
 
     for (QGraphicsItem* item : scene_->items())
     {
@@ -3475,6 +3530,15 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
     if (type == ItemType::Node)
     {
         QAction* showAct = menu.addAction(QIcon(":/icons/layers.svg"), "Show in Graph");
+
+        auto nodeOpt = model_->getNodeById(id);
+        auto summary = model_->getContainerGovernanceSummary(id);
+        QAction* focusAct = nullptr;
+        if (nodeOpt && (nodeOpt->type == "container" || summary.totalChildren > 0))
+        {
+            focusAct = menu.addAction(QIcon(":/icons/layers.svg"), "Drill Down / Edit Container Separately (Ctrl+Down)");
+        }
+
         menu.addSeparator();
         QAction* editAct = menu.addAction("Edit Node...");
         menu.addSeparator();
@@ -3484,7 +3548,6 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
         QAction* changeAct  = govMenu->addAction("Mark as Changed");
         QAction* invalidAct = govMenu->addAction("Mark as Invalid");
 
-        auto summary = model_->getContainerGovernanceSummary(id);
         QAction* cascadeApproveAct = nullptr;
         QAction* cascadeReviewAct  = nullptr;
         if (summary.totalChildren > 0)
@@ -3500,7 +3563,12 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
         QAction* delAct = menu.addAction("Delete Node");
 
         QAction* chosen = menu.exec(navigator_->viewport()->mapToGlobal(pos));
-        if (chosen == showAct)
+        if (chosen == focusAct)
+        {
+            focusIntoContainer(id);
+            return;
+        }
+        else if (chosen == showAct)
         {
             showNodeInGraph(id);
         }
@@ -3950,4 +4018,250 @@ void MainWindow::showAboutDialog()
 void MainWindow::showShortcutsReferenceDialog()
 {
     openShortcutConfigDialog();
+}
+
+void MainWindow::focusIntoContainer(NodeId containerId)
+{
+    if (!model_) return;
+    auto opt = model_->getNodeById(containerId);
+    if (!opt) return;
+
+    saveLayout();
+
+    // Build breadcrumb trail from root down to containerId
+    std::vector<NodeId> trail;
+    NodeId curr = containerId;
+    std::unordered_set<NodeId> visited;
+    while (true)
+    {
+        if (visited.count(curr) > 0) break;
+        visited.insert(curr);
+        trail.push_back(curr);
+
+        auto n = model_->getNodeById(curr);
+        if (n && n->parentId.has_value() && *n->parentId != 0)
+        {
+            curr = *n->parentId;
+        }
+        else
+        {
+            break;
+        }
+    }
+    std::reverse(trail.begin(), trail.end());
+    containerBreadcrumbTrail_ = trail;
+    activeContainerScope_ = containerId;
+
+    applyContainerScope(containerId);
+}
+
+void MainWindow::stepUpContainerScope()
+{
+    if (!activeContainerScope_.has_value() || containerBreadcrumbTrail_.empty())
+    {
+        exitContainerScope();
+        return;
+    }
+
+    saveLayout();
+
+    containerBreadcrumbTrail_.pop_back();
+    if (containerBreadcrumbTrail_.empty())
+    {
+        exitContainerScope();
+    }
+    else
+    {
+        NodeId parentCid = containerBreadcrumbTrail_.back();
+        activeContainerScope_ = parentCid;
+        applyContainerScope(parentCid);
+    }
+}
+
+void MainWindow::exitContainerScope()
+{
+    if (!activeContainerScope_.has_value()) return;
+
+    saveLayout();
+
+    activeContainerScope_ = std::nullopt;
+    containerBreadcrumbTrail_.clear();
+    applyContainerScope(std::nullopt);
+}
+
+void MainWindow::focusSelectedContainer()
+{
+    if (!scene_) return;
+    for (QGraphicsItem* it : scene_->selectedItems())
+    {
+        if (auto* n = dynamic_cast<GraphNodeItem*>(it))
+        {
+            if (n->isContainer())
+            {
+                focusIntoContainer(n->nodeId());
+                return;
+            }
+        }
+    }
+}
+
+std::unordered_set<NodeId> MainWindow::collectScopedNodeIds(NodeId rootContainerId) const
+{
+    std::unordered_set<NodeId> result;
+    if (!model_) return result;
+
+    std::vector<NodeId> queue = {rootContainerId};
+    auto allNodes = model_->nodes();
+
+    while (!queue.empty())
+    {
+        NodeId parent = queue.back();
+        queue.pop_back();
+
+        for (const auto& n : allNodes)
+        {
+            if (n.parentId.has_value() && *n.parentId == parent)
+            {
+                if (result.insert(n.id).second)
+                {
+                    queue.push_back(n.id);
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+GraphSnapshot MainWindow::extractScopedSnapshot(NodeId containerId) const
+{
+    GraphSnapshot snap;
+    if (!model_) return snap;
+
+    std::unordered_set<NodeId> scopedNodeIds = collectScopedNodeIds(containerId);
+
+    // containerId itself is NOT added as a node item: its interior IS the canvas!
+    for (const auto& n : model_->nodes())
+    {
+        if (scopedNodeIds.count(n.id) > 0)
+        {
+            NodeData scopedNode = n;
+            // Direct children of containerId become top-level canvas items on the scoped sub-diagram
+            if (scopedNode.parentId.has_value() && *scopedNode.parentId == containerId)
+            {
+                scopedNode.parentId = std::nullopt;
+            }
+            snap.nodes.push_back(scopedNode);
+        }
+    }
+
+    // Zero outer edges: strictly internal edges where both src and dst belong to the scoped set
+    for (const auto& e : model_->edges())
+    {
+        if (scopedNodeIds.count(e.srcNode) > 0 && scopedNodeIds.count(e.dstNode) > 0)
+        {
+            snap.edges.push_back(e);
+        }
+    }
+
+    snap.layers = model_->layers();
+    return snap;
+}
+
+void MainWindow::refreshActiveGraph()
+{
+    if (!model_ || !scene_) return;
+
+    if (activeContainerScope_.has_value())
+    {
+        GraphSnapshot scopedSnap = extractScopedSnapshot(*activeContainerScope_);
+        renderGraph(scopedSnap);
+        if (scopeBar_)
+        {
+            scopeBar_->setScopeInfo(static_cast<int>(scopedSnap.nodes.size()),
+                                    static_cast<int>(scopedSnap.edges.size()));
+        }
+    }
+    else
+    {
+        std::optional<LayerId> activeLayerId;
+        if (navigator_ && navigator_->currentIndex().isValid() &&
+            static_cast<ItemType>(navigator_->currentIndex().data(NavRole::Type).toInt()) == ItemType::Layer)
+        {
+            activeLayerId = static_cast<LayerId>(navigator_->currentIndex().data(NavRole::Id).toULongLong());
+        }
+
+        if (activeLayerId)
+        {
+            renderGraph(model_->extractGraph(*activeLayerId));
+        }
+        else
+        {
+            renderGraph(model_->extractGraph(std::nullopt));
+        }
+    }
+}
+
+void MainWindow::applyContainerScope(std::optional<NodeId> containerId)
+{
+    if (!scene_ || !model_) return;
+
+    if (!containerId.has_value())
+    {
+        if (scopeBar_)
+        {
+            scopeBar_->clearScope();
+        }
+
+        refreshActiveGraph();
+
+        QRectF fullRect = scene_->itemsBoundingRect();
+        if (!fullRect.isEmpty() && graphView_)
+        {
+            graphView_->fitInView(fullRect.adjusted(-80, -80, 80, 80), Qt::KeepAspectRatio);
+        }
+        statusBar()->showMessage("Exited container isolation mode", 2000);
+        return;
+    }
+
+    NodeId targetId = *containerId;
+
+    // Build breadcrumb trail details for the UI bar
+    std::vector<std::pair<NodeId, QString>> trailDisplay;
+    for (NodeId id : containerBreadcrumbTrail_)
+    {
+        auto n = model_->getNodeById(id);
+        QString name = n ? QString::fromStdString(n->name) : QString("Container #%1").arg(id);
+        trailDisplay.push_back({id, name});
+    }
+
+    if (scopeBar_)
+    {
+        scopeBar_->setBreadcrumbTrail(trailDisplay);
+    }
+
+    GraphSnapshot scopedSnap = extractScopedSnapshot(targetId);
+    renderGraph(scopedSnap);
+
+    int scopedNodeCount = static_cast<int>(scopedSnap.nodes.size());
+    int internalEdgeCount = static_cast<int>(scopedSnap.edges.size());
+
+    if (scopeBar_)
+    {
+        scopeBar_->setScopeInfo(scopedNodeCount, internalEdgeCount);
+    }
+
+    if (graphView_)
+    {
+        QRectF bounds = scene_->itemsBoundingRect();
+        if (!bounds.isEmpty())
+        {
+            graphView_->fitInView(bounds.adjusted(-80, -80, 80, 80), Qt::KeepAspectRatio);
+        }
+    }
+
+    auto targetOpt = model_->getNodeById(targetId);
+    QString targetName = targetOpt ? QString::fromStdString(targetOpt->name) : QString::number(targetId);
+    statusBar()->showMessage(QString("Scoped into container: %1 (%2 internal nodes, %3 internal edges)")
+        .arg(targetName).arg(scopedNodeCount).arg(internalEdgeCount), 3000);
 }

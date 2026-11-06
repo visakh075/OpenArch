@@ -131,6 +131,7 @@ set(OPENARCH_GUI_COMMON_SOURCES
     src/gui/theme/ApplicationThemeManager.cpp
     src/gui/config/ApplicationConfig.cpp
     src/gui/PreferencesDialog.cpp
+    src/gui/ContainerScopeBar.cpp
     src/gui/theme/ThemeEditorDock.cpp
     src/gui/theme/ThemeEditorWindow.cpp
 )
