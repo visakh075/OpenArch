@@ -61,6 +61,7 @@ public:
     void refreshPath();
     const QPainterPath& edgePath() const { return cachedPath_; }
     QString title() const { return cachedTitle_; }
+    QString name() const;
     QString edgeType() const;
     const QRect& titleRect() const { return cachedTitleRect_; }
     ArchitectureModel* model() const { return model_; }
@@ -115,6 +116,7 @@ private:
     
     QPainterPath cachedPath_;
     QString cachedTitle_;
+    QString cachedName_;
     QString cachedEdgeType_;
     QRect cachedTitleRect_;
     QRectF cachedBounds_;

@@ -432,7 +432,7 @@ void GraphNodeItem::adoptChild(GraphNodeItem* child)
     if (headerH <= 0.0)
     {
         const auto& theme = GraphThemeManager::instance()->theme();
-        const auto& containerTheme = theme.containerThemeForType(displayType());
+        const auto& containerTheme = theme.containerTheme(displayTitle(), displayType());
         QFont font;
         font.setPointSize(containerTheme.normal.title.size > 0 ? containerTheme.normal.title.size : 12);
         font.setBold(containerTheme.normal.title.bold);
@@ -541,7 +541,7 @@ void GraphNodeItem::releaseChild(GraphNodeItem* child)
 QRectF GraphNodeItem::calculateNodeRect()
 {
     const auto& theme = GraphThemeManager::instance()->theme();
-    const auto& nodeTheme = theme.nodeThemeForType(displayType());
+    const auto& nodeTheme = theme.nodeTheme(displayTitle(), displayType());
     const GraphComponentState* state = isSelected() ? &nodeTheme.selected : (hovered_ ? &nodeTheme.hover : &nodeTheme.normal);
 
     cachedTitleFont_ = QFont();
@@ -633,8 +633,8 @@ QRectF GraphNodeItem::calculateNodeRect()
 QRectF GraphNodeItem::calculateContainerRect()
 {
     const auto& theme = GraphThemeManager::instance()->theme();
-    const auto& containerTheme = theme.containerThemeForType(displayType());
-    const auto& nodeTheme = theme.nodeThemeForType(displayType());
+    const auto& containerTheme = theme.containerTheme(displayTitle(), displayType());
+    const auto& nodeTheme = theme.nodeTheme(displayTitle(), displayType());
     const GraphComponentState* state = isSelected() ? &containerTheme.selected : (hovered_ ? &containerTheme.hover : &containerTheme.normal);
     const GraphComponentState* nodeState = isSelected() ? &nodeTheme.selected : (hovered_ ? &nodeTheme.hover : &nodeTheme.normal);
 
@@ -808,8 +808,8 @@ QRectF GraphNodeItem::boundingRect() const
 {
     const auto& theme = GraphThemeManager::instance()->theme();
     const auto* state = isContainer()
-        ? &theme.containerThemeForType(displayType()).normal
-        : &theme.nodeThemeForType(displayType()).normal;
+        ? &theme.containerTheme(displayTitle(), displayType()).normal
+        : &theme.nodeTheme(displayTitle(), displayType()).normal;
     qreal penWidth = state->borderWidth;
     qreal pad = (penWidth / 2.0) + 1.0;
     QRectF r = cachedRect_.adjusted(-pad, -pad, pad, pad);
@@ -825,8 +825,8 @@ QPainterPath GraphNodeItem::shape() const
     QPainterPath path;
     const auto& theme = GraphThemeManager::instance()->theme();
     const auto* state = isContainer() 
-        ? &theme.containerStateFor(displayType(), isSelected(), hovered_)
-        : &theme.nodeStateFor(displayType(), isSelected(), hovered_);
+        ? &theme.containerStateFor(displayTitle(), displayType(), isSelected(), hovered_)
+        : &theme.nodeStateFor(displayTitle(), displayType(), isSelected(), hovered_);
 
     path.addRoundedRect(cachedRect_, state->radius, state->radius);
     if (s_showGovernanceBadges && !cachedBadgeRect_.isEmpty())
@@ -876,8 +876,8 @@ void GraphNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
 
     if (isContainer())
     {
-        const auto& containerTheme = theme.containerThemeForType(displayType());
-        const auto& nodeTheme = theme.nodeThemeForType(displayType());
+        const auto& containerTheme = theme.containerTheme(displayTitle(), displayType());
+        const auto& nodeTheme = theme.nodeTheme(displayTitle(), displayType());
         const GraphComponentState* state = isSelected() ? &containerTheme.selected
                                         : (hovered_ ? &containerTheme.hover : &containerTheme.normal);
 
@@ -991,7 +991,7 @@ void GraphNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     }
     else
     {
-        const auto& nodeTheme = theme.nodeThemeForType(displayType());
+        const auto& nodeTheme = theme.nodeTheme(displayTitle(), displayType());
         const GraphComponentState* state = isSelected() ? &nodeTheme.selected
                                         : (hovered_ ? &nodeTheme.hover : &nodeTheme.normal);
 

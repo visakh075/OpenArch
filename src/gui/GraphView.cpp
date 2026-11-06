@@ -873,50 +873,74 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
     out << "  .graph-edge.selected .edge-label text { fill: " << toCssRgba(eSelected.label.textColor)
         << "; font-weight: bold; }\n";
 
-    // --- Type-Specific Overrides (e.g. edge#pwr, edge#lan, node#service) ---
+    // --- Type- and Name-Specific Overrides (e.g. edge#pwr, edge#name#lan, node#service) ---
     for (auto it = theme.edgeTypeThemes.begin(); it != theme.edgeTypeThemes.end(); ++it)
     {
-        QString typeKey = it.key().toHtmlEscaped();
+        QString selector;
+        if (it.key().contains('#')) {
+            QString namePart = it.key().section('#', 0, 0).toHtmlEscaped();
+            QString typePart = it.key().section('#', 1).toHtmlEscaped();
+            selector = QString(".graph-edge[data-name=\"%1\" i][data-type=\"%2\" i]").arg(namePart, typePart);
+        } else {
+            QString key = it.key().toHtmlEscaped();
+            selector = QString(".graph-edge[data-type=\"%1\" i], .graph-edge[data-name=\"%1\" i]").arg(key);
+        }
         const auto& eState = it.value().normal;
         const auto& eHoverState = it.value().hover;
         const auto& eSelState = it.value().selected;
 
-        out << "  .graph-edge[data-type=\"" << typeKey << "\" i] path.line { stroke: " << toCssRgba(eState.lineColor)
+        out << "  " << selector << " path.line { stroke: " << toCssRgba(eState.lineColor)
             << "; stroke-width: " << eState.lineWidth << "px; }\n";
-        out << "  .graph-edge[data-type=\"" << typeKey << "\" i] polygon.arrow { fill: " << toCssRgba(eState.arrow.fillColor)
+        out << "  " << selector << " polygon.arrow { fill: " << toCssRgba(eState.arrow.fillColor)
             << "; stroke: " << toCssRgba(eState.arrow.lineColor) << "; stroke-width: " << eState.arrow.lineWidth << "px; }\n";
-        out << "  .graph-edge[data-type=\"" << typeKey << "\" i]:hover path.line { stroke: " << toCssRgba(eHoverState.lineColor)
+        out << "  " << selector << ":hover path.line { stroke: " << toCssRgba(eHoverState.lineColor)
             << "; stroke-width: " << eHoverState.lineWidth << "px; }\n";
-        out << "  .graph-edge[data-type=\"" << typeKey << "\" i]:hover polygon.arrow { fill: " << toCssRgba(eHoverState.arrow.fillColor)
+        out << "  " << selector << ":hover polygon.arrow { fill: " << toCssRgba(eHoverState.arrow.fillColor)
             << "; stroke: " << toCssRgba(eHoverState.arrow.lineColor) << "; stroke-width: " << eHoverState.arrow.lineWidth << "px; }\n";
-        out << "  .graph-edge[data-type=\"" << typeKey << "\" i].selected path.line { stroke: " << toCssRgba(eSelState.lineColor)
+        out << "  " << selector << ".selected path.line { stroke: " << toCssRgba(eSelState.lineColor)
             << "; stroke-width: " << eSelState.lineWidth << "px; }\n";
-        out << "  .graph-edge[data-type=\"" << typeKey << "\" i].selected polygon.arrow { fill: " << toCssRgba(eSelState.arrow.fillColor)
+        out << "  " << selector << ".selected polygon.arrow { fill: " << toCssRgba(eSelState.arrow.fillColor)
             << "; stroke: " << toCssRgba(eSelState.arrow.lineColor) << "; stroke-width: " << eSelState.arrow.lineWidth << "px; }\n";
     }
 
     for (auto it = theme.nodeTypeThemes.begin(); it != theme.nodeTypeThemes.end(); ++it)
     {
-        QString typeKey = it.key().toHtmlEscaped();
+        QString selector;
+        if (it.key().contains('#')) {
+            QString namePart = it.key().section('#', 0, 0).toHtmlEscaped();
+            QString typePart = it.key().section('#', 1).toHtmlEscaped();
+            selector = QString(".graph-node[data-name=\"%1\" i][data-type=\"%2\" i]").arg(namePart, typePart);
+        } else {
+            QString key = it.key().toHtmlEscaped();
+            selector = QString(".graph-node[data-type=\"%1\" i], .graph-node[data-name=\"%1\" i]").arg(key);
+        }
         const auto& nState = it.value().normal;
         const auto& nHoverState = it.value().hover;
 
-        out << "  .graph-node[data-type=\"" << typeKey << "\" i] rect.box { fill: " << toCssRgba(nState.background)
+        out << "  " << selector << " rect.box { fill: " << toCssRgba(nState.background)
             << "; stroke: " << toCssRgba(nState.border) << "; stroke-width: " << nState.borderWidth << "px; }\n";
-        out << "  .graph-node[data-type=\"" << typeKey << "\" i]:hover rect.box { fill: " << toCssRgba(nHoverState.background)
+        out << "  " << selector << ":hover rect.box { fill: " << toCssRgba(nHoverState.background)
             << "; stroke: " << toCssRgba(nHoverState.border) << "; stroke-width: " << nHoverState.borderWidth << "px; }\n";
     }
 
     for (auto it = theme.containerTypeThemes.begin(); it != theme.containerTypeThemes.end(); ++it)
     {
-        QString typeKey = it.key().toHtmlEscaped();
+        QString selector;
+        if (it.key().contains('#')) {
+            QString namePart = it.key().section('#', 0, 0).toHtmlEscaped();
+            QString typePart = it.key().section('#', 1).toHtmlEscaped();
+            selector = QString(".graph-container[data-name=\"%1\" i][data-type=\"%2\" i]").arg(namePart, typePart);
+        } else {
+            QString key = it.key().toHtmlEscaped();
+            selector = QString(".graph-container[data-type=\"%1\" i], .graph-container[data-name=\"%1\" i]").arg(key);
+        }
         const auto& cState = it.value().normal;
         const auto& cHoverState = it.value().hover;
 
-        out << "  .graph-container[data-type=\"" << typeKey << "\" i] rect.box { fill: " << toCssRgba(cState.background)
+        out << "  " << selector << " rect.box { fill: " << toCssRgba(cState.background)
             << "; stroke: " << toCssRgba(cState.border) << "; stroke-width: " << cState.borderWidth << "px; }\n";
-        out << "  .graph-container[data-type=\"" << typeKey << "\" i] rect.header { fill: " << toCssRgba(cState.headerBackground) << "; }\n";
-        out << "  .graph-container[data-type=\"" << typeKey << "\" i]:hover rect.box { fill: " << toCssRgba(cHoverState.background)
+        out << "  " << selector << " rect.header { fill: " << toCssRgba(cState.headerBackground) << "; }\n";
+        out << "  " << selector << ":hover rect.box { fill: " << toCssRgba(cHoverState.background)
             << "; stroke: " << toCssRgba(cHoverState.border) << "; stroke-width: " << cHoverState.borderWidth << "px; }\n";
     }
 
@@ -1124,6 +1148,9 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         auto opt = m ? m->getEdgeById(edge->edgeId()) : std::nullopt;
 
         QString edgeTitle = edge->title().toHtmlEscaped();
+        QString edgeName = edge->name().toHtmlEscaped();
+        QString edgeType = edge->edgeType().toHtmlEscaped();
+        if (edgeType.isEmpty()) edgeType = edgeTitle;
         QString srcTitle = edge->srcNode() ? edge->srcNode()->displayTitle().toHtmlEscaped() : "Unknown";
         QString dstTitle = edge->dstNode() ? edge->dstNode()->displayTitle().toHtmlEscaped() : "Unknown";
         NodeId srcId = opt ? opt->srcNode : (edge->srcNode() ? edge->srcNode()->nodeId() : 0);
@@ -1137,7 +1164,8 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
         QString attr = opt ? QString::fromStdString(opt->attributes).toHtmlEscaped() : "{}";
 
         out << "      <g class=\"graph-edge\" data-id=\"" << edge->edgeId()
-            << "\" data-type=\"" << edgeTitle
+            << "\" data-name=\"" << edgeName
+            << "\" data-type=\"" << edgeType
             << "\" data-kind=\"edge\""
             << " data-src-name=\"" << srcTitle << "\" data-src-id=\"" << srcId
             << "\" data-dst-name=\"" << dstTitle << "\" data-dst-id=\"" << dstId
@@ -1412,7 +1440,8 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
     out << "      el.classList.add('selected');\n";
     out << "      edgesLayer.appendChild(el);\n";
     out << "\n";
-    out << "      document.getElementById('sb-title').innerText = 'Edge #' + el.getAttribute('data-id');\n";
+    out << "      const edgeName = el.getAttribute('data-name') || '';\n";
+    out << "      document.getElementById('sb-title').innerText = edgeName ? (edgeName + ' (Edge #' + el.getAttribute('data-id') + ')') : ('Edge #' + el.getAttribute('data-id'));\n";
     out << "      const status = el.getAttribute('data-status') || 'new';\n";
     out << "      const reviewer = el.getAttribute('data-reviewer') || 'None';\n";
     out << "      const checksum = el.getAttribute('data-checksum') || '0';\n";
@@ -1426,6 +1455,7 @@ void GraphView::exportToInteractiveHtml(const QString& filePath)
     out << "        <div class=\"sb-section\">\n";
     out << "          <div class=\"sb-section-title\">Connection</div>\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">ID</span><span class=\"field-val mono\">#${el.getAttribute('data-id')}</span></div>\n";
+    out << "          ${edgeName ? `<div class=\"field-row\"><span class=\"field-name\">Name</span><span class=\"field-val\">${edgeName}</span></div>` : ''}\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">Type</span><span class=\"field-val\">${edgeType}</span></div>\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">From</span><span class=\"field-val\">${srcName} (#${srcId})</span></div>\n";
     out << "          <div class=\"field-row\"><span class=\"field-name\">To</span><span class=\"field-val\">${dstName} (#${dstId})</span></div>\n";

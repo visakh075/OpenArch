@@ -235,52 +235,152 @@ struct GraphTheme
     GraphSelectionTheme selection;
     GraphInteractionTheme interaction;
 
-    // Type-specific overrides (keys stored lowercase, e.g. "pwr", "lan", "service")
+    // Type- and Name-specific overrides (keys stored lowercase, e.g. "pwr", "lan", "auth#service")
     QMap<QString, GraphEdgeTheme> edgeTypeThemes;
     QMap<QString, GraphComponentTheme> nodeTypeThemes;
     QMap<QString, GraphComponentTheme> containerTypeThemes;
 
-    const GraphEdgeTheme& edgeThemeForType(const QString& type) const
+    const GraphEdgeTheme& edgeTheme(const QString& name, const QString& type) const
     {
-        if (!type.isEmpty() && !edgeTypeThemes.isEmpty())
+        if (!edgeTypeThemes.isEmpty())
         {
-            auto it = edgeTypeThemes.find(type.trimmed().toLower());
-            if (it != edgeTypeThemes.end())
-                return it.value();
+            QString cleanName = name.trimmed().toLower();
+            QString cleanType = type.trimmed().toLower();
+
+            // 1. Highest Specificity: Compound "name#type"
+            if (!cleanName.isEmpty() && !cleanType.isEmpty())
+            {
+                auto it = edgeTypeThemes.find(cleanName + "#" + cleanType);
+                if (it != edgeTypeThemes.end())
+                    return it.value();
+            }
+
+            // 2. Specificity 2: Exact Name "name"
+            if (!cleanName.isEmpty())
+            {
+                auto it = edgeTypeThemes.find(cleanName);
+                if (it != edgeTypeThemes.end())
+                    return it.value();
+            }
+
+            // 3. Specificity 3: Type "type"
+            if (!cleanType.isEmpty())
+            {
+                auto it = edgeTypeThemes.find(cleanType);
+                if (it != edgeTypeThemes.end())
+                    return it.value();
+            }
         }
         return edge;
     }
 
-    const GraphComponentTheme& nodeThemeForType(const QString& type) const
+    const GraphEdgeTheme& edgeThemeForType(const QString& type) const
     {
-        if (!type.isEmpty() && !nodeTypeThemes.isEmpty())
+        return edgeTheme(QString(), type);
+    }
+
+    const GraphComponentTheme& nodeTheme(const QString& name, const QString& type) const
+    {
+        if (!nodeTypeThemes.isEmpty())
         {
-            auto it = nodeTypeThemes.find(type.trimmed().toLower());
-            if (it != nodeTypeThemes.end())
-                return it.value();
+            QString cleanName = name.trimmed().toLower();
+            QString cleanType = type.trimmed().toLower();
+
+            // 1. Highest Specificity: Compound "name#type"
+            if (!cleanName.isEmpty() && !cleanType.isEmpty())
+            {
+                auto it = nodeTypeThemes.find(cleanName + "#" + cleanType);
+                if (it != nodeTypeThemes.end())
+                    return it.value();
+            }
+
+            // 2. Specificity 2: Exact Name "name"
+            if (!cleanName.isEmpty())
+            {
+                auto it = nodeTypeThemes.find(cleanName);
+                if (it != nodeTypeThemes.end())
+                    return it.value();
+            }
+
+            // 3. Specificity 3: Type "type"
+            if (!cleanType.isEmpty())
+            {
+                auto it = nodeTypeThemes.find(cleanType);
+                if (it != nodeTypeThemes.end())
+                    return it.value();
+            }
         }
         return node;
     }
 
-    const GraphComponentTheme& containerThemeForType(const QString& type) const
+    const GraphComponentTheme& nodeThemeForType(const QString& type) const
     {
-        if (!type.isEmpty())
+        return nodeTheme(QString(), type);
+    }
+
+    const GraphComponentTheme& containerTheme(const QString& name, const QString& type) const
+    {
+        QString cleanName = name.trimmed().toLower();
+        QString cleanType = type.trimmed().toLower();
+
+        // 1. Highest Specificity: Compound "name#type"
+        if (!cleanName.isEmpty() && !cleanType.isEmpty())
         {
-            QString key = type.trimmed().toLower();
-            auto it = containerTypeThemes.find(key);
+            QString compound = cleanName + "#" + cleanType;
+            auto it = containerTypeThemes.find(compound);
             if (it != containerTypeThemes.end())
                 return it.value();
-            // Fallback to nodeTypeThemes if someone specified node#<type>
-            auto itNode = nodeTypeThemes.find(key);
+            auto itNode = nodeTypeThemes.find(compound);
             if (itNode != nodeTypeThemes.end())
                 return itNode.value();
         }
+
+        // 2. Specificity 2: Exact Name "name"
+        if (!cleanName.isEmpty())
+        {
+            auto it = containerTypeThemes.find(cleanName);
+            if (it != containerTypeThemes.end())
+                return it.value();
+            auto itNode = nodeTypeThemes.find(cleanName);
+            if (itNode != nodeTypeThemes.end())
+                return itNode.value();
+        }
+
+        // 3. Specificity 3: Type "type"
+        if (!cleanType.isEmpty())
+        {
+            auto it = containerTypeThemes.find(cleanType);
+            if (it != containerTypeThemes.end())
+                return it.value();
+            auto itNode = nodeTypeThemes.find(cleanType);
+            if (itNode != nodeTypeThemes.end())
+                return itNode.value();
+        }
+
         return container;
+    }
+
+    const GraphComponentTheme& containerThemeForType(const QString& type) const
+    {
+        return containerTheme(QString(), type);
+    }
+
+    const GraphEdgeState& edgeStateFor(const QString& name, const QString& type, bool selected, bool hovered) const
+    {
+        const auto& t = edgeTheme(name, type);
+        if (selected) return t.selected;
+        if (hovered)  return t.hover;
+        return t.normal;
     }
 
     const GraphEdgeState& edgeStateFor(const QString& type, bool selected, bool hovered) const
     {
-        const auto& t = edgeThemeForType(type);
+        return edgeStateFor(QString(), type, selected, hovered);
+    }
+
+    const GraphComponentState& nodeStateFor(const QString& name, const QString& type, bool selected, bool hovered) const
+    {
+        const auto& t = nodeTheme(name, type);
         if (selected) return t.selected;
         if (hovered)  return t.hover;
         return t.normal;
@@ -288,7 +388,12 @@ struct GraphTheme
 
     const GraphComponentState& nodeStateFor(const QString& type, bool selected, bool hovered) const
     {
-        const auto& t = nodeThemeForType(type);
+        return nodeStateFor(QString(), type, selected, hovered);
+    }
+
+    const GraphComponentState& containerStateFor(const QString& name, const QString& type, bool selected, bool hovered) const
+    {
+        const auto& t = containerTheme(name, type);
         if (selected) return t.selected;
         if (hovered)  return t.hover;
         return t.normal;
@@ -296,9 +401,6 @@ struct GraphTheme
 
     const GraphComponentState& containerStateFor(const QString& type, bool selected, bool hovered) const
     {
-        const auto& t = containerThemeForType(type);
-        if (selected) return t.selected;
-        if (hovered)  return t.hover;
-        return t.normal;
+        return containerStateFor(QString(), type, selected, hovered);
     }
 };

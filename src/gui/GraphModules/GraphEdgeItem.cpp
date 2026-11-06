@@ -83,6 +83,19 @@ void GraphEdgeItem::setRoutingAlgorithmOverride(std::optional<EdgeRoutingAlgorit
     refreshPath();
 }
 
+QString GraphEdgeItem::name() const
+{
+    if (!cachedName_.isEmpty())
+        return cachedName_;
+    if (model_)
+    {
+        auto edge = model_->getEdgeById(e_id);
+        if (edge)
+            return QString::fromStdString(edge->name);
+    }
+    return QString();
+}
+
 QString GraphEdgeItem::edgeType() const
 {
     if (!cachedEdgeType_.isEmpty())
@@ -480,7 +493,7 @@ void GraphEdgeItem::updateSceneEdges(QGraphicsScene* scene)
         }
         qreal channelOffset = lane * 14.0;
 
-        const auto* state = &theme.edgeStateFor(edge->edgeType(), edge->isSelected(), edge->isHovered());
+        const auto* state = &theme.edgeStateFor(edge->name(), edge->edgeType(), edge->isSelected(), edge->isHovered());
         qreal arrowWidth = state ? state->arrow.width : defaultArrowWidth;
 
         EdgeRoutingAlgorithm algo = edge->effectiveRoutingAlgorithm();
@@ -1468,7 +1481,7 @@ void GraphEdgeItem::setCustomPath(const QPainterPath& localPath, const QPointF& 
     cachedArrowAngle_ = arrowAngle;
 
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
+    const GraphEdgeState* State = &theme.edgeStateFor(name(), edgeType(), isSelected(), hovered_);
 
     qreal extraMargin = State->lineWidth + State->label.offset + State->label.paddingY + 30.0;
     cachedBounds_ = cachedPath_.boundingRect();
@@ -2035,7 +2048,7 @@ void GraphEdgeItem::setWaypointsAndBuildPath(
     }
 
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
+    const GraphEdgeState* State = &theme.edgeStateFor(name(), edgeType(), isSelected(), hovered_);
 
     qreal arrowWidth = State->arrow.width;
     QPointF tip = localWaypoints.back();
@@ -2057,7 +2070,7 @@ void GraphEdgeItem::setWaypointsAndBuildPath(
 QRectF GraphEdgeItem::boundingRect() const
 {
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
+    const GraphEdgeState* State = &theme.edgeStateFor(name(), edgeType(), isSelected(), hovered_);
 
     qreal extraMargin = State->lineWidth + State->label.offset + State->label.paddingY + 30.0;
     QRectF rect = cachedPath_.boundingRect();
@@ -2073,7 +2086,7 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
         return;
 
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
+    const GraphEdgeState* State = &theme.edgeStateFor(name(), edgeType(), isSelected(), hovered_);
 
     const auto& arrow = State->arrow;
     const auto& label = State->label;
@@ -2245,7 +2258,7 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
 QPainterPath GraphEdgeItem::shape() const
 {
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
+    const GraphEdgeState* State = &theme.edgeStateFor(name(), edgeType(), isSelected(), hovered_);
 
     qreal tolerance = 5.0;
     qreal hitWidth = State->lineWidth + (tolerance * 2.0);
@@ -2693,7 +2706,7 @@ void GraphEdgeItem::refreshPath()
     cachedPath_ = buildPath();
 
     const auto& theme = GraphThemeManager::instance()->theme();
-    const GraphEdgeState* State = &theme.edgeStateFor(edgeType(), isSelected(), hovered_);
+    const GraphEdgeState* State = &theme.edgeStateFor(name(), edgeType(), isSelected(), hovered_);
 
     qreal extraMargin = State->lineWidth + State->label.offset + State->label.paddingY + 30.0;
     cachedBounds_ = cachedPath_.boundingRect();
@@ -2734,12 +2747,19 @@ void GraphEdgeItem::refreshLayout()
     else if (edge)
     {
         cachedEdgeType_ = QString::fromStdString(edge->edgeType);
-        cachedTitle_ = cachedEdgeType_;
-        QString tip = QString("<b>Edge #%1</b> (%2)<br>"
+        cachedName_ = QString::fromStdString(edge->name);
+        cachedTitle_ = !cachedName_.trimmed().isEmpty() ? cachedName_ : cachedEdgeType_;
+
+        QString namePart = edge->name.empty()
+            ? QString("<b>Edge #%1</b>").arg(e_id)
+            : QString("<b>%1</b> (Edge #%2)").arg(QString::fromStdString(edge->name).toHtmlEscaped()).arg(e_id);
+
+        QString tip = QString("%1<br>"
+                              "Type / Protocol: <b>%2</b><br>"
                               "Status: <b>%3</b><br>"
                               "Reviewer: %4<br>"
                               "Checksum: 0x%5")
-            .arg(e_id)
+            .arg(namePart)
             .arg(QString::fromStdString(edge->edgeType).toHtmlEscaped())
             .arg(QString::fromStdString(to_string(edge->status)).toUpper())
             .arg(edge->reviewer.empty() ? "<i>(None)</i>" : QString::fromStdString(edge->reviewer).toHtmlEscaped())
@@ -2772,7 +2792,7 @@ void GraphEdgeItem::refreshLayout()
         }
     }
 
-    const auto& edgeTheme = theme.edgeThemeForType(edgeType());
+    const auto& edgeTheme = theme.edgeTheme(name(), edgeType());
     QFont font;
     font.setPointSize(edgeTheme.normal.label.fontSize);
     font.setBold(edgeTheme.normal.label.bold);

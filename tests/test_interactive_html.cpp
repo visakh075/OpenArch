@@ -27,32 +27,12 @@ int main(int argc, char* argv[])
     // 2. Initialize MainWindow and load existing test architecture
     MainWindow window;
 
-    QString dbPath;
-    QStringList candidates = {
-        "build/architecture.json",
-        "../build/architecture.json",
-        "architecture.json",
-        "../architecture.json",
-        "testdbx.db",
-        "../testdbx.db",
-        "/workspace/OpenArch/build/architecture.json",
-        "/workspace/OpenArch/testdbx.db"
-    };
-    for (const auto& c : candidates) {
-        if (QFile::exists(c)) {
-            dbPath = c;
-            break;
-        }
-    }
-
-    bool createdTempJson = false;
     QString tempJsonPath = "test_sample_architecture.json";
-    if (dbPath.isEmpty()) {
-        dbPath = tempJsonPath;
-        createdTempJson = true;
-        QFile sampleFile(dbPath);
-        if (sampleFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-            QTextStream out(&sampleFile);
+    QString dbPath = tempJsonPath;
+    bool createdTempJson = true;
+    QFile sampleFile(dbPath);
+    if (sampleFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        QTextStream out(&sampleFile);
             out << R"({
   "layers": [
     {
@@ -105,6 +85,7 @@ int main(int argc, char* argv[])
   "edges": [
     {
       "id": 1,
+      "name": "Gateway-To-Service",
       "src_node_id": 3,
       "src_layer_id": 1,
       "dst_node_id": 2,
@@ -126,8 +107,7 @@ int main(int argc, char* argv[])
     "edges": {}
   }
 })";
-            sampleFile.close();
-        }
+        sampleFile.close();
     }
 
     window.setDb(dbPath.toStdString());
@@ -201,6 +181,9 @@ int main(int argc, char* argv[])
     // 10. Test Sidebar Inspector Data for Both Nodes and Edges
     std::cout << "[TEST] 8. Verifying Full Inspector Sidebar Support...\n";
     assert(html.contains("data-kind=\"edge\"") && "Missing data-kind edge!");
+    assert(html.contains("data-name=\"Gateway-To-Service\"") && "Missing data-name attribute on graph-edge!");
+    assert(html.contains("data-type=\"Route\"") && "Missing data-type attribute on graph-edge!");
+    assert(html.contains("edgeName") && "Missing edgeName handling in sidebar JS script!");
     assert(html.contains("data-src-name=") && "Missing edge source name!");
     assert(html.contains("data-dst-name=") && "Missing edge destination name!");
     assert(html.contains("data-status=") && "Missing edge status!");
@@ -233,6 +216,31 @@ int main(int argc, char* argv[])
     assert(html.contains("svg text, text") && "Missing font-family rules on SVG text elements!");
     std::cout << " -> PASSED: Typography web fonts and SVG font families successfully exported.\n";
 
+    // 13. Test name#type CSS Rule Generation
+    std::cout << "[TEST] 11. Verifying name#type CSS Rule Generation in HTML Export...\n";
+    {
+        auto& currentTheme = GraphThemeManager::instance()->mutableTheme();
+        GraphEdgeTheme compoundEdgeTheme = currentTheme.edge;
+        compoundEdgeTheme.normal.lineColor = QColor("#ff0099");
+        currentTheme.edgeTypeThemes["gateway-to-service#route"] = compoundEdgeTheme;
+
+        GraphComponentTheme compoundNodeTheme = currentTheme.node;
+        compoundNodeTheme.normal.background = QColor("#11ffaa");
+        currentTheme.nodeTypeThemes["api gateway#gateway"] = compoundNodeTheme;
+
+        QString compoundOut = "test_compound_export.html";
+        window.exportToInteractiveHtml(compoundOut);
+        QFile cFile(compoundOut);
+        assert(cFile.open(QIODevice::ReadOnly | QIODevice::Text));
+        QString cHtml = QTextStream(&cFile).readAll();
+        cFile.close();
+        cFile.remove();
+
+        assert(cHtml.contains(".graph-edge[data-name=\"gateway-to-service\" i][data-type=\"route\" i]"));
+        assert(cHtml.contains(".graph-node[data-name=\"api gateway\" i][data-type=\"gateway\" i]"));
+        std::cout << " -> PASSED: CSS-convention name#type compound selectors emitted in interactive HTML.\n";
+    }
+
     // 13. Overwrite architecture.html if output directory exists
     QStringList htmlDestinations = {
         "/workspace/OpenArch/build/architecture.html",
@@ -256,6 +264,7 @@ int main(int argc, char* argv[])
 
     // 13. Cleanup temporary test files
     file.remove();
+    window.setDb("");
     if (createdTempJson && QFile::exists(tempJsonPath)) {
         QFile::remove(tempJsonPath);
     }
