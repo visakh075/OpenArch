@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include <QApplication>
 #include <QSplitter>
 #include <QMenuBar>
 #include <QFileDialog>
@@ -30,6 +31,8 @@
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QFormLayout>
+#include <QDialogButtonBox>
 #include <QDesktopServices>
 #include <QUrl>
 
@@ -46,6 +49,11 @@
 #include "ShortcutConfigDialog.h"
 #include "ConvertDialog.h"
 #include "db/DbConverter.h"
+#include "config/ApplicationConfig.h"
+#include "PreferencesDialog.h"
+#include <QFontDialog>
+#include <QTime>
+#include <QCloseEvent>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -173,7 +181,18 @@ void MainWindow::setupUi()
             populateThemeMenu();
         });
 
+    connect(
+        ApplicationThemeManager::instance(),
+        &ApplicationThemeManager::themeChanged,
+        this,
+        [this](const QString&)
+        {
+            if (appThemeMenu_)
+                setupApplicationThemeMenu(appThemeMenu_);
+        });
+
     setDockNestingEnabled(true);
+    setupSaveStatusWidget();
 }
 
 void MainWindow::showWelcome()
@@ -186,6 +205,7 @@ void MainWindow::showWelcome()
     currentDbPath_.clear();
     if (actionExportJson_) actionExportJson_->setEnabled(false);
     if (actionExportSqlite_) actionExportSqlite_->setEnabled(false);
+    setSaveStatus(DbSaveState::NoDb);
 }
 
 void MainWindow::showCanvas()
@@ -200,44 +220,50 @@ void MainWindow::showCanvas()
 
 void MainWindow::setupMenu()
 {
+    // ------------------------------------------------------------
+    // 1. File Menu
+    // ------------------------------------------------------------
     auto* fileMenu = menuBar()->addMenu("&File");
     fileMenu->addAction("New Project...", this, &MainWindow::createNewDatabase);
     fileMenu->addAction("Open DB...", this, &MainWindow::openDatabase);
+    actionSaveLayout_ = fileMenu->addAction("Save Layout", this, &MainWindow::saveLayout);
+    actionSaveLayout_->setShortcut(QKeySequence::Save);
     fileMenu->addSeparator();
 
     actionConvert_ = fileMenu->addAction("Convert Database (JSON ⇄ SQLite)...", this, &MainWindow::openConvertDialog);
-    actionExportJson_ = fileMenu->addAction("Export to JSON...", this, &MainWindow::exportCurrentAsJson);
-    actionExportSqlite_ = fileMenu->addAction("Export to SQLite...", this, &MainWindow::exportCurrentAsSqlite);
+
+    auto* exportMenu = fileMenu->addMenu("&Export");
+    actionExportJson_ = exportMenu->addAction("To JSON...", this, &MainWindow::exportCurrentAsJson);
+    actionExportSqlite_ = exportMenu->addAction("To SQLite...", this, &MainWindow::exportCurrentAsSqlite);
     actionExportJson_->setEnabled(false);
     actionExportSqlite_->setEnabled(false);
-    fileMenu->addSeparator();
+    exportMenu->addSeparator();
 
-    actionExportCurrent_ = new QAction("Export Current View", this);
+    actionExportCurrent_ = new QAction("Current View (SVG)...", this);
     connect(actionExportCurrent_, &QAction::triggered, this, [this]() {
         graphView_->exportToSvg(GraphView::ExportMode::CurrentView);
     });
-    fileMenu->addAction(actionExportCurrent_);
+    exportMenu->addAction(actionExportCurrent_);
 
-    actionExportWhole_ = new QAction("Export Whole Diagram", this);
+    actionExportWhole_ = new QAction("Whole Diagram (SVG)...", this);
     connect(actionExportWhole_, &QAction::triggered, this, [this]() {
         graphView_->exportToSvg(GraphView::ExportMode::WholeScene);
     });
-    fileMenu->addAction(actionExportWhole_);
+    exportMenu->addAction(actionExportWhole_);
 
-    actionExportHtml_ = new QAction("Export Interactive HTML...", this);
+    actionExportHtml_ = new QAction("Interactive HTML Report...", this);
     connect(actionExportHtml_, &QAction::triggered, this, [this]() {
         exportToInteractiveHtml();
     });
-    fileMenu->addAction(actionExportHtml_);
+    exportMenu->addAction(actionExportHtml_);
 
     fileMenu->addSeparator();
     fileMenu->addAction("Exit", this, &QWidget::close);
 
+    // ------------------------------------------------------------
+    // 2. Edit Menu
+    // ------------------------------------------------------------
     auto* editMenu = menuBar()->addMenu("&Edit");
-    actionAddNode_ = editMenu->addAction("Add Node", this, &MainWindow::createNewNode);
-    actionAddLayer_ = editMenu->addAction("Add Layer", this, &MainWindow::createNewLayer);
-    editMenu->addSeparator();
-
     actionCut_ = editMenu->addAction(QIcon(":/icons/cut.svg"), "Cut", this, &MainWindow::cutSelectedNodes);
     actionCut_->setShortcut(QKeySequence::Cut);
 
@@ -250,17 +276,13 @@ void MainWindow::setupMenu()
     actionDuplicate_ = editMenu->addAction(QIcon(":/icons/copy.svg"), "Duplicate Node", this, &MainWindow::copySelectedNode);
 
     editMenu->addSeparator();
-    actionSaveLayout_ = editMenu->addAction("Save Layout", this, &MainWindow::saveLayout);
+    actionAddNode_ = editMenu->addAction("Add Node", this, &MainWindow::createNewNode);
+    actionAddLayer_ = editMenu->addAction("Add Layer", this, &MainWindow::createNewLayer);
+    actionConnect_ = new QAction(QIcon(":/icons/connect.svg"), "Connect Selected Nodes", this);
+    connect(actionConnect_, &QAction::triggered, this, &MainWindow::connectSelectedNodes);
+    editMenu->addAction(actionConnect_);
 
     editMenu->addSeparator();
-    actionDistH_ = new QAction(QIcon(":/icons/dist-h.svg"), "Distribute Horizontally", this);
-    connect(actionDistH_, &QAction::triggered, this, &MainWindow::distributeHorizontal);
-    editMenu->addAction(actionDistH_);
-
-    actionDistV_ = new QAction(QIcon(":/icons/dist-v.svg"), "Distribute Vertically", this);
-    connect(actionDistV_, &QAction::triggered, this, &MainWindow::distributeVertical);
-    editMenu->addAction(actionDistV_);
-
     auto* alignMenu = editMenu->addMenu("Align");
 
     auto* alignHMenu = alignMenu->addMenu("Horizontal");
@@ -289,30 +311,85 @@ void MainWindow::setupMenu()
     connect(actionAlignBottom_, &QAction::triggered, this, [this]() { alignNodes(AlignType::Bottom); });
     alignVMenu->addAction(actionAlignBottom_);
 
-    editMenu->addSeparator();
-    actionConnect_ = new QAction(QIcon(":/icons/connect.svg"), "Connect Selected Nodes", this);
-    connect(actionConnect_, &QAction::triggered, this, &MainWindow::connectSelectedNodes);
-    editMenu->addAction(actionConnect_);
+    auto* distMenu = editMenu->addMenu("Distribute");
+    actionDistH_ = new QAction(QIcon(":/icons/dist-h.svg"), "Horizontally", this);
+    connect(actionDistH_, &QAction::triggered, this, &MainWindow::distributeHorizontal);
+    distMenu->addAction(actionDistH_);
 
-    editMenu->addSeparator();
-    editMenu->addAction("Configure Shortcuts...", this, &MainWindow::openShortcutConfigDialog);
+    actionDistV_ = new QAction(QIcon(":/icons/dist-v.svg"), "Vertically", this);
+    connect(actionDistV_, &QAction::triggered, this, &MainWindow::distributeVertical);
+    distMenu->addAction(actionDistV_);
 
+    // ------------------------------------------------------------
+    // 3. View Menu (New Professional View Management)
+    // ------------------------------------------------------------
+    viewMenu_ = menuBar()->addMenu("&View");
+
+    actionView_ = new QAction("View", this);
+    actionView_->setCheckable(true);
+    actionView_->setChecked(true);
+    connect(actionView_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::View); });
+
+    actionEdit_ = new QAction("Edit", this);
+    actionEdit_->setCheckable(true);
+    connect(actionEdit_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::Edit); });
+
+    auto* modeGroup = new QActionGroup(this);
+    modeGroup->addAction(actionView_);
+    modeGroup->addAction(actionEdit_);
+    addAction(actionView_);
+    addAction(actionEdit_);
+
+    auto* modeSubMenu = viewMenu_->addMenu("&Mode");
+    modeSubMenu->addAction(actionView_);
+    modeSubMenu->addAction(actionEdit_);
+    viewMenu_->addSeparator();
+
+    auto* actZoomIn = viewMenu_->addAction("Zoom In", this, [this]() {
+        if (graphView_) graphView_->scale(1.2, 1.2);
+    });
+    actZoomIn->setShortcut(QKeySequence::ZoomIn);
+
+    auto* actZoomOut = viewMenu_->addAction("Zoom Out", this, [this]() {
+        if (graphView_) graphView_->scale(1.0 / 1.2, 1.0 / 1.2);
+    });
+    actZoomOut->setShortcut(QKeySequence::ZoomOut);
+
+    auto* actZoomFit = viewMenu_->addAction("Fit Scene to View", this, [this]() {
+        if (graphView_ && scene_) graphView_->fitInView(scene_->itemsBoundingRect(), Qt::KeepAspectRatio);
+    });
+    actZoomFit->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
+
+    viewMenu_->addSeparator();
+    auto* panelsMenu = viewMenu_->addMenu("&Panels");
+    if (architectureDock_) {
+        QAction* toggleArchAction = architectureDock_->toggleViewAction();
+        toggleArchAction->setText("Architecture &Navigator");
+        panelsMenu->addAction(toggleArchAction);
+    }
+    if (themeDock_) {
+        QAction* toggleThemeAction = themeDock_->toggleViewAction();
+        toggleThemeAction->setText("&Theme Editor");
+        panelsMenu->addAction(toggleThemeAction);
+    }
+
+    toolbarsMenu_ = viewMenu_->addMenu("&Toolbars");
+
+    // ------------------------------------------------------------
+    // 4. Theme Menu (Dedicated strictly to Graph Canvas Themes)
+    // ------------------------------------------------------------
     themeMenu_ = menuBar()->addMenu("&Theme");
 
-    appThemeMenu_ = themeMenu_->addMenu("Application &UI Theme");
-    setupApplicationThemeMenu(appThemeMenu_);
-    themeMenu_->addSeparator();
-
-    actionOpenTheme_ = new QAction("&Open Theme File...", this);
+    actionOpenTheme_ = new QAction("&Open Graph Theme File...", this);
     connect(actionOpenTheme_, &QAction::triggered, this, &MainWindow::loadThemeFromFile);
 
-    actionSaveTheme_ = new QAction("&Save Theme", this);
+    actionSaveTheme_ = new QAction("&Save Graph Theme", this);
     connect(actionSaveTheme_, &QAction::triggered, this, &MainWindow::saveTheme);
 
-    actionSaveThemeAs_ = new QAction("Save Theme &As...", this);
+    actionSaveThemeAs_ = new QAction("Save Graph Theme &As...", this);
     connect(actionSaveThemeAs_, &QAction::triggered, this, &MainWindow::saveThemeAs);
 
-    actionResetTheme_ = new QAction("&Reset to Default", this);
+    actionResetTheme_ = new QAction("&Reset Graph Theme to Default", this);
     connect(actionResetTheme_, &QAction::triggered, this, [this]() {
         GraphThemeManager::instance()->resetDefaults();
         populateThemeMenu();
@@ -324,11 +401,6 @@ void MainWindow::setupMenu()
     themeMenu_->addSeparator();
     themeMenu_->addAction(actionResetTheme_);
     themeMenu_->addSeparator();
-    if (themeDock_) {
-        QAction* toggleThemeDockAction = themeDock_->toggleViewAction();
-        toggleThemeDockAction->setText("Show &Theme Editor (Dock)");
-        themeMenu_->addAction(toggleThemeDockAction);
-    }
 
     themeMenu_->addAction("Launch Standalone &Theme Editor...", this, []() {
         auto* editor = new ThemeEditorWindow(nullptr);
@@ -338,6 +410,9 @@ void MainWindow::setupMenu()
 
     populateThemeMenu();
 
+    // ------------------------------------------------------------
+    // 5. Governance Menu
+    // ------------------------------------------------------------
     governanceMenu_ = menuBar()->addMenu("&Governance");
     actionReview_ = governanceMenu_->addAction("&Review Selected...", this, &MainWindow::reviewSelected);
     actionApprove_ = governanceMenu_->addAction("&Approve Selected...", this, &MainWindow::approveSelected);
@@ -354,13 +429,41 @@ void MainWindow::setupMenu()
     actionShowBadges_->setCheckable(true);
     actionShowBadges_->setChecked(GraphNodeItem::showGovernanceBadges());
 
+    // ------------------------------------------------------------
+    // 6. Routing Menu
+    // ------------------------------------------------------------
     routingMenu_ = menuBar()->addMenu("&Routing");
     setupRoutingMenuAndControls();
 
+    // ------------------------------------------------------------
+    // 7. Settings Menu
+    // ------------------------------------------------------------
     auto* settingsMenu = menuBar()->addMenu("&Settings");
-    auto* appThemeSettings = settingsMenu->addMenu("Application &UI Theme");
-    setupApplicationThemeMenu(appThemeSettings);
-    settingsMenu->addAction("Configure Shortcuts...", this, &MainWindow::openShortcutConfigDialog);
+    actionPreferences_ = settingsMenu->addAction("&Preferences...", this, &MainWindow::openPreferencesDialog);
+    actionPreferences_->setShortcut(QKeySequence::Preferences);
+    settingsMenu->addSeparator();
+
+    actionConfigureShortcuts_ = settingsMenu->addAction("Configure &Shortcuts...", this, &MainWindow::openShortcutConfigDialog);
+
+    // Retain internal action pointers for test / shortcut compatibility
+    if (!actionAutoSave_) {
+        actionAutoSave_ = new QAction("Enable Auto-Save", this);
+        actionAutoSave_->setCheckable(true);
+        actionAutoSave_->setChecked(ApplicationConfig::instance().isAutoSaveEnabled());
+        connect(actionAutoSave_, &QAction::toggled, this, &MainWindow::onAutoSaveToggled);
+    }
+    if (!actionApplicationFont_) {
+        actionApplicationFont_ = new QAction("Application Font...", this);
+        connect(actionApplicationFont_, &QAction::triggered, this, &MainWindow::openPreferencesDialog);
+    }
+
+    // ------------------------------------------------------------
+    // 8. Help Menu
+    // ------------------------------------------------------------
+    helpMenu_ = menuBar()->addMenu("&Help");
+    helpMenu_->addAction("Keyboard &Shortcuts Reference...", this, &MainWindow::showShortcutsReferenceDialog);
+    helpMenu_->addSeparator();
+    helpMenu_->addAction("&About OpenArch...", this, &MainWindow::showAboutDialog);
 }
 
 void MainWindow::setupApplicationThemeMenu(QMenu* parentMenu)
@@ -567,25 +670,23 @@ void MainWindow::setupToolbar()
 {
     // Mode toggle is displayed as a sleek floating segmented pill at the bottom-right corner of GraphView.
     // Window actions are preserved for keyboard shortcuts and ShortcutManager registration.
-    actionView_ = new QAction("View", this);
-    actionEdit_ = new QAction("Edit", this);
-
-    actionView_->setCheckable(true);
-    actionEdit_->setCheckable(true);
-
-    auto* group = new QActionGroup(this);
-    group->addAction(actionView_);
-    group->addAction(actionEdit_);
-    actionView_->setChecked(true);
-
-    addAction(actionView_);
-    addAction(actionEdit_);
-
-    connect(actionView_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::View); });
-    connect(actionEdit_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::Edit); });
+    if (!actionView_) {
+        actionView_ = new QAction("View", this);
+        actionView_->setCheckable(true);
+        actionView_->setChecked(true);
+        connect(actionView_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::View); });
+    }
+    if (!actionEdit_) {
+        actionEdit_ = new QAction("Edit", this);
+        actionEdit_->setCheckable(true);
+        connect(actionEdit_, &QAction::triggered, this, [this]() { setGraphMode(GraphView::Mode::Edit); });
+    }
 
     layoutToolBar_ = addToolBar("Layout");
     layoutToolBar_->setIconSize(QSize(20, 20));
+    if (toolbarsMenu_) {
+        toolbarsMenu_->addAction(layoutToolBar_->toggleViewAction());
+    }
 
     auto* alignBtn = new QToolButton(this);
     alignBtn->setText("Align");
@@ -679,8 +780,11 @@ void MainWindow::setupConnections()
 
     autoSaveTimer_ = new QTimer(this);
     autoSaveTimer_->setSingleShot(true);
-    autoSaveTimer_->setInterval(500);
+    autoSaveTimer_->setInterval(ApplicationConfig::instance().autoSaveDelayMs());
     connect(autoSaveTimer_, &QTimer::timeout, this, &MainWindow::saveLayout);
+
+    connect(&ApplicationConfig::instance(), &ApplicationConfig::autoSaveChanged, this, &MainWindow::onAutoSaveConfigChanged);
+    connect(&ApplicationConfig::instance(), &ApplicationConfig::autoSaveDelayChanged, this, &MainWindow::onAutoSaveDelayChanged);
 }
 
 void MainWindow::setupShortcuts()
@@ -709,7 +813,13 @@ void MainWindow::setupShortcuts()
     // Layout
     sm->registerAction("layout.dist_h", "Distribute Horizontally", "Layout", QKeySequence(Qt::ALT | Qt::Key_H), actionDistH_, "Distribute selected nodes evenly along horizontal axis");
     sm->registerAction("layout.dist_v", "Distribute Vertically", "Layout", QKeySequence(Qt::ALT | Qt::Key_V), actionDistV_, "Distribute selected nodes evenly along vertical axis");
-    sm->registerAction("layout.save_layout", "Save Layout", "Layout", QKeySequence(), actionSaveLayout_, "Save node positions to the database");
+    sm->registerAction("layout.save_layout", "Save Layout", "Layout", QKeySequence(QKeySequence::Save), actionSaveLayout_, "Save node positions to the database");
+
+    // Settings
+    if (actionPreferences_)
+    {
+        sm->registerAction("settings.preferences", "Preferences", "Settings", QKeySequence::Preferences, actionPreferences_, "Open application preferences dialog");
+    }
 
     // Alignment
     sm->registerAction("align.left", "Align Left", "Alignment", QKeySequence(), actionAlignLeft_, "Align selected nodes to left edge of primary node");
@@ -784,9 +894,20 @@ void MainWindow::openShortcutConfigDialog()
 
 void MainWindow::scheduleAutoSave()
 {
-    if (autoSaveTimer_ && model_ && !isRendering_)
+    if (!model_ || isRendering_)
+        return;
+
+    if (ApplicationConfig::instance().isAutoSaveEnabled())
     {
-        autoSaveTimer_->start();
+        if (autoSaveTimer_)
+        {
+            autoSaveTimer_->start();
+        }
+    }
+    else
+    {
+        hasUnsavedLayoutChanges_ = true;
+        setSaveStatus(DbSaveState::UnsavedChanges, "Unsaved layout changes (press Ctrl+S to save)");
     }
 }
 
@@ -795,8 +916,13 @@ void MainWindow::setDb(const std::string& db_path)
     if (db_path.empty())
         return;
 
+    if (!maybePromptSaveUnsavedChanges())
+        return;
+
     if (autoSaveTimer_)
         autoSaveTimer_->stop();
+
+    hasUnsavedLayoutChanges_ = false;
 
     clipboardNodes_.clear();
     cutNodeIds_.clear();
@@ -867,6 +993,8 @@ void MainWindow::setDb(const std::string& db_path)
     populateNavigator();
     renderGraph(model_->extractGraph(std::nullopt));
     showCanvas();
+    hasUnsavedLayoutChanges_ = false;
+    setSaveStatus(DbSaveState::Saved, QString("Loaded %1").arg(QFileInfo(qPath).fileName()));
 }
 
 void MainWindow::openDatabase()
@@ -976,6 +1104,7 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
             {
                 renderGraph(model_->extractGraph(std::nullopt));
             }
+            setSaveStatus(DbSaveState::Saved, "Node updated in database");
         }
         break;
     }
@@ -985,6 +1114,7 @@ void MainWindow::onTreeItemDoubleClicked(const QModelIndex& index)
         {
             populateNavigator();
             renderGraph(model_->extractGraph(static_cast<LayerId>(id)));
+            setSaveStatus(DbSaveState::Saved, "Layer updated in database");
         }
         break;
     }
@@ -1438,6 +1568,9 @@ void MainWindow::saveLayout()
 {
     if (!model_ || !scene_ || isRendering_) return;
 
+    setSaveStatus(DbSaveState::Saving, "Saving layout to database...");
+    QApplication::processEvents();
+
     for (QGraphicsItem* item : scene_->items())
     {
         auto* nodeItem = dynamic_cast<GraphNodeItem*>(item);
@@ -1472,7 +1605,8 @@ void MainWindow::saveLayout()
         model_->setNodeMetadata(id, doc.toJson(QJsonDocument::Compact).toStdString());
     }
 
-    statusBar()->showMessage("Layout saved", 1500);
+    hasUnsavedLayoutChanges_ = false;
+    setSaveStatus(DbSaveState::Saved, "Layout saved");
 }
 
 void MainWindow::handleAddNodeAtPosition(QPointF pos)
@@ -1482,6 +1616,8 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
     NodeEditorDialog dlg(model_, 0, this);
     if (dlg.exec() != QDialog::Accepted)
         return;
+
+    setSaveStatus(DbSaveState::Saving, "Saving new node to database...");
 
     auto nodes = model_->nodes();
     if (nodes.empty())
@@ -1513,12 +1649,14 @@ void MainWindow::handleAddNodeAtPosition(QPointF pos)
             model_->addNodeToLayer(newId, layerId);
             populateNavigator();
             renderGraph(model_->extractGraph(layerId));
+            setSaveStatus(DbSaveState::Saved, QString("Added node '%1'").arg(QString::fromStdString(newNode.name)));
             return;
         }
     }
 
     populateNavigator();
     renderGraph(model_->extractGraph(std::nullopt));
+    setSaveStatus(DbSaveState::Saved, QString("Added node '%1'").arg(QString::fromStdString(newNode.name)));
 }
 
 void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
@@ -1617,29 +1755,44 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
         chosenLayerId = commonLayers[idx].id;
     }
 
-    bool ok = false;
-    QString edgeType = QInputDialog::getText(
-        this,
-        "Edge Type",
-        "Enter connection type / protocol:",
-        QLineEdit::Normal,
-        "default",
-        &ok);
+    QDialog connDlg(this);
+    connDlg.setWindowTitle("New Connection");
+    connDlg.resize(380, 160);
+    auto* formLayout = new QFormLayout(&connDlg);
+    auto* nameInput = new QLineEdit(&connDlg);
+    nameInput->setPlaceholderText(QString("%1 -> %2").arg(srcName, dstName));
+    auto* typeInput = new QLineEdit("default", &connDlg);
+    typeInput->setPlaceholderText("Connection type / protocol (e.g. lan, pwr, https)");
+    formLayout->addRow("Edge Name:", nameInput);
+    formLayout->addRow("Type / Protocol:", typeInput);
 
-    if (!ok)
+    auto* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &connDlg);
+    connect(buttonBox, &QDialogButtonBox::accepted, &connDlg, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &connDlg, &QDialog::reject);
+    formLayout->addWidget(buttonBox);
+
+    if (connDlg.exec() != QDialog::Accepted)
         return;
 
+    QString edgeName = nameInput->text().trimmed();
+    QString edgeType = typeInput->text().trimmed();
+    if (edgeType.isEmpty())
+        edgeType = "default";
+
     EdgeData e;
+    e.name = edgeName.toStdString();
     e.srcNode = srcId;
     e.dstNode = dstId;
     e.srcLayer = chosenLayerId;
     e.dstLayer = chosenLayerId;
-    e.edgeType = edgeType.trimmed().isEmpty() ? "default" : edgeType.trimmed().toStdString();
+    e.edgeType = edgeType.toStdString();
 
     EdgeId newId = 0;
+    setSaveStatus(DbSaveState::Saving, "Saving connection to database...");
     auto r = model_->addEdge(e, newId);
     if (!r.ok)
     {
+        setSaveStatus(DbSaveState::Error, QString::fromStdString(r.message));
         QMessageBox::critical(this, "Error", QString::fromStdString(r.message));
         return;
     }
@@ -1662,7 +1815,7 @@ void MainWindow::handleConnectNodes(qulonglong srcId, qulonglong dstId)
         renderGraph(model_->extractGraph(std::nullopt));
     }
 
-    statusBar()->showMessage(QString("Connected %1 -> %2").arg(srcName, dstName), 2500);
+    setSaveStatus(DbSaveState::Saved, QString("Connected %1 -> %2").arg(srcName, dstName));
 }
 
 void MainWindow::connectSelectedNodes()
@@ -1739,6 +1892,8 @@ void MainWindow::deleteSelected()
 
     const auto selected = scene_->selectedItems();
     if (selected.isEmpty()) return;
+
+    setSaveStatus(DbSaveState::Saving, "Deleting selected elements from database...");
 
     std::unordered_set<NodeId> allNodeIdsToDelete;
     std::unordered_set<GraphNodeItem*> allNodeItemsToDelete;
@@ -1854,6 +2009,7 @@ void MainWindow::deleteSelected()
     }
 
     onSelectionChanged();
+    setSaveStatus(DbSaveState::Saved, "Deleted selected items from database");
 }
 
 NodeId MainWindow::cloneNodeRecursive(NodeId sourceId, std::optional<NodeId> newParentId, qreal offsetX, qreal offsetY)
@@ -1934,9 +2090,11 @@ void MainWindow::copySelectedNode()
 
     std::optional<NodeId> parentId = srcOpt->parentId;
 
+    setSaveStatus(DbSaveState::Saving, "Duplicating node in database...");
     NodeId copiedId = cloneNodeRecursive(srcId, parentId, 40.0, 40.0);
     if (copiedId == 0)
     {
+        setSaveStatus(DbSaveState::Error, "Failed to duplicate selected node");
         QMessageBox::critical(this, "Error", "Failed to duplicate selected node.");
         return;
     }
@@ -1959,7 +2117,7 @@ void MainWindow::copySelectedNode()
         renderGraph(model_->extractGraph(std::nullopt));
     }
 
-    statusBar()->showMessage(QString("Node duplicated (New ID: %1)").arg(copiedId), 2500);
+    setSaveStatus(DbSaveState::Saved, QString("Node duplicated (New ID: %1)").arg(copiedId));
 }
 
 void MainWindow::cutSelectedNodes()
@@ -2269,6 +2427,8 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
     std::unordered_map<NodeId, NodeId> oldToNewId;
     std::vector<NodeId> newlyCreatedIds;
 
+    setSaveStatus(DbSaveState::Saving, "Saving pasted nodes to database...");
+
     for (const auto& cn : clipboardNodes_)
     {
         NodeData copyData = cn.data;
@@ -2389,7 +2549,7 @@ void MainWindow::pasteNodesAt(const std::optional<QPointF>& targetPos)
     scene_->invalidate(QRectF(), QGraphicsScene::AllLayers);
     graphView_->viewport()->update();
 
-    statusBar()->showMessage(QString("Pasted %1 node(s)").arg(newlyCreatedIds.size()), 2000);
+    setSaveStatus(DbSaveState::Saved, QString("Pasted %1 node(s)").arg(newlyCreatedIds.size()));
 }
 
 void MainWindow::setGraphMode(GraphView::Mode mode)
@@ -3351,6 +3511,7 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
             {
                 populateNavigator();
                 renderGraph(model_->extractGraph(std::nullopt));
+                setSaveStatus(DbSaveState::Saved, "Node updated in database");
             }
         }
         else if (chosen == delAct)
@@ -3503,6 +3664,7 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
             {
                 populateNavigator();
                 renderGraph(model_->extractGraph(id));
+                setSaveStatus(DbSaveState::Saved, "Layer updated in database");
             }
         }
         else if (chosen == delAct)
@@ -3561,4 +3723,231 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
             }
         }
     }
+}
+
+void MainWindow::setupSaveStatusWidget()
+{
+    saveStatusContainer_ = new QWidget(this);
+    auto* layout = new QHBoxLayout(saveStatusContainer_);
+    layout->setContentsMargins(8, 0, 8, 0);
+    layout->setSpacing(5);
+
+    saveStatusIndicator_ = new QLabel(this);
+    saveStatusLabel_ = new QLabel(this);
+
+    layout->addWidget(saveStatusIndicator_);
+    layout->addWidget(saveStatusLabel_);
+
+    saveStatusContainer_->setCursor(Qt::PointingHandCursor);
+    saveStatusContainer_->installEventFilter(this);
+
+    statusBar()->addPermanentWidget(saveStatusContainer_);
+    setSaveStatus(DbSaveState::NoDb);
+}
+
+void MainWindow::setSaveStatus(DbSaveState state, const QString& details)
+{
+    currentSaveState_ = state;
+
+    if (!saveStatusIndicator_ || !saveStatusLabel_)
+        return;
+
+    QString indicatorText;
+    QString labelText;
+    QString tooltipText;
+
+    QString dbFile;
+    if (!currentDbPath_.empty())
+    {
+        dbFile = QFileInfo(QString::fromStdString(currentDbPath_)).fileName();
+    }
+
+    switch (state)
+    {
+    case DbSaveState::NoDb:
+        indicatorText = "<span style='color: #7f8c8d;'>○</span>";
+        labelText = "<span style='color: #7f8c8d;'>No database open</span>";
+        tooltipText = "Open an SQLite database or Architecture JSON project to begin.";
+        break;
+
+    case DbSaveState::Saving:
+        indicatorText = "<span style='color: #3498db; font-size: 13px;'>💾</span>";
+        labelText = "<span style='color: #3498db; font-weight: bold;'>Saving...</span>";
+        tooltipText = details.isEmpty() ? "Writing changes to database..." : details;
+        statusBar()->showMessage(details.isEmpty() ? "Saving database changes..." : details, 1500);
+        break;
+
+    case DbSaveState::Saved:
+    {
+        QString timeStr = QTime::currentTime().toString("HH:mm:ss");
+        indicatorText = "<span style='color: #2ecc71; font-weight: bold;'>✓</span>";
+        labelText = QString("<span style='color: #2ecc71;'>Saved (%1)</span>").arg(timeStr);
+        tooltipText = QString("All changes saved to '%1' at %2.").arg(dbFile.isEmpty() ? "database" : dbFile, timeStr);
+        if (!details.isEmpty())
+        {
+            statusBar()->showMessage(details, 2500);
+        }
+        break;
+    }
+
+    case DbSaveState::UnsavedChanges:
+        indicatorText = "<span style='color: #e67e22; font-size: 13px;'>●</span>";
+        labelText = "<span style='color: #e67e22; font-weight: bold; text-decoration: underline;'>Unsaved changes</span>";
+        tooltipText = "Layout modifications are in memory. Click here or press Ctrl+S to save to database.";
+        statusBar()->showMessage("Unsaved layout changes (press Ctrl+S to save)", 3000);
+        break;
+
+    case DbSaveState::Error:
+        indicatorText = "<span style='color: #e74c3c; font-weight: bold;'>⚠</span>";
+        labelText = "<span style='color: #e74c3c; font-weight: bold;'>Save Failed</span>";
+        tooltipText = details.isEmpty() ? "An error occurred while saving to database." : details;
+        statusBar()->showMessage(QString("Save error: %1").arg(details), 4000);
+        break;
+    }
+
+    saveStatusIndicator_->setText(indicatorText);
+    saveStatusLabel_->setText(labelText);
+    saveStatusContainer_->setToolTip(tooltipText);
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == saveStatusContainer_ && event->type() == QEvent::MouseButtonRelease)
+    {
+        if (currentSaveState_ == DbSaveState::UnsavedChanges)
+        {
+            saveLayout();
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    if (maybePromptSaveUnsavedChanges())
+    {
+        event->accept();
+    }
+    else
+    {
+        event->ignore();
+    }
+}
+
+bool MainWindow::maybePromptSaveUnsavedChanges()
+{
+    if (!model_ || !hasUnsavedLayoutChanges_ || ApplicationConfig::instance().isAutoSaveEnabled())
+    {
+        return true;
+    }
+
+    QString dbName = QString::fromStdString(currentDbPath_);
+    if (dbName.isEmpty())
+        dbName = "current architecture";
+    else
+        dbName = QFileInfo(dbName).fileName();
+
+    auto reply = QMessageBox::question(
+        this,
+        "Unsaved Layout Changes",
+        QString("You have unsaved layout modifications in '%1'.\n\nWould you like to save them before proceeding?").arg(dbName),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
+        QMessageBox::Save
+    );
+
+    if (reply == QMessageBox::Save)
+    {
+        saveLayout();
+        return true;
+    }
+    else if (reply == QMessageBox::Discard)
+    {
+        hasUnsavedLayoutChanges_ = false;
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+void MainWindow::openPreferencesDialog()
+{
+    PreferencesDialog dlg(this);
+    if (dlg.exec() == QDialog::Accepted)
+    {
+        if (appThemeMenu_)
+            setupApplicationThemeMenu(appThemeMenu_);
+        if (actionAutoSave_)
+            actionAutoSave_->setChecked(ApplicationConfig::instance().isAutoSaveEnabled());
+    }
+}
+
+void MainWindow::openFontChooserDialog()
+{
+    bool ok = false;
+    QFont currentFont = ApplicationConfig::instance().applicationFont();
+    QFont font = QFontDialog::getFont(&ok, currentFont, this, "Select Application Font");
+    if (ok)
+    {
+        ApplicationConfig::instance().setApplicationFont(font);
+        statusBar()->showMessage(QString("Application font updated: %1, %2pt")
+            .arg(font.family())
+            .arg(font.pointSize() > 0 ? font.pointSize() : 10), 3000);
+    }
+}
+
+void MainWindow::onAutoSaveToggled(bool checked)
+{
+    ApplicationConfig::instance().setAutoSaveEnabled(checked);
+}
+
+void MainWindow::onAutoSaveConfigChanged(bool enabled)
+{
+    if (actionAutoSave_)
+    {
+        actionAutoSave_->setChecked(enabled);
+    }
+
+    if (enabled)
+    {
+        if (hasUnsavedLayoutChanges_)
+        {
+            saveLayout();
+        }
+        statusBar()->showMessage("Auto-save enabled", 2000);
+    }
+    else
+    {
+        if (autoSaveTimer_)
+        {
+            autoSaveTimer_->stop();
+        }
+        statusBar()->showMessage("Auto-save disabled. Press Ctrl+S to save layout.", 3000);
+    }
+}
+
+void MainWindow::onAutoSaveDelayChanged(int ms)
+{
+    if (autoSaveTimer_)
+    {
+        autoSaveTimer_->setInterval(ms);
+    }
+}
+
+void MainWindow::showAboutDialog()
+{
+    QMessageBox::about(
+        this,
+        "About OpenArch",
+        "<h3>OpenArch</h3>"
+        "<p>Cross-platform software architecture modeling, visualization, and governance platform.</p>"
+        "<p>Version 1.1.0 &bull; Qt " QT_VERSION_STR " &bull; MIT License</p>"
+    );
+}
+
+void MainWindow::showShortcutsReferenceDialog()
+{
+    openShortcutConfigDialog();
 }

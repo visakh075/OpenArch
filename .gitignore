@@ -6,4 +6,5 @@ release-*/
 Ref
 src/gui.7z
 tests_old/
+.vscode/
 

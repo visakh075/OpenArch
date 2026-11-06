@@ -129,6 +129,8 @@ set(OPENARCH_GUI_COMMON_SOURCES
     src/gui/GraphView.cpp    
     src/gui/theme/GraphThemeManager.cpp
     src/gui/theme/ApplicationThemeManager.cpp
+    src/gui/config/ApplicationConfig.cpp
+    src/gui/PreferencesDialog.cpp
     src/gui/theme/ThemeEditorDock.cpp
     src/gui/theme/ThemeEditorWindow.cpp
 )

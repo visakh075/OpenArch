@@ -69,6 +69,28 @@ public:
     ArchitectureModel* model() const { return model_; }
     void exportToInteractiveHtml(const QString& filePath = QString());
 
+    enum class DbSaveState {
+        NoDb,
+        Saved,
+        Saving,
+        UnsavedChanges,
+        Error
+    };
+    void setSaveStatus(DbSaveState state, const QString& details = QString());
+    DbSaveState currentSaveState() const { return currentSaveState_; }
+    bool hasUnsavedChanges() const { return hasUnsavedLayoutChanges_; }
+    QAction* actionPreferences() const { return actionPreferences_; }
+    QAction* actionConfigureShortcuts() const { return actionConfigureShortcuts_; }
+    QAction* actionAutoSave() const { return actionAutoSave_; }
+    QAction* actionApplicationFont() const { return actionApplicationFont_; }
+    QLabel* saveStatusLabel() const { return saveStatusLabel_; }
+    QMenu* viewMenu() const { return viewMenu_; }
+    QMenu* helpMenu() const { return helpMenu_; }
+
+protected:
+    void closeEvent(QCloseEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 public slots:
     void cutSelectedNodes();
     void copySelectedNodes();
@@ -82,6 +104,11 @@ public slots:
 private slots:
     void saveLayout();
     void scheduleAutoSave();
+    void openPreferencesDialog();
+    void openFontChooserDialog();
+    void onAutoSaveToggled(bool checked);
+    void onAutoSaveConfigChanged(bool enabled);
+    void onAutoSaveDelayChanged(int ms);
     void loadThemeFromFile();
     void saveTheme();
     void saveThemeAs();
@@ -179,11 +206,17 @@ private:
     QAction* actionExportJson_{nullptr};
     QAction* actionExportSqlite_{nullptr};
     QAction* duplicateBtn_{nullptr};
+    QMenu*   viewMenu_{nullptr};
+    QMenu*   toolbarsMenu_{nullptr};
     QMenu*   themeMenu_{nullptr};
     QMenu*   appThemeMenu_{nullptr};
+    QMenu*   helpMenu_{nullptr};
     void setupApplicationThemeMenu(QMenu* parentMenu);
     void loadCustomApplicationTheme();
     void openCustomApplicationThemesFolder();
+    void showAboutDialog();
+    void showShortcutsReferenceDialog();
+    QAction* actionConfigureShortcuts_{nullptr};
     QAction* actionOpenTheme_{nullptr};
     QAction* actionSaveTheme_{nullptr};
     QAction* actionSaveThemeAs_{nullptr};
@@ -235,4 +268,16 @@ private:
     QTimer* autoSaveTimer_{nullptr};
     std::unique_ptr<DbManager> db_{nullptr};
     ArchitectureModel* model_{nullptr};
+
+    void setupSaveStatusWidget();
+    bool maybePromptSaveUnsavedChanges();
+
+    bool hasUnsavedLayoutChanges_{false};
+    QAction* actionPreferences_{nullptr};
+    QAction* actionAutoSave_{nullptr};
+    QAction* actionApplicationFont_{nullptr};
+    QWidget* saveStatusContainer_{nullptr};
+    QLabel* saveStatusIndicator_{nullptr};
+    QLabel* saveStatusLabel_{nullptr};
+    DbSaveState currentSaveState_{DbSaveState::NoDb};
 };

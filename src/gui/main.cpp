@@ -8,6 +8,7 @@
 #include "MainWindow.h"
 #include "GraphThemeManager.h"
 #include "theme/ApplicationThemeManager.h"
+#include "config/ApplicationConfig.h"
 
 int main(int argc, char *argv[])
 {
@@ -20,8 +21,9 @@ int main(int argc, char *argv[])
     app.setApplicationName("OpenArch");
     app.setOrganizationName("OpenArch");
 
-    // Initialize cross-platform application UI theme (independent of graph theme)
+    // Initialize cross-platform application UI theme and global font configuration
     ApplicationThemeManager::initialize(&app);
+    ApplicationConfig::initialize(&app);
 
     QCommandLineParser parser;
     parser.setApplicationDescription("OpenArch GUI");
