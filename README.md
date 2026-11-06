@@ -27,6 +27,7 @@ Whether managing enterprise system designs, conducting formal architecture revie
   - [Node Movement & Edge Creation](#node-movement--edge-creation)
   - [Alignment & Distribution](#alignment--distribution)
   - [Modes & Keyboard Shortcuts](#modes--keyboard-shortcuts)
+  - [Preferences, Auto-Save & Database Status](#preferences-auto-save--database-status)
 - [Theme Engine](#theme-engine)
   - [Graph Canvas Themes](#graph-canvas-themes)
   - [Application UI Themes & Extensibility](#application-ui-themes--extensibility)
@@ -71,6 +72,11 @@ Whether managing enterprise system designs, conducting formal architecture revie
   - One-command cross-compilation pipeline from Linux to Windows x86_64 using Fedora MinGW.
   - Generates standalone `openarch-gui.exe`, `openarch.exe`, and `openarch-theme-editor.exe`.
   - Automated deployment collecting all required Qt5 Windows DLLs, MinGW runtime DLLs, SQLite, Qt plugins, and packaging into a ready-to-run `.zip`.
+- **Application Preferences, Auto-Save & Configurable Typography**:
+  - Unified **Settings -> Preferences...** (`Ctrl+,`) dialog centralizing auto-save toggles, debounce timers, application typography, and shortcuts.
+  - Granular auto-save controls with debounced persistence (250ms–2000ms) or manual commit workflow (`Ctrl+S`) with unsaved changes tracking.
+  - Global application font customization (family and point size) with live preview and one-click system default reset.
+  - Real-time status bar database write feedback (`Saving...`, `✓ Saved`, `● Unsaved changes`, `⚠ Save Failed`) with interactive click-to-save.
 - **Configurable Shortcut System**:
   - Fully customizable keyboard shortcuts with collision detection and conflict prevention.
   - Preserves standard OS conventions (e.g., Cut `Ctrl+X`, Copy `Ctrl+C`, Paste `Ctrl+V`).
@@ -329,7 +335,7 @@ You can open an existing SQLite database (`.db`) or JSON file (`.json`), or star
 +-------------------------------------------------------------------------+
 | OpenArch - [SystemArchitecture.db]                        [-] [o] [x]  |
 +-------------------------------------------------------------------------+
-| File   Edit   Theme   Settings   Help                                   |
+| File   Edit   View   Theme   Routing   Governance   Settings   Help     |
 +-------------------------------------------------------------------------+
 | [View] [Edit] | [Align Left] [Center] [Right] | [Distribute H] [Dist V] |
 +---------------+------------------------------------------+--------------+
@@ -402,6 +408,60 @@ OpenArch features both standard shortcuts and configurable actions via **Setting
 | **Align Left / Top** | Configurable | Configurable | Aligns multi-selection to Primary Node |
 | **Distribute H / V** | Configurable | Configurable | Spreads selected nodes evenly |
 
+### Preferences, Auto-Save & Database Status
+
+OpenArch centralizes application-level configuration under the **Settings** menu and the comprehensive **Preferences...** dialog (`Ctrl+,` or `Cmd+,` on macOS):
+
+```
++-----------------------------------------------------------------+
+| Preferences                                           [-] [x]  |
++-----------------------------------------------------------------+
+| [ Appearance ]  [ General ]  [ Shortcuts ]                      |
++-----------------------------------------------------------------+
+| Appearance Tab:                                                 |
+|   Application UI Theme:                                         |
+|     Active Theme:   [ Dark                                v ]   |
+|     Color Palette:  [Window] [Base] [Button] [Accent] [Text]    |
+|     [ Load Custom Theme File... ]  [ Open Themes Folder... ]    |
+|                                                                 |
+|   Application Font & Typography:                                |
+|     Font Family:    [ Inter                               v ]   |
+|     Font Size:      [ 10 ] pt       [ Browse System Fonts... ]  |
+|     Preview:        The quick brown fox jumps over the lazy dog |
+|     [ Reset to System Default Font ]                            |
+|                                                                 |
+| General Tab:                                                    |
+|   [x] Enable Auto-Save (automatically saves layout to db)       |
+|   Auto-Save Debounce Delay: [ 500 ms (Recommended)        v ]   |
+|                                                                 |
+| Shortcuts Tab:                                                  |
+|   Overview of View (V), Edit (L), Save Layout (Ctrl+S)...       |
+|   [ Configure Keyboard Shortcuts... ]                           |
++-----------------------------------------------------------------+
+|                                      [ OK ]  [ Cancel ] [ Apply ]
++-----------------------------------------------------------------+
+```
+
+#### Settings Menu Structure
+
+- **Settings -> Preferences...** (`Ctrl+,`): Opens the tabbed preferences modal to configure **Appearance** (UI Theme, Typography), **General** (Auto-Save, Persistence), and **Shortcuts** cleanly separated without menu duplicates.
+- **Settings -> Configure Shortcuts...**: Rebind configurable canvas operations and detect keyboard collisions.
+
+#### Database Save State & Status Bar Feedback
+
+All database write operations (layout commits, node/layer creations, deletions, connection edits, cloning, and governance reviews) report their progress and state to the status bar:
+
+| Save State Indicator | Visual Styling | Description |
+| :--- | :--- | :--- |
+| **`No Database`** | Muted gray indicator | No database file currently loaded |
+| **`Saving...`** | Blue pill badge | Active asynchronous write in progress |
+| **`✓ Saved (HH:mm:ss)`** | Green pill badge | All changes safely committed to SQLite/JSON |
+| **`● Unsaved changes`** | Amber badge (clickable) | Auto-save is disabled and layout edits are pending. Click pill or press `Ctrl+S` to commit |
+| **`⚠ Save Failed`** | Red alert badge | Database write failed (e.g., read-only file or locked SQLite DB) |
+
+When **Auto-Save** is turned off, OpenArch tracks layout dirty state and guards against accidental data loss:
+- If layout changes are pending when opening another database or closing the window, OpenArch displays a confirmation prompt: *"You have unsaved layout changes. Do you want to save them before exiting?"* with **Save**, **Discard**, and **Cancel** options.
+
 ---
 
 ## Theme Engine
@@ -420,6 +480,40 @@ Canvas themes dictate the appearance of diagram elements (node headers, bodies, 
   - `Blueprint` (Engineering CAD-style blueprint palette)
 - **Live Canvas Updates**: Changes made in the Theme Editor dock or selected from **Theme -> Graph Canvas Theme** immediately invalidate scene render caches and refresh all elements without application restart.
 - **Custom Graph Themes**: Export or load custom JSON graph theme definitions via the Theme Editor dock.
+- **CSS-Convention `name#type` Granular Styling**:
+  Both **Nodes** and **Edges** support granular styling overrides at three tiers of CSS-inspired specificity:
+  1. **Compound Name & Type (`name#type`)**: Highest precedence, targeting elements matching both name and type (e.g., `AuthGateway#service`, `SyncChannel#lan`).
+  2. **Name-Only (`name`)**: Medium precedence, targeting specific element names (e.g., `RedisPrimary`, `ReplicationLink`).
+  3. **Type-Only (`type`)**: Broad semantic category styling (e.g., `service`, `db`, `lan`, `pwr`).
+  4. **Base Component Theme**: Fallback default for any elements without specific overrides.
+  This specificity cascade applies identically to Qt Canvas rendering and interactive HTML5/SVG exported styles.
+
+### Standalone Theme Editor (`openarch-theme-editor`)
+
+OpenArch includes a dedicated standalone Theme Editor window for visual authoring and customizing diagram styles:
+
+- **Editing Existing Named Styles**:
+  - Edit any existing custom style selector via **✏ Edit Style** toolbar button, **F2** / **Ctrl+E** keyboard shortcuts, **Edit -> Edit Selected Style...**, right-click context menu, or by **double-clicking** any style in the tree.
+  - Pre-fills the style editor with the current component name, component type, and match mode for seamless renaming.
+  - Modifying the selector migrates all existing style configuration (colors, borders, corner radii, typography) across Normal, Hover, and Selected states to the new key without data loss.
+- **Embedded In-Place State Editing**:
+  - Selecting any style item in the tree immediately presents a full tabbed inspector with **Normal State**, **Hover State**, **Selected State**, and **Visual Previews** tabs.
+  - Directly adjust background colors, border styles, corner radii, and text formatting immediately upon selecting a style, eliminating the need to expand and navigate child tree items.
+- **Context-Aware Style Creation**:
+  - Clicking **+ Add Style** or pressing **Ctrl+N** / **Ctrl+Shift+A** automatically detects the target category (**Node**, **Container**, or **Edge**) based on your current selection in the styles tree.
+- **Guided Style Builder**:
+  - **Compound Mode (`name#type`)**: Structured inputs for Component Name and Type with live selector generation.
+  - **Type-Only Mode**: Instant styling for all elements of a given type (e.g. `lan`, `pwr`, `service`).
+  - **Name-Only Mode**: Direct styling targeting specific component names (e.g. `Gateway`, `SyncLink`).
+  - **Raw / Freeform Mode**: Direct text entry for power users.
+  - **Quick Type Preset Chips**: Single-click preset buttons for the most common types per category (`[lan]`, `[pwr]`, `[bus]`, `[grpc]`, `[https]` for edges; `[service]`, `[database]`, `[cache]`, `[queue]`, `[gateway]` for nodes; `[cloud]`, `[cluster]`, `[vpc]`, `[region]` for containers).
+  - **Live Preview & Validation**: Monospace selector preview, human-readable cascade rule explanation, real-time collision detection against existing styles, and friendly validation hints.
+- **Seamless Tree Navigation & Auto-Focus**:
+  - Adding or duplicating a style immediately expands and selects the new style in the tree, opening its properties directly in the inspector.
+- **Tree Context Menu & Shortcuts**:
+  - Right-click anywhere in the styles tree for rapid context-sensitive actions: **Add Style...**, **Duplicate Style (Ctrl+D)**, **Remove Style (Del)**, **Copy Style Properties (Ctrl+C)**, and **Paste Style Properties (Ctrl+V)**.
+- **Live Preview Rendering**:
+  - The embedded canvas scene automatically instantiates sample items for newly created custom node and edge styles, providing real-time visual feedback as you adjust colors, strokes, and typography.
 
 ### Application UI Themes & Extensibility
 
@@ -511,13 +605,13 @@ Nodes:
 - `list_layer_nodes <layerId>`: Lists all nodes assigned to a layer.
 
 #### 4. Edges & Connections
-- `add_edge <srcNode> <srcLayer> <dstNode> <dstLayer> <type>`: Creates a directed edge between nodes (e.g., `add_edge 1 1 2 1 gRPC`).
-- `update_edge <id> <type>`: Updates edge protocol/type.
+- `add_edge <srcNode> <srcLayer> <dstNode> <dstLayer> <type> [name]`: Creates a directed edge between nodes with protocol type and optional name (e.g., `add_edge 1 1 2 1 gRPC AuthChannel`).
+- `update_edge <id> <type> [name]`: Updates edge protocol/type and optional name.
 - `set_edge_meta <id> <json>`: Attaches metadata to edge (e.g. latency, bandwidth requirements).
 - `set_edge_attr <id> <json>`: Attaches routing attributes.
 - `review_edge <id> <reviewer>`: Approves edge for architectural compliance.
 - `del_edge <id>`: Removes edge.
-- `list_edges`: Prints all edges.
+- `list_edges`: Prints all edges with name, endpoints, type, status, and checksum.
 
 #### 5. Graph Output & Inspection
 - `dump_graph [layerId]`: Prints a clean human-readable ASCII summary of the architecture.

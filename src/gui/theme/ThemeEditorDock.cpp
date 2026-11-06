@@ -470,6 +470,9 @@ void ThemeEditorDock::populateTree()
     // 3. Node (Components)
     auto* nodeRoot = new QTreeWidgetItem(QStringList() << "Node");
     m_tree->addTopLevelItem(nodeRoot);
+    addPage(nodeRoot, [this, &theme](QVBoxLayout* layout) {
+        buildComponentStateProperties(theme.node.normal, layout, false, static_cast<int>(ComponentStateKind::Normal));
+    });
 
     QVector<ComponentStateEntry> nodeStates;
     nodeStates.append(ComponentStateEntry("Normal", ComponentStateKind::Normal, &theme.node.normal));
@@ -489,6 +492,9 @@ void ThemeEditorDock::populateTree()
         auto* subRoot = new QTreeWidgetItem(QStringList() << QString("node#%1").arg(k));
         nodeRoot->addChild(subRoot);
         auto& ct = theme.nodeTypeThemes[k];
+        addPage(subRoot, [this, &ct](QVBoxLayout* layout) {
+            buildComponentStateProperties(ct.normal, layout, false, static_cast<int>(ComponentStateKind::Normal));
+        });
         QVector<ComponentStateEntry> subStates;
         subStates.append(ComponentStateEntry("Normal", ComponentStateKind::Normal, &ct.normal));
         subStates.append(ComponentStateEntry("Hover", ComponentStateKind::Hover, &ct.hover));
@@ -505,6 +511,9 @@ void ThemeEditorDock::populateTree()
     // 4. Container (Components)
     auto* containerRoot = new QTreeWidgetItem(QStringList() << "Container");
     m_tree->addTopLevelItem(containerRoot);
+    addPage(containerRoot, [this, &theme](QVBoxLayout* layout) {
+        buildComponentStateProperties(theme.container.normal, layout, true, static_cast<int>(ComponentStateKind::Normal));
+    });
 
     QVector<ComponentStateEntry> containerStates;
     containerStates.append(ComponentStateEntry("Normal", ComponentStateKind::Normal, &theme.container.normal));
@@ -524,6 +533,9 @@ void ThemeEditorDock::populateTree()
         auto* subRoot = new QTreeWidgetItem(QStringList() << QString("container#%1").arg(k));
         containerRoot->addChild(subRoot);
         auto& ct = theme.containerTypeThemes[k];
+        addPage(subRoot, [this, &ct](QVBoxLayout* layout) {
+            buildComponentStateProperties(ct.normal, layout, true, static_cast<int>(ComponentStateKind::Normal));
+        });
         QVector<ComponentStateEntry> subStates;
         subStates.append(ComponentStateEntry("Normal", ComponentStateKind::Normal, &ct.normal));
         subStates.append(ComponentStateEntry("Hover", ComponentStateKind::Hover, &ct.hover));
@@ -540,6 +552,9 @@ void ThemeEditorDock::populateTree()
     // 5. Edge
     auto* edgeRoot = new QTreeWidgetItem(QStringList() << "Edge");
     m_tree->addTopLevelItem(edgeRoot);
+    addPage(edgeRoot, [this, &theme](QVBoxLayout* layout) {
+        buildEdgeStateProperties(theme.edge.normal, layout, static_cast<int>(ComponentStateKind::Normal));
+    });
 
     QVector<EdgeStateEntry> edgeStates;
     edgeStates.append(EdgeStateEntry("Normal", ComponentStateKind::Normal, &theme.edge.normal));
@@ -559,6 +574,9 @@ void ThemeEditorDock::populateTree()
         auto* subRoot = new QTreeWidgetItem(QStringList() << QString("edge#%1").arg(k));
         edgeRoot->addChild(subRoot);
         auto& et = theme.edgeTypeThemes[k];
+        addPage(subRoot, [this, &et](QVBoxLayout* layout) {
+            buildEdgeStateProperties(et.normal, layout, static_cast<int>(ComponentStateKind::Normal));
+        });
         QVector<EdgeStateEntry> subStates;
         subStates.append(EdgeStateEntry("Normal", ComponentStateKind::Normal, &et.normal));
         subStates.append(EdgeStateEntry("Hover", ComponentStateKind::Hover, &et.hover));
@@ -582,6 +600,9 @@ void ThemeEditorDock::populateTree()
     // 6. Port
     auto* portRoot = new QTreeWidgetItem(QStringList() << "Port");
     m_tree->addTopLevelItem(portRoot);
+    addPage(portRoot, [&](QVBoxLayout* layout) {
+        buildPortStateProperties(theme.port.normal, layout);
+    });
 
     QVector<PortStateEntry> portStates;
     portStates.append(PortStateEntry("Normal", &theme.port.normal));
@@ -1235,7 +1256,7 @@ void ThemeEditorDock::buildGeneralProperties(QVBoxLayout* layout)
 
     connect(saveBtn, &QPushButton::clicked, this, &ThemeEditorDock::saveTheme);
     connect(saveAsBtn, &QPushButton::clicked, this, &ThemeEditorDock::saveThemeAs);
-    connect(resetBtn, &QPushButton::clicked, this, [this]() {
+    connect(resetBtn, &QPushButton::clicked, this, []() {
         GraphThemeManager::instance()->resetDefaults();
     });
 

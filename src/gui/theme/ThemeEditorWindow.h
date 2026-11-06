@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QDialog>
 #include <QColor>
 #include <QString>
 #include <QMap>
@@ -20,12 +21,87 @@ class QLabel;
 class QPushButton;
 class QToolBar;
 class QVBoxLayout;
+class QHBoxLayout;
 class QAction;
 class GraphView;
 class QGraphicsScene;
 class GraphNodeItem;
 class GraphEdgeItem;
 class QScrollArea;
+class QComboBox;
+class QButtonGroup;
+class QRadioButton;
+class QDialogButtonBox;
+class QFormLayout;
+
+class AddStyleDialog : public QDialog
+{
+public:
+    enum MatchMode {
+        Compound = 0,
+        TypeOnly = 1,
+        NameOnly = 2,
+        Raw = 3
+    };
+
+    explicit AddStyleDialog(int defaultTarget = 0, QWidget* parent = nullptr);
+    explicit AddStyleDialog(int defaultTarget, const QString& existingSelector, QWidget* parent = nullptr);
+
+    int targetType() const;
+    void setTargetType(int target);
+
+    MatchMode matchMode() const;
+    void setMatchMode(MatchMode mode);
+
+    void setComponentName(const QString& name);
+    QString componentName() const;
+
+    void setComponentType(const QString& type);
+    QString componentType() const;
+
+    void setRawSelector(const QString& raw);
+    QString rawSelector() const;
+
+    QString styleName() const;
+    QString templateChoice() const;
+    bool isValid() const;
+
+    void updatePresetsAndChips();
+    void updateTemplates();
+    void updateStateAndPreview();
+    bool validateAndPrepare();
+
+private:
+    QComboBox* targetCombo_{nullptr};
+    QButtonGroup* modeGroup_{nullptr};
+    QRadioButton* rbCompound_{nullptr};
+    QRadioButton* rbTypeOnly_{nullptr};
+    QRadioButton* rbNameOnly_{nullptr};
+    QRadioButton* rbRaw_{nullptr};
+
+    QLabel* nameRowLabel_{nullptr};
+    QLineEdit* nameEdit_{nullptr};
+    QLabel* typeRowLabel_{nullptr};
+    QComboBox* typeCombo_{nullptr};
+    QWidget* chipsContainer_{nullptr};
+    QHBoxLayout* chipsLayout_{nullptr};
+    QHBoxLayout* chipsBtnLayout_{nullptr};
+    QLabel* rawRowLabel_{nullptr};
+    QLineEdit* rawEdit_{nullptr};
+
+    QComboBox* templateCombo_{nullptr};
+
+    QLabel* previewKeyLabel_{nullptr};
+    QLabel* ruleDescLabel_{nullptr};
+    QLabel* validationLabel_{nullptr};
+
+    QDialogButtonBox* buttons_{nullptr};
+    QPushButton* btnOk_{nullptr};
+    bool isValid_{false};
+    int defaultTarget_{0};
+    QString originalSelector_;
+    bool isEditMode_{false};
+};
 
 struct StyleClipboard
 {
@@ -61,13 +137,14 @@ public:
 public slots:
     // Style management
     void addNewStyle();
+    void editSelectedStyle();
     void duplicateSelectedStyle();
     void removeSelectedStyle();
     void copySelectedStyle();
     void pasteSelectedStyle();
 
     // Tree & Live View
-    void refreshTree();
+    void refreshTree(const QString& selectKey = QString());
     void refreshLiveView();
     void resetLiveViewScene();
     void addTestNodeToLiveView();
@@ -204,6 +281,7 @@ private:
     void emitThemeChanged();
     void updateStatusDisplay(const QString& message = QString());
     void updateActionStates();
+    void showTreeContextMenu(const QPoint& pos);
 
     // UI elements
     QTreeWidget* tree_{nullptr};
@@ -227,12 +305,14 @@ private:
     QAction* actResetDefaults_{nullptr};
 
     QAction* actAddStyle_{nullptr};
+    QAction* actEditStyle_{nullptr};
     QAction* actDuplicateStyle_{nullptr};
     QAction* actRemoveStyle_{nullptr};
     QAction* actCopyStyle_{nullptr};
     QAction* actPasteStyle_{nullptr};
 
     QPushButton* btnAddStyle_{nullptr};
+    QPushButton* btnEditStyle_{nullptr};
     QPushButton* btnDuplicateStyle_{nullptr};
     QPushButton* btnRemoveStyle_{nullptr};
     QPushButton* btnCopyStyle_{nullptr};

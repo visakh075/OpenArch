@@ -31,6 +31,11 @@
 #include <QGroupBox>
 #include <QFileInfo>
 #include <QDir>
+#include <QRadioButton>
+#include <QButtonGroup>
+#include <QMenu>
+#include <QShortcut>
+#include <QTabWidget>
 #include <cmath>
 
 #include "GraphView.h"
@@ -297,85 +302,490 @@ protected:
 
 /*
  * =========================================================
- * ADD STYLE DIALOG
+ * ADD STYLE DIALOG IMPLEMENTATION
  * =========================================================
  */
 
-class AddStyleDialog : public QDialog
+AddStyleDialog::AddStyleDialog(int defaultTarget, QWidget* parent)
+    : AddStyleDialog(defaultTarget, QString(), parent)
 {
-public:
-    AddStyleDialog(QWidget* parent = nullptr)
-        : QDialog(parent)
-    {
-        setWindowTitle("Add Named / Type Style");
-        setMinimumWidth(360);
+}
 
-        auto* layout = new QVBoxLayout(this);
-        auto* form = new QFormLayout;
+AddStyleDialog::AddStyleDialog(int defaultTarget, const QString& existingSelector, QWidget* parent)
+    : QDialog(parent), defaultTarget_(defaultTarget)
+{
+    isEditMode_ = !existingSelector.trimmed().isEmpty();
+    originalSelector_ = existingSelector.trimmed().toLower();
+    setWindowTitle(isEditMode_ ? "Edit Custom Style" : "Add Custom Style");
+    setMinimumWidth(500);
 
-        targetCombo_ = new QComboBox(this);
-        targetCombo_->addItem("Node Style (node#<type>)", 0);
-        targetCombo_->addItem("Container Style (container#<type>)", 1);
-        targetCombo_->addItem("Edge Style (edge#<type>)", 2);
+    auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setSpacing(10);
 
-        nameEdit_ = new QLineEdit(this);
-        nameEdit_->setPlaceholderText("e.g. pwr, lan, db, sensor, cloud");
+    auto* formLayout = new QFormLayout;
+    formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 
-        templateCombo_ = new QComboBox(this);
-        updateTemplates();
-
-        connect(targetCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, &AddStyleDialog::updateTemplates);
-
-        form->addRow("Style Target:", targetCombo_);
-        form->addRow("Type / Name:", nameEdit_);
-        form->addRow("Copy From Template:", templateCombo_);
-        layout->addLayout(form);
-
-        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-        connect(buttons, &QDialogButtonBox::accepted, this, [this]() {
-            QString name = nameEdit_->text().trimmed().toLower();
-            if (name.isEmpty()) {
-                QMessageBox::warning(this, "Invalid Name", "Style type name cannot be empty.");
-                return;
-            }
-            if (name.contains('#') || name.contains(' ')) {
-                QMessageBox::warning(this, "Invalid Name", "Style type name should not contain spaces or '#' symbols.");
-                return;
-            }
-            accept();
-        });
-        connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-        layout->addWidget(buttons);
+    // Target combo
+    targetCombo_ = new QComboBox(this);
+    targetCombo_->addItem("Node Style (node#...)", 0);
+    targetCombo_->addItem("Container Style (container#...)", 1);
+    targetCombo_->addItem("Edge Style (edge#...)", 2);
+    if (defaultTarget >= 0 && defaultTarget <= 2) {
+        targetCombo_->setCurrentIndex(defaultTarget);
     }
+    formLayout->addRow("<b>Style Target:</b>", targetCombo_);
 
-    int targetType() const { return targetCombo_->currentData().toInt(); }
-    QString styleName() const { return nameEdit_->text().trimmed().toLower(); }
-    QString templateChoice() const { return templateCombo_->currentText(); }
+    // Match Scope / Mode
+    auto* modeLayout = new QHBoxLayout;
+    modeLayout->setSpacing(12);
+    modeGroup_ = new QButtonGroup(this);
 
-private:
-    void updateTemplates()
-    {
-        templateCombo_->clear();
-        templateCombo_->addItem("Base Style (Default)");
+    rbCompound_ = new QRadioButton("Name & Type (Compound)", this);
+    rbTypeOnly_ = new QRadioButton("Type Only", this);
+    rbNameOnly_ = new QRadioButton("Name Only", this);
+    rbRaw_ = new QRadioButton("Freeform / Raw", this);
 
-        const auto& theme = GraphThemeManager::instance()->theme();
-        int t = targetCombo_->currentData().toInt();
-        if (t == 0) {
-            for (const auto& k : theme.nodeTypeThemes.keys())
-                templateCombo_->addItem(QString("node#%1").arg(k));
-        } else if (t == 1) {
-            for (const auto& k : theme.containerTypeThemes.keys())
-                templateCombo_->addItem(QString("container#%1").arg(k));
+    rbCompound_->setToolTip("Matches a specific component with both name and type (e.g. auth#service)");
+    rbTypeOnly_->setToolTip("Matches all components matching a specific type (e.g. service, lan, pwr)");
+    rbNameOnly_->setToolTip("Matches any component with a specific name, regardless of type (e.g. gateway)");
+    rbRaw_->setToolTip("Enter selector string directly (e.g. name#type, type, or name)");
+
+    modeGroup_->addButton(rbCompound_, 0);
+    modeGroup_->addButton(rbTypeOnly_, 1);
+    modeGroup_->addButton(rbNameOnly_, 2);
+    modeGroup_->addButton(rbRaw_, 3);
+
+    rbCompound_->setChecked(true);
+
+    modeLayout->addWidget(rbCompound_);
+    modeLayout->addWidget(rbTypeOnly_);
+    modeLayout->addWidget(rbNameOnly_);
+    modeLayout->addWidget(rbRaw_);
+    modeLayout->addStretch();
+    formLayout->addRow("<b>Match Scope:</b>", modeLayout);
+
+    // Component Name row
+    nameEdit_ = new QLineEdit(this);
+    nameEdit_->setPlaceholderText("e.g. AuthService, Gateway, SyncLink");
+    nameRowLabel_ = new QLabel("Component Name:", this);
+    formLayout->addRow(nameRowLabel_, nameEdit_);
+
+    // Component Type row
+    typeCombo_ = new QComboBox(this);
+    typeCombo_->setEditable(true);
+    if (typeCombo_->lineEdit()) {
+        typeCombo_->lineEdit()->setPlaceholderText("Select preset or type custom type (e.g. service, lan, db)...");
+    }
+    typeRowLabel_ = new QLabel("Component Type:", this);
+    formLayout->addRow(typeRowLabel_, typeCombo_);
+
+    // Quick presets / chips container
+    chipsContainer_ = new QWidget(this);
+    chipsLayout_ = new QHBoxLayout(chipsContainer_);
+    chipsLayout_->setContentsMargins(0, 0, 0, 0);
+    chipsLayout_->setSpacing(6);
+    auto* chipsLabel = new QLabel("Quick Presets:", chipsContainer_);
+    chipsLabel->setStyleSheet("color: #777; font-size: 11px;");
+    chipsLayout_->addWidget(chipsLabel);
+    chipsBtnLayout_ = new QHBoxLayout;
+    chipsBtnLayout_->setSpacing(4);
+    chipsLayout_->addLayout(chipsBtnLayout_);
+    chipsLayout_->addStretch();
+    formLayout->addRow("", chipsContainer_);
+
+    // Raw input row
+    rawEdit_ = new QLineEdit(this);
+    rawEdit_->setPlaceholderText("e.g. my-service#service, pwr, or custom-name");
+    rawRowLabel_ = new QLabel("Raw Selector:", this);
+    formLayout->addRow(rawRowLabel_, rawEdit_);
+
+    // Copy template row
+    templateCombo_ = new QComboBox(this);
+    formLayout->addRow("Copy From Template:", templateCombo_);
+
+    mainLayout->addLayout(formLayout);
+
+    // Live preview box
+    auto* previewBox = new QGroupBox("Live Selector Preview", this);
+    auto* prevBoxLay = new QVBoxLayout(previewBox);
+
+    previewKeyLabel_ = new QLabel(this);
+    QFont keyFont = previewKeyLabel_->font();
+    keyFont.setBold(true);
+    keyFont.setPointSize(keyFont.pointSize() + 1);
+    previewKeyLabel_->setFont(keyFont);
+    prevBoxLay->addWidget(previewKeyLabel_);
+
+    ruleDescLabel_ = new QLabel(this);
+    ruleDescLabel_->setWordWrap(true);
+    ruleDescLabel_->setStyleSheet("color: #666; font-size: 11px;");
+    prevBoxLay->addWidget(ruleDescLabel_);
+
+    validationLabel_ = new QLabel(this);
+    prevBoxLay->addWidget(validationLabel_);
+
+    mainLayout->addWidget(previewBox);
+
+    // Dialog buttons
+    buttons_ = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    btnOk_ = buttons_->button(QDialogButtonBox::Ok);
+    btnOk_->setText(isEditMode_ ? "Save Changes" : "Add Style");
+    mainLayout->addWidget(buttons_);
+
+    // Signal connections
+    connect(targetCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
+        updatePresetsAndChips();
+        updateTemplates();
+        updateStateAndPreview();
+    });
+
+    connect(modeGroup_, qOverload<QAbstractButton*>(&QButtonGroup::buttonClicked), this, [this](QAbstractButton*) {
+        updateStateAndPreview();
+    });
+
+    connect(nameEdit_, &QLineEdit::textChanged, this, &AddStyleDialog::updateStateAndPreview);
+    connect(typeCombo_, &QComboBox::currentTextChanged, this, &AddStyleDialog::updateStateAndPreview);
+    connect(rawEdit_, &QLineEdit::textChanged, this, &AddStyleDialog::updateStateAndPreview);
+
+    connect(buttons_, &QDialogButtonBox::accepted, this, [this]() {
+        if (validateAndPrepare()) {
+            accept();
+        }
+    });
+    connect(buttons_, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    updatePresetsAndChips();
+    updateTemplates();
+
+    if (isEditMode_) {
+        QString targetPrefix = (defaultTarget_ == 0) ? "node" : ((defaultTarget_ == 1) ? "container" : "edge");
+        setWindowTitle(QString("Edit Custom Style (%1#%2)").arg(targetPrefix, originalSelector_));
+
+        if (originalSelector_.contains('#')) {
+            rbCompound_->setChecked(true);
+            nameEdit_->setText(originalSelector_.section('#', 0, 0));
+            typeCombo_->setEditText(originalSelector_.section('#', 1, 1));
         } else {
-            for (const auto& k : theme.edgeTypeThemes.keys())
-                templateCombo_->addItem(QString("edge#%1").arg(k));
+            int foundIdx = typeCombo_->findText(originalSelector_, Qt::MatchFixedString);
+            if (foundIdx >= 0) {
+                rbTypeOnly_->setChecked(true);
+                typeCombo_->setCurrentIndex(foundIdx);
+            } else {
+                rbNameOnly_->setChecked(true);
+                nameEdit_->setText(originalSelector_);
+            }
         }
     }
 
-    QComboBox* targetCombo_;
-    QLineEdit* nameEdit_;
-    QComboBox* templateCombo_;
-};
+    updateStateAndPreview();
+}
+
+int AddStyleDialog::targetType() const
+{
+    return targetCombo_->currentData().toInt();
+}
+
+void AddStyleDialog::setTargetType(int target)
+{
+    if (target >= 0 && target <= 2) {
+        targetCombo_->setCurrentIndex(target);
+    }
+}
+
+AddStyleDialog::MatchMode AddStyleDialog::matchMode() const
+{
+    return static_cast<MatchMode>(modeGroup_->checkedId());
+}
+
+void AddStyleDialog::setMatchMode(MatchMode mode)
+{
+    if (auto* btn = modeGroup_->button(static_cast<int>(mode))) {
+        btn->setChecked(true);
+        updateStateAndPreview();
+    }
+}
+
+void AddStyleDialog::setComponentName(const QString& name)
+{
+    nameEdit_->setText(name);
+}
+
+QString AddStyleDialog::componentName() const
+{
+    return nameEdit_->text().trimmed();
+}
+
+void AddStyleDialog::setComponentType(const QString& type)
+{
+    typeCombo_->setEditText(type);
+}
+
+QString AddStyleDialog::componentType() const
+{
+    return typeCombo_->currentText().trimmed();
+}
+
+void AddStyleDialog::setRawSelector(const QString& raw)
+{
+    rawEdit_->setText(raw);
+}
+
+QString AddStyleDialog::rawSelector() const
+{
+    return rawEdit_->text().trimmed();
+}
+
+QString AddStyleDialog::templateChoice() const
+{
+    return templateCombo_->currentText();
+}
+
+bool AddStyleDialog::isValid() const
+{
+    return isValid_;
+}
+
+QString AddStyleDialog::styleName() const
+{
+    int mode = modeGroup_->checkedId();
+    if (mode == 0) { // Compound
+        QString n = nameEdit_->text().trimmed().toLower();
+        QString t = typeCombo_->currentText().trimmed().toLower();
+        if (!n.isEmpty() && !t.isEmpty()) return QString("%1#%2").arg(n, t);
+        if (!n.isEmpty()) return n;
+        return t;
+    } else if (mode == 1) { // Type Only
+        return typeCombo_->currentText().trimmed().toLower();
+    } else if (mode == 2) { // Name Only
+        return nameEdit_->text().trimmed().toLower();
+    } else { // Raw
+        return rawEdit_->text().trimmed().toLower();
+    }
+}
+
+void AddStyleDialog::updatePresetsAndChips()
+{
+    QLayoutItem* child;
+    while ((child = chipsBtnLayout_->takeAt(0)) != nullptr) {
+        delete child->widget();
+        delete child;
+    }
+
+    typeCombo_->clear();
+
+    QStringList presets;
+    QStringList chipPresets;
+    const auto& theme = GraphThemeManager::instance()->theme();
+
+    if (targetType() == 0) { // Node
+        presets << "service" << "database" << "cache" << "queue" << "gateway"
+                << "api" << "microservice" << "worker" << "storage" << "client"
+                << "controller" << "pwr" << "lan";
+        chipPresets << "service" << "database" << "cache" << "queue" << "gateway";
+        for (const auto& k : theme.nodeTypeThemes.keys()) {
+            QString t = k.contains('#') ? k.section('#', 1, 1) : k;
+            if (!presets.contains(t)) presets.append(t);
+        }
+    } else if (targetType() == 1) { // Container
+        presets << "cloud" << "cluster" << "vpc" << "region" << "subnet"
+                << "datacenter" << "k8s-pod" << "network" << "zone" << "group";
+        chipPresets << "cloud" << "cluster" << "vpc" << "region" << "subnet";
+        for (const auto& k : theme.containerTypeThemes.keys()) {
+            QString t = k.contains('#') ? k.section('#', 1, 1) : k;
+            if (!presets.contains(t)) presets.append(t);
+        }
+    } else { // Edge
+        presets << "lan" << "pwr" << "bus" << "grpc" << "https"
+                << "rest" << "tcp" << "websocket" << "async" << "sync" << "event";
+        chipPresets << "lan" << "pwr" << "bus" << "grpc" << "https";
+        for (const auto& k : theme.edgeTypeThemes.keys()) {
+            QString t = k.contains('#') ? k.section('#', 1, 1) : k;
+            if (!presets.contains(t)) presets.append(t);
+        }
+    }
+
+    typeCombo_->addItems(presets);
+    typeCombo_->setCurrentIndex(-1);
+
+    for (const auto& chipText : chipPresets) {
+        auto* chipBtn = new QPushButton(chipText, chipsContainer_);
+        chipBtn->setCursor(Qt::PointingHandCursor);
+        chipBtn->setStyleSheet(
+            "QPushButton { padding: 2px 8px; border: 1px solid #777; border-radius: 9px; font-size: 11px; } "
+            "QPushButton:hover { background-color: rgba(100, 150, 255, 0.2); border-color: #388e3c; }"
+        );
+        connect(chipBtn, &QPushButton::clicked, this, [this, chipText]() {
+            typeCombo_->setEditText(chipText);
+            updateStateAndPreview();
+        });
+        chipsBtnLayout_->addWidget(chipBtn);
+    }
+}
+
+void AddStyleDialog::updateTemplates()
+{
+    templateCombo_->clear();
+    templateCombo_->addItem("Base Style (Default)");
+
+    const auto& theme = GraphThemeManager::instance()->theme();
+    int t = targetCombo_->currentData().toInt();
+    if (t == 0) {
+        for (const auto& k : theme.nodeTypeThemes.keys())
+            templateCombo_->addItem(QString("node#%1").arg(k));
+    } else if (t == 1) {
+        for (const auto& k : theme.containerTypeThemes.keys())
+            templateCombo_->addItem(QString("container#%1").arg(k));
+    } else {
+        for (const auto& k : theme.edgeTypeThemes.keys())
+            templateCombo_->addItem(QString("edge#%1").arg(k));
+    }
+}
+
+void AddStyleDialog::updateStateAndPreview()
+{
+    int mode = modeGroup_->checkedId();
+    bool isCompound = (mode == 0);
+    bool isTypeOnly = (mode == 1);
+    bool isNameOnly = (mode == 2);
+    bool isRaw      = (mode == 3);
+
+    nameRowLabel_->setVisible(!isTypeOnly && !isRaw);
+    nameEdit_->setVisible(!isTypeOnly && !isRaw);
+
+    typeRowLabel_->setVisible(!isNameOnly && !isRaw);
+    typeCombo_->setVisible(!isNameOnly && !isRaw);
+    chipsContainer_->setVisible(!isNameOnly && !isRaw);
+
+    rawRowLabel_->setVisible(isRaw);
+    rawEdit_->setVisible(isRaw);
+
+    QString targetPrefix = (targetType() == 0) ? "node" : ((targetType() == 1) ? "container" : "edge");
+    QString targetDisplayName = (targetType() == 0) ? "Node" : ((targetType() == 1) ? "Container" : "Edge");
+
+    QString nameVal = nameEdit_->text().trimmed().toLower();
+    QString typeVal = typeCombo_->currentText().trimmed().toLower();
+    QString rawVal  = rawEdit_->text().trimmed().toLower();
+
+    QString selector;
+    QString desc;
+    bool valid = true;
+    QString errorMsg;
+
+    if (isCompound) {
+        if (nameVal.isEmpty() && typeVal.isEmpty()) {
+            selector = "<name>#<type>";
+            valid = false;
+            errorMsg = "Enter a component name, type, or both.";
+        } else if (nameVal.isEmpty()) {
+            selector = typeVal;
+            desc = QString("Matches all %1s with type '%2'.").arg(targetDisplayName, typeVal);
+        } else if (typeVal.isEmpty()) {
+            selector = nameVal;
+            desc = QString("Matches any %1 named '%2' (any type).").arg(targetDisplayName, nameVal);
+        } else {
+            selector = QString("%1#%2").arg(nameVal, typeVal);
+            desc = QString("Matches %1 named '%2' with type '%3' (highest cascade precedence).")
+                        .arg(targetDisplayName, nameVal, typeVal);
+        }
+    } else if (isTypeOnly) {
+        if (typeVal.isEmpty()) {
+            selector = "<type>";
+            valid = false;
+            errorMsg = "Select or type a component type.";
+        } else {
+            selector = typeVal;
+            desc = QString("Matches all %1s with type '%2'.").arg(targetDisplayName, typeVal);
+        }
+    } else if (isNameOnly) {
+        if (nameVal.isEmpty()) {
+            selector = "<name>";
+            valid = false;
+            errorMsg = "Enter a component name.";
+        } else {
+            selector = nameVal;
+            desc = QString("Matches any %1 named '%2' (any type).").arg(targetDisplayName, nameVal);
+        }
+    } else { // Raw
+        if (rawVal.isEmpty()) {
+            selector = "<selector>";
+            valid = false;
+            errorMsg = "Enter a selector string.";
+        } else {
+            selector = rawVal;
+            desc = QString("Custom selector applied to %1s.").arg(targetDisplayName);
+        }
+    }
+
+    if (valid) {
+        if (selector.contains(' ') || selector.count('#') > 1 || selector.startsWith('#') || selector.endsWith('#')) {
+            valid = false;
+            errorMsg = "Selector must not contain spaces or multiple '#' characters (valid: 'type', 'name', or 'name#type').";
+        }
+    }
+
+    const auto& theme = GraphThemeManager::instance()->theme();
+    bool exists = false;
+    if (valid) {
+        bool sameAsOriginal = (isEditMode_ && targetType() == defaultTarget_ && selector == originalSelector_);
+        if (!sameAsOriginal) {
+            if (targetType() == 0 && theme.nodeTypeThemes.contains(selector)) {
+                exists = true;
+            } else if (targetType() == 1 && theme.containerTypeThemes.contains(selector)) {
+                exists = true;
+            } else if (targetType() == 2 && theme.edgeTypeThemes.contains(selector)) {
+                exists = true;
+            }
+        }
+        if (exists) {
+            valid = false;
+            errorMsg = QString("Style '%1#%2' already exists in this theme.").arg(targetPrefix, selector);
+        }
+    }
+
+    isValid_ = valid;
+
+    previewKeyLabel_->setText(QString("%1#%2").arg(targetPrefix, selector));
+    ruleDescLabel_->setText(desc);
+
+    if (!valid) {
+        validationLabel_->setText(QString("<span style='color:#e05252;'>%1</span>").arg(errorMsg));
+        btnOk_->setEnabled(false);
+    } else {
+        validationLabel_->setText(isEditMode_ ? "<span style='color:#388e3c;'>✓ Ready to save changes.</span>"
+                                              : "<span style='color:#388e3c;'>✓ Valid style selector ready to add.</span>");
+        btnOk_->setEnabled(true);
+    }
+}
+
+bool AddStyleDialog::validateAndPrepare()
+{
+    QString name = styleName();
+    if (name.isEmpty()) {
+        QMessageBox::warning(this, "Invalid Name", "Style name or selector cannot be empty.");
+        return false;
+    }
+    if (name.contains(' ') || name.count('#') > 1 || name.startsWith('#') || name.endsWith('#')) {
+        QMessageBox::warning(this, "Invalid Selector", "Style selector should not contain spaces or multiple '#' symbols (valid: 'type', 'name', or 'name#type').");
+        return false;
+    }
+    const auto& theme = GraphThemeManager::instance()->theme();
+    bool sameAsOriginal = (isEditMode_ && targetType() == defaultTarget_ && name == originalSelector_);
+    if (!sameAsOriginal) {
+        if (targetType() == 0 && theme.nodeTypeThemes.contains(name)) {
+            QMessageBox::warning(this, "Style Exists", QString("Node style 'node#%1' already exists.").arg(name));
+            return false;
+        }
+        if (targetType() == 1 && theme.containerTypeThemes.contains(name)) {
+            QMessageBox::warning(this, "Style Exists", QString("Container style 'container#%1' already exists.").arg(name));
+            return false;
+        }
+        if (targetType() == 2 && theme.edgeTypeThemes.contains(name)) {
+            QMessageBox::warning(this, "Style Exists", QString("Edge style 'edge#%1' already exists.").arg(name));
+            return false;
+        }
+    }
+    return true;
+}
 
 /*
  * =========================================================
@@ -440,26 +850,32 @@ void ThemeEditorWindow::setupUi()
     tree_ = new QTreeWidget(leftContainer);
     tree_->setHeaderHidden(true);
     tree_->setMinimumWidth(220);
+    tree_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(tree_, &QTreeWidget::customContextMenuRequested, this, &ThemeEditorWindow::showTreeContextMenu);
 
     // Tree action buttons
     auto* btnRow1 = new QHBoxLayout;
     btnRow1->setSpacing(4);
     btnAddStyle_ = new QPushButton("+ Add Style", leftContainer);
-    btnAddStyle_->setToolTip("Add a new type-specific or named style (e.g. edge#pwr, node#lan)");
+    btnAddStyle_->setToolTip("Add a new custom style (Ctrl+N or Ctrl+Shift+A)");
+    btnEditStyle_ = new QPushButton("Edit Style", leftContainer);
+    btnEditStyle_->setToolTip("Edit / rename selected custom style (F2 or Ctrl+E)");
+    btnEditStyle_->setEnabled(false);
     btnDuplicateStyle_ = new QPushButton("Duplicate", leftContainer);
-    btnDuplicateStyle_->setToolTip("Duplicate currently selected style");
+    btnDuplicateStyle_->setToolTip("Duplicate currently selected style (Ctrl+D)");
     btnRemoveStyle_ = new QPushButton("Remove", leftContainer);
-    btnRemoveStyle_->setToolTip("Remove selected type style");
+    btnRemoveStyle_->setToolTip("Remove selected custom style (Delete)");
     btnRow1->addWidget(btnAddStyle_);
+    btnRow1->addWidget(btnEditStyle_);
     btnRow1->addWidget(btnDuplicateStyle_);
     btnRow1->addWidget(btnRemoveStyle_);
 
     auto* btnRow2 = new QHBoxLayout;
     btnRow2->setSpacing(4);
     btnCopyStyle_ = new QPushButton("Copy Style", leftContainer);
-    btnCopyStyle_->setToolTip("Copy properties of selected style");
+    btnCopyStyle_->setToolTip("Copy properties of selected style (Ctrl+C)");
     btnPasteStyle_ = new QPushButton("Paste Style", leftContainer);
-    btnPasteStyle_->setToolTip("Paste copied properties into selected style");
+    btnPasteStyle_->setToolTip("Paste copied properties into selected style (Ctrl+V)");
     btnPasteStyle_->setEnabled(false);
     btnRow2->addWidget(btnCopyStyle_);
     btnRow2->addWidget(btnPasteStyle_);
@@ -470,10 +886,17 @@ void ThemeEditorWindow::setupUi()
     leftLayout->addLayout(btnRow2);
 
     connect(btnAddStyle_, &QPushButton::clicked, this, &ThemeEditorWindow::addNewStyle);
+    connect(btnEditStyle_, &QPushButton::clicked, this, &ThemeEditorWindow::editSelectedStyle);
     connect(btnDuplicateStyle_, &QPushButton::clicked, this, &ThemeEditorWindow::duplicateSelectedStyle);
     connect(btnRemoveStyle_, &QPushButton::clicked, this, &ThemeEditorWindow::removeSelectedStyle);
     connect(btnCopyStyle_, &QPushButton::clicked, this, &ThemeEditorWindow::copySelectedStyle);
     connect(btnPasteStyle_, &QPushButton::clicked, this, &ThemeEditorWindow::pasteSelectedStyle);
+
+    connect(tree_, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* item, int) {
+        if (item && (item->text(0).contains('#') || (item->parent() && item->parent()->text(0).contains('#')))) {
+            editSelectedStyle();
+        }
+    });
 
     // ==========================================
     // Center Panel: Property Inspector
@@ -602,25 +1025,43 @@ void ThemeEditorWindow::setupMenusAndToolbars()
     auto* editMenu = menuBar()->addMenu("&Edit");
     actAddStyle_ = editMenu->addAction("&Add Style...", this, &ThemeEditorWindow::addNewStyle);
     actAddStyle_->setShortcut(QKeySequence::New);
-    actAddStyle_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    actAddStyle_->setShortcutContext(Qt::WindowShortcut);
+
+    actEditStyle_ = editMenu->addAction("&Edit Style Selector...", this, &ThemeEditorWindow::editSelectedStyle);
+    actEditStyle_->setShortcut(QKeySequence(Qt::Key_F2));
+    actEditStyle_->setShortcutContext(Qt::WindowShortcut);
+    actEditStyle_->setEnabled(false);
 
     actDuplicateStyle_ = editMenu->addAction("&Duplicate Style...", this, &ThemeEditorWindow::duplicateSelectedStyle);
     actDuplicateStyle_->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_D));
-    actDuplicateStyle_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    actDuplicateStyle_->setShortcutContext(Qt::WindowShortcut);
 
     actRemoveStyle_ = editMenu->addAction("&Remove Style", this, &ThemeEditorWindow::removeSelectedStyle);
     actRemoveStyle_->setShortcut(QKeySequence::Delete);
-    actRemoveStyle_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    actRemoveStyle_->setShortcutContext(Qt::WindowShortcut);
 
     editMenu->addSeparator();
     actCopyStyle_ = editMenu->addAction("&Copy Style Properties", this, &ThemeEditorWindow::copySelectedStyle);
     actCopyStyle_->setShortcut(QKeySequence::Copy);
-    actCopyStyle_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    actCopyStyle_->setShortcutContext(Qt::WindowShortcut);
 
     actPasteStyle_ = editMenu->addAction("&Paste Style Properties", this, &ThemeEditorWindow::pasteSelectedStyle);
     actPasteStyle_->setShortcut(QKeySequence::Paste);
-    actPasteStyle_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    actPasteStyle_->setShortcutContext(Qt::WindowShortcut);
     actPasteStyle_->setEnabled(false);
+
+    auto* scAddAlt = new QShortcut(QKeySequence(Qt::CTRL + Qt::SHIFT + Qt::Key_A), this);
+    connect(scAddAlt, &QShortcut::activated, this, &ThemeEditorWindow::addNewStyle);
+
+    auto* scEditAlt = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_E), this);
+    connect(scEditAlt, &QShortcut::activated, this, &ThemeEditorWindow::editSelectedStyle);
+
+    addAction(actAddStyle_);
+    addAction(actEditStyle_);
+    addAction(actDuplicateStyle_);
+    addAction(actRemoveStyle_);
+    addAction(actCopyStyle_);
+    addAction(actPasteStyle_);
 
     // ==========================================
     // Presets Menu
@@ -653,6 +1094,7 @@ void ThemeEditorWindow::setupMenusAndToolbars()
     toolbar->addAction(actSaveThemeAs_);
     toolbar->addSeparator();
     toolbar->addAction(actAddStyle_);
+    toolbar->addAction(actEditStyle_);
     toolbar->addAction(actDuplicateStyle_);
     toolbar->addAction(actRemoveStyle_);
     toolbar->addSeparator();
@@ -840,8 +1282,13 @@ void ThemeEditorWindow::populateLiveScene()
     for (const auto& customType : theme.nodeTypeThemes.keys()) {
         if (customType == "pwr" || customType == "lan" || customType == "db") continue;
         NodeData extraData;
-        extraData.name = QString("Sample [%1]").arg(customType).toStdString();
-        extraData.type = customType.toStdString();
+        if (customType.contains('#')) {
+            extraData.name = customType.section('#', 0, 0).toStdString();
+            extraData.type = customType.section('#', 1, 1).toStdString();
+        } else {
+            extraData.name = QString("Sample [%1]").arg(customType).toStdString();
+            extraData.type = customType.toStdString();
+        }
         NodeId extraId = 0;
         if (liveModel_->addNode(extraData, extraId).ok) {
             auto* extraItem = new GraphNodeItem(liveModel_.get(), extraId);
@@ -849,6 +1296,28 @@ void ThemeEditorWindow::populateLiveScene()
             extraItem->setPos(40, extraY);
             extraItem->refreshGeometry();
             extraY += 70;
+        }
+    }
+
+    // Place extra sample edges for custom edge types
+    for (const auto& customEdgeType : theme.edgeTypeThemes.keys()) {
+        if (customEdgeType == "pwr" || customEdgeType == "lan" || customEdgeType == "default") continue;
+        EdgeData extraEdgeData;
+        extraEdgeData.srcNode = ctlId;
+        extraEdgeData.dstNode = dbId;
+        if (customEdgeType.contains('#')) {
+            extraEdgeData.name = customEdgeType.section('#', 0, 0).toStdString();
+            extraEdgeData.edgeType = customEdgeType.section('#', 1, 1).toStdString();
+        } else {
+            extraEdgeData.name = QString("Sample [%1]").arg(customEdgeType).toStdString();
+            extraEdgeData.edgeType = customEdgeType.toStdString();
+        }
+        EdgeId extraEdgeId = 0;
+        if (liveModel_->addEdge(extraEdgeData, extraEdgeId).ok) {
+            auto* extraEdgeItem = new GraphEdgeItem(liveModel_.get(), extraEdgeId, ctlItem, dbItem);
+            liveScene_->addItem(extraEdgeItem);
+            extraEdgeItem->refreshLayout();
+            liveEdgeIds_.append(extraEdgeId);
         }
     }
 
@@ -885,7 +1354,7 @@ void ThemeEditorWindow::addTestNodeToLiveView()
     if (!items.isEmpty()) {
         QString text = items.first()->text(0);
         if (text.contains('#')) {
-            initialType = text.section('#', 1);
+            initialType = text.section('#', 1, -1);
         }
     }
 
@@ -1374,17 +1843,17 @@ void ThemeEditorWindow::buildPreviewLineProperties(GraphPreviewLineTheme& previe
     QVBoxLayout* lineLayout = nullptr;
     auto* lineBox = createSection("Connecting Line Styling", lineLayout);
 
-    lineLayout->addWidget(createColorEditor("Line Color", preview.color, [&preview, updatePreview, this](const QColor& c) {
+    lineLayout->addWidget(createColorEditor("Line Color", preview.color, [&preview, updatePreview](const QColor& c) {
         preview.color = c;
         updatePreview();
     }));
 
-    lineLayout->addWidget(createIntEditor("Line Width", preview.width, 1, 10, [&preview, updatePreview, this](int v) {
+    lineLayout->addWidget(createIntEditor("Line Width", preview.width, 1, 10, [&preview, updatePreview](int v) {
         preview.width = v;
         updatePreview();
     }));
 
-    lineLayout->addWidget(createPenStyleEditor("Line Style", preview.style, [&preview, updatePreview, this](Qt::PenStyle s) {
+    lineLayout->addWidget(createPenStyleEditor("Line Style", preview.style, [&preview, updatePreview](Qt::PenStyle s) {
         preview.style = s;
         updatePreview();
     }));
@@ -1570,55 +2039,147 @@ void ThemeEditorWindow::buildGeneralProperties(QVBoxLayout* layout)
 
 void ThemeEditorWindow::buildTypeOverviewProperties(QVBoxLayout* layout, bool isEdge, bool isContainer, const QString& typeName)
 {
-    QString labelStr = isEdge ? QString("Edge Style: edge#%1").arg(typeName)
-                              : (isContainer ? QString("Container Style: container#%1").arg(typeName)
-                                             : QString("Node Style: node#%1").arg(typeName));
+    QString labelStr = isEdge ? QString("Edge Style: edge#%1").arg(typeName.isEmpty() ? "base" : typeName)
+                              : (isContainer ? QString("Container Style: container#%1").arg(typeName.isEmpty() ? "base" : typeName)
+                                             : QString("Node Style: node#%1").arg(typeName.isEmpty() ? "base" : typeName));
+
+    auto& theme = GraphThemeManager::instance()->mutableTheme();
 
     QVBoxLayout* infoLayout = nullptr;
     auto* infoBox = createSection("Style Information", infoLayout);
 
     infoLayout->addWidget(new QLabel(QString("<b>%1</b>").arg(labelStr)));
     infoLayout->addWidget(new QLabel(QString("Target: <i>%1</i>").arg(isEdge ? "Edge" : (isContainer ? "Container" : "Node"))));
-    infoLayout->addWidget(new QLabel(QString("Type Identifier: <b>%1</b>").arg(typeName)));
 
-    auto* btnRow = new QHBoxLayout;
-    auto* btnDup = new QPushButton("Duplicate This Style");
-    auto* btnDel = new QPushButton("Delete This Style");
-    btnRow->addWidget(btnDup);
-    btnRow->addWidget(btnDel);
-    infoLayout->addLayout(btnRow);
+    if (typeName.isEmpty()) {
+        infoLayout->addWidget(new QLabel("Scope: <b>Base Style (Default)</b>"));
+        infoLayout->addWidget(new QLabel("Baseline fallback when no custom or named style matches."));
+    } else if (typeName.contains('#')) {
+        QString compName = typeName.section('#', 0, 0);
+        QString compType = typeName.section('#', 1, 1);
+        infoLayout->addWidget(new QLabel("Scope: <b>Compound (Name & Type)</b>"));
+        infoLayout->addWidget(new QLabel(QString("Name: <code>%1</code> | Type: <code>%2</code>").arg(compName, compType)));
+        infoLayout->addWidget(new QLabel(
+            QString("Cascade Precedence: <b>Tier 1 (Highest)</b><br>"
+                    "Matches any %1 named <code>%2</code> with type <code>%3</code>.")
+                .arg(isEdge ? "edge" : (isContainer ? "container" : "node"), compName, compType)));
+    } else {
+        infoLayout->addWidget(new QLabel(QString("Scope: <b>Type or Name Selector</b> (<code>%1</code>)").arg(typeName)));
+        infoLayout->addWidget(new QLabel(
+            QString("Cascade Precedence: <b>Tier 2 / 3</b><br>"
+                    "Matches any %1 with name <code>%2</code> or type <code>%2</code>.")
+                .arg(isEdge ? "edge" : (isContainer ? "container" : "node"), typeName)));
+    }
 
-    connect(btnDup, &QPushButton::clicked, this, &ThemeEditorWindow::duplicateSelectedStyle);
-    connect(btnDel, &QPushButton::clicked, this, &ThemeEditorWindow::removeSelectedStyle);
+    if (!typeName.isEmpty()) {
+        auto* btnRow = new QHBoxLayout;
+        auto* btnEdit = new QPushButton("✏ Edit Style Selector...");
+        btnEdit->setToolTip("Rename or change component name/type for this style (F2 or Ctrl+E)");
+        auto* btnDup = new QPushButton("Duplicate This Style");
+        auto* btnDel = new QPushButton("Delete This Style");
+        btnRow->addWidget(btnEdit);
+        btnRow->addWidget(btnDup);
+        btnRow->addWidget(btnDel);
+        infoLayout->addLayout(btnRow);
+
+        connect(btnEdit, &QPushButton::clicked, this, &ThemeEditorWindow::editSelectedStyle);
+        connect(btnDup, &QPushButton::clicked, this, &ThemeEditorWindow::duplicateSelectedStyle);
+        connect(btnDel, &QPushButton::clicked, this, &ThemeEditorWindow::removeSelectedStyle);
+    }
 
     layout->addWidget(infoBox);
 
-    // Previews for Normal, Hover, Selected
-    QVBoxLayout* prevLayout = nullptr;
-    auto* prevBox = createSection("State Previews", prevLayout);
+    // ==========================================
+    // Tabbed State Properties Editor
+    // ==========================================
+    auto* stateTabs = new QTabWidget;
+
+    auto createTabPage = [](auto builder) -> QWidget* {
+        auto* tabWidget = new QWidget;
+        auto* tabLayout = new QVBoxLayout(tabWidget);
+        tabLayout->setContentsMargins(4, 4, 4, 4);
+        builder(tabLayout);
+        tabLayout->addStretch();
+        return tabWidget;
+    };
 
     if (isEdge) {
-        prevLayout->addWidget(new QLabel("Normal State:"));
-        prevLayout->addWidget(new StandaloneEdgePreview(ComponentStateKind::Normal, typeName));
-        prevLayout->addWidget(new QLabel("Hover State:"));
-        prevLayout->addWidget(new StandaloneEdgePreview(ComponentStateKind::Hover, typeName));
-        prevLayout->addWidget(new QLabel("Selected State:"));
-        prevLayout->addWidget(new StandaloneEdgePreview(ComponentStateKind::Selected, typeName));
+        auto& edgeGroup = typeName.isEmpty() ? theme.edge : theme.edgeTypeThemes[typeName];
+
+        stateTabs->addTab(createTabPage([this, &edgeGroup, typeName](QVBoxLayout* l) {
+            buildEdgeStateProperties(edgeGroup.normal, l, 0, typeName);
+        }), "Normal State");
+
+        stateTabs->addTab(createTabPage([this, &edgeGroup, typeName](QVBoxLayout* l) {
+            buildEdgeStateProperties(edgeGroup.hover, l, 1, typeName);
+        }), "Hover State");
+
+        stateTabs->addTab(createTabPage([this, &edgeGroup, typeName](QVBoxLayout* l) {
+            buildEdgeStateProperties(edgeGroup.selected, l, 2, typeName);
+        }), "Selected State");
+
+        stateTabs->addTab(createTabPage([this, &edgeGroup](QVBoxLayout* l) {
+            buildPreviewLineProperties(edgeGroup.preview, l);
+        }), "Connecting Line");
+    } else if (isContainer) {
+        auto& contGroup = typeName.isEmpty() ? theme.container : theme.containerTypeThemes[typeName];
+
+        stateTabs->addTab(createTabPage([this, &contGroup, typeName](QVBoxLayout* l) {
+            buildComponentStateProperties(contGroup.normal, l, true, 0, typeName);
+        }), "Normal State");
+
+        stateTabs->addTab(createTabPage([this, &contGroup, typeName](QVBoxLayout* l) {
+            buildComponentStateProperties(contGroup.hover, l, true, 1, typeName);
+        }), "Hover State");
+
+        stateTabs->addTab(createTabPage([this, &contGroup, typeName](QVBoxLayout* l) {
+            buildComponentStateProperties(contGroup.selected, l, true, 2, typeName);
+        }), "Selected State");
     } else {
-        prevLayout->addWidget(new QLabel("Normal State:"));
-        prevLayout->addWidget(new StandaloneComponentPreview(ComponentStateKind::Normal, isContainer, typeName));
-        prevLayout->addWidget(new QLabel("Hover State:"));
-        prevLayout->addWidget(new StandaloneComponentPreview(ComponentStateKind::Hover, isContainer, typeName));
-        prevLayout->addWidget(new QLabel("Selected State:"));
-        prevLayout->addWidget(new StandaloneComponentPreview(ComponentStateKind::Selected, isContainer, typeName));
+        auto& nodeGroup = typeName.isEmpty() ? theme.node : theme.nodeTypeThemes[typeName];
+
+        stateTabs->addTab(createTabPage([this, &nodeGroup, typeName](QVBoxLayout* l) {
+            buildComponentStateProperties(nodeGroup.normal, l, false, 0, typeName);
+        }), "Normal State");
+
+        stateTabs->addTab(createTabPage([this, &nodeGroup, typeName](QVBoxLayout* l) {
+            buildComponentStateProperties(nodeGroup.hover, l, false, 1, typeName);
+        }), "Hover State");
+
+        stateTabs->addTab(createTabPage([this, &nodeGroup, typeName](QVBoxLayout* l) {
+            buildComponentStateProperties(nodeGroup.selected, l, false, 2, typeName);
+        }), "Selected State");
     }
 
-    layout->addWidget(prevBox);
+    stateTabs->addTab(createTabPage([isEdge, isContainer, typeName](QVBoxLayout* prevLayout) {
+        if (isEdge) {
+            prevLayout->addWidget(new QLabel("Normal State:"));
+            prevLayout->addWidget(new StandaloneEdgePreview(ComponentStateKind::Normal, typeName));
+            prevLayout->addWidget(new QLabel("Hover State:"));
+            prevLayout->addWidget(new StandaloneEdgePreview(ComponentStateKind::Hover, typeName));
+            prevLayout->addWidget(new QLabel("Selected State:"));
+            prevLayout->addWidget(new StandaloneEdgePreview(ComponentStateKind::Selected, typeName));
+        } else {
+            prevLayout->addWidget(new QLabel("Normal State:"));
+            prevLayout->addWidget(new StandaloneComponentPreview(ComponentStateKind::Normal, isContainer, typeName));
+            prevLayout->addWidget(new QLabel("Hover State:"));
+            prevLayout->addWidget(new StandaloneComponentPreview(ComponentStateKind::Hover, isContainer, typeName));
+            prevLayout->addWidget(new QLabel("Selected State:"));
+            prevLayout->addWidget(new StandaloneComponentPreview(ComponentStateKind::Selected, isContainer, typeName));
+        }
+    }), "Visual Previews");
+
+    layout->addWidget(stateTabs);
 }
 
-void ThemeEditorWindow::refreshTree()
+void ThemeEditorWindow::refreshTree(const QString& selectKey)
 {
     isInternalUpdate_ = true;
+
+    QString keyToSelect = selectKey;
+    if (keyToSelect.isEmpty() && !tree_->selectedItems().isEmpty()) {
+        keyToSelect = tree_->selectedItems().first()->text(0);
+    }
 
     // Clear old inspector stack pages
     while (stack_->count() > 0) {
@@ -1661,7 +2222,7 @@ void ThemeEditorWindow::refreshTree()
     // 3a. Node Base
     auto* nodeBase = new QTreeWidgetItem(QStringList() << "Base Style (Default)");
     nodeRoot->addChild(nodeBase);
-    addPage(nodeBase, [this, &theme](QVBoxLayout* l) {
+    addPage(nodeBase, [this](QVBoxLayout* l) {
         buildTypeOverviewProperties(l, false, false, QString());
     });
 
@@ -1850,7 +2411,27 @@ void ThemeEditorWindow::refreshTree()
 
     tree_->expandAll();
 
-    if (tree_->topLevelItemCount() > 0) {
+    QTreeWidgetItem* targetItem = nullptr;
+    if (!keyToSelect.isEmpty()) {
+        for (int i = 0; i < tree_->topLevelItemCount(); ++i) {
+            auto* top = tree_->topLevelItem(i);
+            if (top->text(0) == keyToSelect) { targetItem = top; break; }
+            for (int j = 0; j < top->childCount(); ++j) {
+                auto* child = top->child(j);
+                if (child->text(0) == keyToSelect) { targetItem = child; break; }
+                for (int k = 0; k < child->childCount(); ++k) {
+                    if (child->child(k)->text(0) == keyToSelect) { targetItem = child->child(k); break; }
+                }
+                if (targetItem) break;
+            }
+            if (targetItem) break;
+        }
+    }
+
+    if (targetItem) {
+        tree_->setCurrentItem(targetItem);
+        tree_->scrollToItem(targetItem);
+    } else if (tree_->topLevelItemCount() > 0) {
         tree_->setCurrentItem(tree_->topLevelItem(0));
     }
 
@@ -1872,7 +2453,12 @@ void ThemeEditorWindow::updateActionStates()
     }
 
     QString text = items.first()->text(0);
-    bool isCustomType = text.contains('#');
+    auto* parent = items.first()->parent();
+    QString parentText = parent ? parent->text(0) : "";
+    bool isCustomType = text.contains('#') || parentText.contains('#');
+
+    btnEditStyle_->setEnabled(isCustomType);
+    actEditStyle_->setEnabled(isCustomType);
 
     btnRemoveStyle_->setEnabled(isCustomType);
     actRemoveStyle_->setEnabled(isCustomType);
@@ -1916,7 +2502,27 @@ void ThemeEditorWindow::updateStatusDisplay(const QString& message)
 
 void ThemeEditorWindow::addNewStyle()
 {
-    AddStyleDialog dialog(this);
+    int defaultTarget = 0; // Default: Node
+    auto items = tree_->selectedItems();
+    if (!items.isEmpty()) {
+        QTreeWidgetItem* cur = items.first();
+        while (cur) {
+            QString txt = cur->text(0);
+            if (txt.startsWith("edge#") || txt == "Edges" || txt.contains("Edge")) {
+                defaultTarget = 2; // Edge
+                break;
+            } else if (txt.startsWith("container#") || txt == "Containers" || txt.contains("Container")) {
+                defaultTarget = 1; // Container
+                break;
+            } else if (txt.startsWith("node#") || txt == "Nodes" || txt.contains("Node")) {
+                defaultTarget = 0; // Node
+                break;
+            }
+            cur = cur->parent();
+        }
+    }
+
+    AddStyleDialog dialog(defaultTarget, this);
     if (dialog.exec() != QDialog::Accepted) return;
 
     int target = dialog.targetType();
@@ -1924,6 +2530,7 @@ void ThemeEditorWindow::addNewStyle()
     QString templateChoice = dialog.templateChoice();
 
     auto& theme = GraphThemeManager::instance()->mutableTheme();
+    QString fullKey;
 
     if (target == 0) { // Node
         if (theme.nodeTypeThemes.contains(name)) {
@@ -1933,11 +2540,12 @@ void ThemeEditorWindow::addNewStyle()
 
         GraphComponentTheme newTheme = theme.node;
         if (templateChoice.startsWith("node#")) {
-            QString srcKey = templateChoice.section('#', 1);
+            QString srcKey = templateChoice.section('#', 1, -1);
             if (theme.nodeTypeThemes.contains(srcKey))
                 newTheme = theme.nodeTypeThemes[srcKey];
         }
         theme.nodeTypeThemes[name] = newTheme;
+        fullKey = QString("node#%1").arg(name);
     } else if (target == 1) { // Container
         if (theme.containerTypeThemes.contains(name)) {
             QMessageBox::warning(this, "Style Exists", QString("Container style 'container#%1' already exists.").arg(name));
@@ -1946,11 +2554,12 @@ void ThemeEditorWindow::addNewStyle()
 
         GraphComponentTheme newTheme = theme.container;
         if (templateChoice.startsWith("container#")) {
-            QString srcKey = templateChoice.section('#', 1);
+            QString srcKey = templateChoice.section('#', 1, -1);
             if (theme.containerTypeThemes.contains(srcKey))
                 newTheme = theme.containerTypeThemes[srcKey];
         }
         theme.containerTypeThemes[name] = newTheme;
+        fullKey = QString("container#%1").arg(name);
     } else { // Edge
         if (theme.edgeTypeThemes.contains(name)) {
             QMessageBox::warning(this, "Style Exists", QString("Edge style 'edge#%1' already exists.").arg(name));
@@ -1959,18 +2568,104 @@ void ThemeEditorWindow::addNewStyle()
 
         GraphEdgeTheme newTheme = theme.edge;
         if (templateChoice.startsWith("edge#")) {
-            QString srcKey = templateChoice.section('#', 1);
+            QString srcKey = templateChoice.section('#', 1, -1);
             if (theme.edgeTypeThemes.contains(srcKey))
                 newTheme = theme.edgeTypeThemes[srcKey];
         }
         theme.edgeTypeThemes[name] = newTheme;
+        fullKey = QString("edge#%1").arg(name);
     }
 
     emitThemeChanged();
-    refreshTree();
+    refreshTree(fullKey);
     populateLiveScene();
 
-    updateStatusDisplay(QString("Added style for type '%1'").arg(name));
+    updateStatusDisplay(QString("Added style '%1'").arg(fullKey));
+}
+
+void ThemeEditorWindow::editSelectedStyle()
+{
+    auto items = tree_->selectedItems();
+    if (items.isEmpty()) return;
+
+    QTreeWidgetItem* item = items.first();
+    QString text = item->text(0);
+    auto* parent = item->parent();
+    QString parentText = parent ? parent->text(0) : "";
+
+    // If a child state (e.g. Normal, Hover, Selected) is selected, target the parent custom style
+    if (!text.contains('#') && parentText.contains('#')) {
+        text = parentText;
+        item = parent;
+    }
+
+    if (!text.contains('#')) {
+        QMessageBox::information(this, "Edit Style", "Base default styles cannot be renamed. To customize them, edit their properties directly.");
+        return;
+    }
+
+    QString prefix = text.section('#', 0, 0);
+    QString currentSelector = text.section('#', 1, -1);
+
+    int target = (prefix == "edge") ? 2 : ((prefix == "container") ? 1 : 0);
+
+    AddStyleDialog dialog(target, currentSelector, this);
+    if (dialog.exec() != QDialog::Accepted) return;
+
+    int newTarget = dialog.targetType();
+    QString newSelector = dialog.styleName();
+
+    auto& theme = GraphThemeManager::instance()->mutableTheme();
+
+    QString newPrefix = (newTarget == 0) ? "node" : ((newTarget == 1) ? "container" : "edge");
+    QString newFullKey = QString("%1#%2").arg(newPrefix, newSelector);
+
+    // If target or selector changed, migrate data
+    if (newTarget != target || newSelector != currentSelector) {
+        if (target == 0) { // Old was Node
+            GraphComponentTheme existingData = theme.nodeTypeThemes.value(currentSelector, theme.node);
+            theme.nodeTypeThemes.remove(currentSelector);
+
+            if (newTarget == 0) {
+                theme.nodeTypeThemes[newSelector] = existingData;
+            } else if (newTarget == 1) {
+                theme.containerTypeThemes[newSelector] = existingData;
+            } else {
+                GraphEdgeTheme edgeData = theme.edge;
+                theme.edgeTypeThemes[newSelector] = edgeData;
+            }
+        } else if (target == 1) { // Old was Container
+            GraphComponentTheme existingData = theme.containerTypeThemes.value(currentSelector, theme.container);
+            theme.containerTypeThemes.remove(currentSelector);
+
+            if (newTarget == 1) {
+                theme.containerTypeThemes[newSelector] = existingData;
+            } else if (newTarget == 0) {
+                theme.nodeTypeThemes[newSelector] = existingData;
+            } else {
+                GraphEdgeTheme edgeData = theme.edge;
+                theme.edgeTypeThemes[newSelector] = edgeData;
+            }
+        } else { // Old was Edge
+            GraphEdgeTheme existingData = theme.edgeTypeThemes.value(currentSelector, theme.edge);
+            theme.edgeTypeThemes.remove(currentSelector);
+
+            if (newTarget == 2) {
+                theme.edgeTypeThemes[newSelector] = existingData;
+            } else if (newTarget == 0) {
+                GraphComponentTheme nodeData = theme.node;
+                theme.nodeTypeThemes[newSelector] = nodeData;
+            } else {
+                GraphComponentTheme contData = theme.container;
+                theme.containerTypeThemes[newSelector] = contData;
+            }
+        }
+
+        emitThemeChanged();
+        refreshTree(newFullKey);
+        populateLiveScene();
+        updateStatusDisplay(QString("Updated style '%1' to '%2'").arg(text, newFullKey));
+    }
 }
 
 void ThemeEditorWindow::duplicateSelectedStyle()
@@ -1987,7 +2682,7 @@ void ThemeEditorWindow::duplicateSelectedStyle()
     bool isEdge = text.startsWith("edge#") || parentText.startsWith("edge#") || text.contains("Edge");
     bool isContainer = text.startsWith("container#") || parentText.startsWith("container#") || text.contains("Container");
 
-    QString currentType = text.contains('#') ? text.section('#', 1) : (parentText.contains('#') ? parentText.section('#', 1) : "custom");
+    QString currentType = text.contains('#') ? text.section('#', 1, -1) : (parentText.contains('#') ? parentText.section('#', 1, -1) : "custom");
     QString defaultNewName = QString("%1_copy").arg(currentType);
 
     bool ok = false;
@@ -2019,11 +2714,15 @@ void ThemeEditorWindow::duplicateSelectedStyle()
         theme.nodeTypeThemes[newName] = cloned;
     }
 
+    QString fullKey = isEdge ? QString("edge#%1").arg(newName)
+                             : (isContainer ? QString("container#%1").arg(newName)
+                                            : QString("node#%1").arg(newName));
+
     emitThemeChanged();
-    refreshTree();
+    refreshTree(fullKey);
     populateLiveScene();
 
-    updateStatusDisplay(QString("Duplicated style to '%1'").arg(newName));
+    updateStatusDisplay(QString("Duplicated style to '%1'").arg(fullKey));
 }
 
 void ThemeEditorWindow::removeSelectedStyle()
@@ -2044,7 +2743,7 @@ void ThemeEditorWindow::removeSelectedStyle()
     if (reply != QMessageBox::Yes) return;
 
     QString prefix = text.section('#', 0, 0);
-    QString typeName = text.section('#', 1);
+    QString typeName = text.section('#', 1, -1);
 
     auto& theme = GraphThemeManager::instance()->mutableTheme();
 
@@ -2056,11 +2755,77 @@ void ThemeEditorWindow::removeSelectedStyle()
         theme.edgeTypeThemes.remove(typeName);
     }
 
+    QString parentCategory = (prefix == "edge") ? "Edges" : ((prefix == "container") ? "Containers" : "Nodes");
+
     emitThemeChanged();
-    refreshTree();
+    refreshTree(parentCategory);
     populateLiveScene();
 
     updateStatusDisplay(QString("Removed style '%1'").arg(text));
+}
+
+void ThemeEditorWindow::showTreeContextMenu(const QPoint& pos)
+{
+    QTreeWidgetItem* item = tree_->itemAt(pos);
+    QMenu menu(this);
+
+    QString targetName = "Node";
+    if (item) {
+        QTreeWidgetItem* cur = item;
+        while (cur) {
+            QString txt = cur->text(0);
+            if (txt.startsWith("edge#") || txt == "Edges" || txt.contains("Edge")) {
+                targetName = "Edge";
+                break;
+            } else if (txt.startsWith("container#") || txt == "Containers" || txt.contains("Container")) {
+                targetName = "Container";
+                break;
+            } else if (txt.startsWith("node#") || txt == "Nodes" || txt.contains("Node")) {
+                targetName = "Node";
+                break;
+            }
+            cur = cur->parent();
+        }
+    }
+
+    auto* actAdd = menu.addAction(QString("+ Add %1 Style...").arg(targetName), this, &ThemeEditorWindow::addNewStyle);
+    actAdd->setShortcut(QKeySequence::New);
+
+    if (item) {
+        QString text = item->text(0);
+        bool isCustomStyle = text.contains('#');
+        bool isStateItem = (text == "Normal" || text == "Hover" || text == "Selected" || text == "Connecting Line (Preview)");
+
+        if (isCustomStyle) {
+            menu.addSeparator();
+            auto* actEdit = menu.addAction("&Edit Style Selector...", this, &ThemeEditorWindow::editSelectedStyle);
+            actEdit->setShortcut(QKeySequence(Qt::Key_F2));
+
+            auto* actDup = menu.addAction("&Duplicate Style...", this, &ThemeEditorWindow::duplicateSelectedStyle);
+            actDup->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_D));
+
+            auto* actRem = menu.addAction("&Remove Style", this, &ThemeEditorWindow::removeSelectedStyle);
+            actRem->setShortcut(QKeySequence::Delete);
+
+            menu.addSeparator();
+            auto* actCopy = menu.addAction("&Copy Style Properties", this, &ThemeEditorWindow::copySelectedStyle);
+            actCopy->setShortcut(QKeySequence::Copy);
+
+            auto* actPaste = menu.addAction("&Paste Style Properties", this, &ThemeEditorWindow::pasteSelectedStyle);
+            actPaste->setShortcut(QKeySequence::Paste);
+            actPaste->setEnabled(btnPasteStyle_->isEnabled());
+        } else if (isStateItem) {
+            menu.addSeparator();
+            auto* actCopy = menu.addAction("&Copy State Properties", this, &ThemeEditorWindow::copySelectedStyle);
+            actCopy->setShortcut(QKeySequence::Copy);
+
+            auto* actPaste = menu.addAction("&Paste State Properties", this, &ThemeEditorWindow::pasteSelectedStyle);
+            actPaste->setShortcut(QKeySequence::Paste);
+            actPaste->setEnabled(btnPasteStyle_->isEnabled());
+        }
+    }
+
+    menu.exec(tree_->viewport()->mapToGlobal(pos));
 }
 
 void ThemeEditorWindow::copySelectedStyle()
@@ -2076,32 +2841,32 @@ void ThemeEditorWindow::copySelectedStyle()
     const auto& theme = GraphThemeManager::instance()->theme();
 
     if (text.startsWith("node#")) {
-        QString type = text.section('#', 1);
+        QString type = text.section('#', 1, -1);
         clipboard_.kind = StyleClipboard::Kind::ComponentTheme;
         clipboard_.sourceName = text;
         clipboard_.componentTheme = theme.nodeThemeForType(type);
     } else if (text.startsWith("container#")) {
-        QString type = text.section('#', 1);
+        QString type = text.section('#', 1, -1);
         clipboard_.kind = StyleClipboard::Kind::ComponentTheme;
         clipboard_.sourceName = text;
         clipboard_.componentTheme = theme.containerThemeForType(type);
     } else if (text.startsWith("edge#")) {
-        QString type = text.section('#', 1);
+        QString type = text.section('#', 1, -1);
         clipboard_.kind = StyleClipboard::Kind::EdgeTheme;
         clipboard_.sourceName = text;
         clipboard_.edgeTheme = theme.edgeThemeForType(type);
     } else if (parentText.contains("Node") || (parent && parent->parent() && parent->parent()->text(0) == "Nodes")) {
-        QString type = parentText.contains('#') ? parentText.section('#', 1) : "";
+        QString type = parentText.contains('#') ? parentText.section('#', 1, -1) : "";
         clipboard_.kind = StyleClipboard::Kind::ComponentState;
         clipboard_.sourceName = QString("%1 -> %2").arg(parentText.isEmpty() ? "Node" : parentText, text);
         clipboard_.componentState = theme.nodeStateFor(type, text == "Selected", text == "Hover");
     } else if (parentText.contains("Container") || (parent && parent->parent() && parent->parent()->text(0) == "Containers")) {
-        QString type = parentText.contains('#') ? parentText.section('#', 1) : "";
+        QString type = parentText.contains('#') ? parentText.section('#', 1, -1) : "";
         clipboard_.kind = StyleClipboard::Kind::ComponentState;
         clipboard_.sourceName = QString("%1 -> %2").arg(parentText.isEmpty() ? "Container" : parentText, text);
         clipboard_.componentState = theme.containerStateFor(type, text == "Selected", text == "Hover");
     } else if (parentText.contains("Edge") || (parent && parent->parent() && parent->parent()->text(0) == "Edges")) {
-        QString type = parentText.contains('#') ? parentText.section('#', 1) : "";
+        QString type = parentText.contains('#') ? parentText.section('#', 1, -1) : "";
         clipboard_.kind = StyleClipboard::Kind::EdgeState;
         clipboard_.sourceName = QString("%1 -> %2").arg(parentText.isEmpty() ? "Edge" : parentText, text);
         clipboard_.edgeState = theme.edgeStateFor(type, text == "Selected", text == "Hover");
@@ -2127,9 +2892,9 @@ void ThemeEditorWindow::pasteSelectedStyle()
 
     if (clipboard_.kind == StyleClipboard::Kind::ComponentTheme) {
         if (text.startsWith("node#")) {
-            theme.nodeTypeThemes[text.section('#', 1)] = clipboard_.componentTheme;
+            theme.nodeTypeThemes[text.section('#', 1, -1)] = clipboard_.componentTheme;
         } else if (text.startsWith("container#")) {
-            theme.containerTypeThemes[text.section('#', 1)] = clipboard_.componentTheme;
+            theme.containerTypeThemes[text.section('#', 1, -1)] = clipboard_.componentTheme;
         } else if (text == "Base Style (Default)" && parent && parent->text(0) == "Nodes") {
             theme.node = clipboard_.componentTheme;
         } else if (text == "Base Style (Default)" && parent && parent->text(0) == "Containers") {
@@ -2140,7 +2905,7 @@ void ThemeEditorWindow::pasteSelectedStyle()
         }
     } else if (clipboard_.kind == StyleClipboard::Kind::EdgeTheme) {
         if (text.startsWith("edge#")) {
-            theme.edgeTypeThemes[text.section('#', 1)] = clipboard_.edgeTheme;
+            theme.edgeTypeThemes[text.section('#', 1, -1)] = clipboard_.edgeTheme;
         } else if (text == "Base Style (Default)" && parent && parent->text(0) == "Edges") {
             theme.edge = clipboard_.edgeTheme;
         } else {
@@ -2153,18 +2918,18 @@ void ThemeEditorWindow::pasteSelectedStyle()
         };
 
         if (text == "Normal") {
-            if (parentText.startsWith("node#")) applyToState(theme.nodeTypeThemes[parentText.section('#', 1)].normal);
-            else if (parentText.startsWith("container#")) applyToState(theme.containerTypeThemes[parentText.section('#', 1)].normal);
+            if (parentText.startsWith("node#")) applyToState(theme.nodeTypeThemes[parentText.section('#', 1, -1)].normal);
+            else if (parentText.startsWith("container#")) applyToState(theme.containerTypeThemes[parentText.section('#', 1, -1)].normal);
             else if (parent && parent->parent() && parent->parent()->text(0) == "Nodes") applyToState(theme.node.normal);
             else if (parent && parent->parent() && parent->parent()->text(0) == "Containers") applyToState(theme.container.normal);
         } else if (text == "Hover") {
-            if (parentText.startsWith("node#")) applyToState(theme.nodeTypeThemes[parentText.section('#', 1)].hover);
-            else if (parentText.startsWith("container#")) applyToState(theme.containerTypeThemes[parentText.section('#', 1)].hover);
+            if (parentText.startsWith("node#")) applyToState(theme.nodeTypeThemes[parentText.section('#', 1, -1)].hover);
+            else if (parentText.startsWith("container#")) applyToState(theme.containerTypeThemes[parentText.section('#', 1, -1)].hover);
             else if (parent && parent->parent() && parent->parent()->text(0) == "Nodes") applyToState(theme.node.hover);
             else if (parent && parent->parent() && parent->parent()->text(0) == "Containers") applyToState(theme.container.hover);
         } else if (text == "Selected") {
-            if (parentText.startsWith("node#")) applyToState(theme.nodeTypeThemes[parentText.section('#', 1)].selected);
-            else if (parentText.startsWith("container#")) applyToState(theme.containerTypeThemes[parentText.section('#', 1)].selected);
+            if (parentText.startsWith("node#")) applyToState(theme.nodeTypeThemes[parentText.section('#', 1, -1)].selected);
+            else if (parentText.startsWith("container#")) applyToState(theme.containerTypeThemes[parentText.section('#', 1, -1)].selected);
             else if (parent && parent->parent() && parent->parent()->text(0) == "Nodes") applyToState(theme.node.selected);
             else if (parent && parent->parent() && parent->parent()->text(0) == "Containers") applyToState(theme.container.selected);
         }
@@ -2174,13 +2939,13 @@ void ThemeEditorWindow::pasteSelectedStyle()
         };
 
         if (text == "Normal") {
-            if (parentText.startsWith("edge#")) applyToEdgeState(theme.edgeTypeThemes[parentText.section('#', 1)].normal);
+            if (parentText.startsWith("edge#")) applyToEdgeState(theme.edgeTypeThemes[parentText.section('#', 1, -1)].normal);
             else if (parent && parent->parent() && parent->parent()->text(0) == "Edges") applyToEdgeState(theme.edge.normal);
         } else if (text == "Hover") {
-            if (parentText.startsWith("edge#")) applyToEdgeState(theme.edgeTypeThemes[parentText.section('#', 1)].hover);
+            if (parentText.startsWith("edge#")) applyToEdgeState(theme.edgeTypeThemes[parentText.section('#', 1, -1)].hover);
             else if (parent && parent->parent() && parent->parent()->text(0) == "Edges") applyToEdgeState(theme.edge.hover);
         } else if (text == "Selected") {
-            if (parentText.startsWith("edge#")) applyToEdgeState(theme.edgeTypeThemes[parentText.section('#', 1)].selected);
+            if (parentText.startsWith("edge#")) applyToEdgeState(theme.edgeTypeThemes[parentText.section('#', 1, -1)].selected);
             else if (parent && parent->parent() && parent->parent()->text(0) == "Edges") applyToEdgeState(theme.edge.selected);
         }
     }

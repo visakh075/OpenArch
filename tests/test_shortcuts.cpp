@@ -1,5 +1,8 @@
 #include <QApplication>
 #include <QAction>
+#include <QLabel>
+#include <QComboBox>
+#include <QTabWidget>
 #include <QGraphicsScene>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -14,6 +17,8 @@
 #include "theme/ThemeEditorWindow.h"
 #include "theme/ThemeEditorDock.h"
 #include "theme/ApplicationThemeManager.h"
+#include "config/ApplicationConfig.h"
+#include "PreferencesDialog.h"
 #include "db/DbManagerSQLite.h"
 #include <QTemporaryFile>
 #include <QFileInfo>
@@ -22,6 +27,7 @@
 int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
+    ApplicationConfig::initialize(&app);
 
     // Initialize theme manager with default theme
     GraphThemeManager themeManager;
@@ -594,10 +600,373 @@ int main(int argc, char** argv)
     themeManager.load(":/themes/Blueprint.json");
     assert(ApplicationThemeManager::currentThemeId() == preGraphAppTheme);
 
+    // Clean up copied test file
+    QString customFolder = ApplicationThemeManager::customThemesDirectory();
+    QFile::remove(customFolder + "/" + QFileInfo(tempCustomTheme.fileName()).fileName());
+
     std::cout << " -> PASSED: Application UI theme options and custom UI theme loading verified independently." << std::endl;
 
+    // 19. Verifying ApplicationConfig, Auto-Save Toggle, Configurable Font & DB Save Status
+    std::cout << "\n[TEST] 19. Verifying ApplicationConfig, Auto-Save Toggle, Configurable Font & DB Save Status..." << std::endl;
+
+    // ApplicationConfig initial state & toggling
+    ApplicationConfig& cfg = ApplicationConfig::instance();
+    bool origAutoSave = cfg.isAutoSaveEnabled();
+    int origDelay = cfg.autoSaveDelayMs();
+    QFont origFont = cfg.applicationFont();
+    bool origHasCustom = cfg.hasCustomFont();
+
+    // Toggle auto-save
+    cfg.setAutoSaveEnabled(false);
+    assert(cfg.isAutoSaveEnabled() == false);
+    cfg.setAutoSaveDelayMs(2000);
+    assert(cfg.autoSaveDelayMs() == 2000);
+
+    // Font customization and reset
+    QFont customFont("Helvetica", 14, QFont::Bold);
+    cfg.setApplicationFont(customFont);
+    assert(cfg.hasCustomFont() == true);
+    assert(cfg.applicationFont().family() == customFont.family());
+    assert(cfg.applicationFont().pointSize() == 14);
+
+    cfg.resetDefaultFont();
+    assert(cfg.hasCustomFont() == false);
+
+    // Restore original config values
+    cfg.setAutoSaveEnabled(origAutoSave);
+    cfg.setAutoSaveDelayMs(origDelay);
+    if (origHasCustom) {
+        cfg.setApplicationFont(origFont);
+    } else {
+        cfg.resetDefaultFont();
+    }
+
+    // Verify MainWindow action and menu integration (clean non-duplicate menu structure)
+    assert(window.actionPreferences() != nullptr);
+    assert(window.actionPreferences()->shortcut() == QKeySequence::Preferences);
+    assert(window.actionConfigureShortcuts() != nullptr);
+    assert(window.viewMenu() != nullptr);
+    assert(window.helpMenu() != nullptr);
+    assert(window.actionAutoSave() != nullptr);
+    assert(window.actionAutoSave()->isCheckable());
+    assert(window.actionAutoSave()->isChecked() == cfg.isAutoSaveEnabled());
+    assert(window.actionApplicationFont() != nullptr);
+
+    // Verify PreferencesDialog instantiation and tabbed groups (Appearance, General, Shortcuts)
+    PreferencesDialog prefDlg(&window);
+    assert(prefDlg.windowTitle().contains("Preferences"));
+    assert(prefDlg.tabWidget() != nullptr);
+    assert(prefDlg.tabWidget()->count() == 3);
+    assert(prefDlg.tabWidget()->tabText(0) == "Appearance");
+    assert(prefDlg.tabWidget()->tabText(1) == "General");
+    assert(prefDlg.tabWidget()->tabText(2) == "Shortcuts");
+    assert(prefDlg.appearanceTab() != nullptr);
+    assert(prefDlg.generalTab() != nullptr);
+    assert(prefDlg.shortcutsTab() != nullptr);
+
+    assert(prefDlg.themeComboBox() != nullptr);
+    assert(prefDlg.themeComboBox()->count() >= 7);
+    assert(prefDlg.fontComboBox() != nullptr);
+    assert(prefDlg.fontSizeSpinBox() != nullptr);
+    assert(prefDlg.autoSaveCheckBox() != nullptr);
+    assert(prefDlg.autoSaveDelayComboBox() != nullptr);
+
+    // Verify DB Save Status indicator state transitions
+    assert(window.saveStatusLabel() != nullptr);
+    MainWindow freshWindow;
+    assert(freshWindow.saveStatusLabel() != nullptr);
+    assert(freshWindow.currentSaveState() == MainWindow::DbSaveState::NoDb);
+
+    window.setSaveStatus(MainWindow::DbSaveState::Saving, "Saving test database...");
+    assert(window.currentSaveState() == MainWindow::DbSaveState::Saving);
+    assert(window.saveStatusLabel()->text().contains("Saving"));
+
+    window.setSaveStatus(MainWindow::DbSaveState::Saved, "✓ Saved");
+    assert(window.currentSaveState() == MainWindow::DbSaveState::Saved);
+    assert(window.saveStatusLabel()->text().contains("Saved"));
+
+    window.setSaveStatus(MainWindow::DbSaveState::UnsavedChanges, "● Unsaved changes");
+    assert(window.currentSaveState() == MainWindow::DbSaveState::UnsavedChanges);
+    assert(window.saveStatusLabel()->text().contains("Unsaved changes"));
+
+    window.setSaveStatus(MainWindow::DbSaveState::Error, "⚠ Save Failed: disk full");
+    assert(window.currentSaveState() == MainWindow::DbSaveState::Error);
+    assert(window.saveStatusLabel()->text().contains("Save Failed"));
+
+    std::cout << " -> PASSED: ApplicationConfig, Auto-Save toggle, Application Font, Preferences dialog, and DB Save Status verified." << std::endl;
+
+    // 20. Verifying Edge Name and Type Architectural Support
+    std::cout << "\n[TEST] 20. Verifying Edge Name and Type Architectural Support..." << std::endl;
+    {
+        EdgeData testEdge;
+        testEdge.srcNode = stdId;
+        testEdge.srcLayer = defaultLayerId;
+        testEdge.dstNode = manualId;
+        testEdge.dstLayer = defaultLayerId;
+        testEdge.name = "AuthChannel";
+        testEdge.setType("grpc");
+
+        assert(testEdge.name == "AuthChannel");
+        assert(testEdge.type() == "grpc");
+        assert(testEdge.edgeType == "grpc");
+
+        EdgeId namedEdgeId = 0;
+        assert(model.addEdge(testEdge, namedEdgeId).ok);
+        auto optEdge = model.getEdgeById(namedEdgeId);
+        assert(optEdge.has_value());
+        assert(optEdge->name == "AuthChannel");
+        assert(optEdge->type() == "grpc");
+
+        uint32_t originalChecksum = optEdge->checksum;
+        assert(originalChecksum != 0);
+
+        // Verify checksum sensitivity to name change
+        EdgeData modifiedEdge = *optEdge;
+        modifiedEdge.name = "RenamedChannel";
+        assert(model.computeEdgeChecksum(modifiedEdge) != originalChecksum);
+
+        assert(model.updateEdge(modifiedEdge).ok);
+        auto optUpdated = model.getEdgeById(namedEdgeId);
+        assert(optUpdated.has_value());
+        assert(optUpdated->name == "RenamedChannel");
+        assert(optUpdated->status == Status::Changed);
+        assert(optUpdated->checksum != originalChecksum);
+
+        // Verify GraphEdgeItem rendering and label resolution
+        auto* edgeItem = new GraphEdgeItem(&model, namedEdgeId, stdItem, manualItem);
+        scene.addItem(edgeItem);
+        edgeItem->refreshLayout();
+        assert(edgeItem->name() == "RenamedChannel");
+        assert(edgeItem->edgeType() == "grpc");
+        assert(edgeItem->title() == "RenamedChannel");
+        assert(edgeItem->toolTip().contains("RenamedChannel"));
+        assert(edgeItem->toolTip().contains("grpc"));
+
+        // Verify fallback to edgeType when name is empty
+        modifiedEdge.name = "";
+        assert(model.updateEdge(modifiedEdge).ok);
+        edgeItem->refreshLayout();
+        assert(edgeItem->name().isEmpty());
+        assert(edgeItem->title() == "grpc");
+
+        std::cout << " -> PASSED: Edge Name, Type, Checksum, and Canvas Label rendering verified." << std::endl;
+    }
+
+    // 21. Verifying CSS-Convention name#type Styling for Both Edges and Nodes
+    std::cout << "\n[TEST] 21. Verifying CSS-Convention name#type Styling for Both Edges and Nodes..." << std::endl;
+    {
+        GraphTheme testTheme = themeManager.theme();
+        
+        // Define colors
+        QColor genericTypeColor("#112233");
+        QColor nameOnlyColor("#445566");
+        QColor compoundColor("#ff0077");
+
+        // Edge styling overrides:
+        // 1. type rule: "lan"
+        GraphEdgeTheme lanTheme = testTheme.edge;
+        lanTheme.normal.lineColor = genericTypeColor;
+        testTheme.edgeTypeThemes["lan"] = lanTheme;
+
+        // 2. name rule: "synclink"
+        GraphEdgeTheme syncNameTheme = testTheme.edge;
+        syncNameTheme.normal.lineColor = nameOnlyColor;
+        testTheme.edgeTypeThemes["synclink"] = syncNameTheme;
+
+        // 3. compound name#type rule: "synclink#lan"
+        GraphEdgeTheme compoundTheme = testTheme.edge;
+        compoundTheme.normal.lineColor = compoundColor;
+        testTheme.edgeTypeThemes["synclink#lan"] = compoundTheme;
+
+        // Verify Edge Resolution Specificity:
+        // Case A: name="SyncLink", type="lan" -> matches compound "synclink#lan"
+        assert(testTheme.edgeTheme("SyncLink", "lan").normal.lineColor == compoundColor);
+        assert(testTheme.edgeStateFor("SyncLink", "lan", false, false).lineColor == compoundColor);
+
+        // Case B: name="SyncLink", type="other" -> matches name "synclink"
+        assert(testTheme.edgeTheme("SyncLink", "other").normal.lineColor == nameOnlyColor);
+
+        // Case C: name="OtherEdge", type="lan" -> matches type "lan"
+        assert(testTheme.edgeTheme("OtherEdge", "lan").normal.lineColor == genericTypeColor);
+
+        // Case D: name="Unmatched", type="unmatched" -> matches default edge theme
+        assert(testTheme.edgeTheme("Unmatched", "unmatched").normal.lineColor == testTheme.edge.normal.lineColor);
+
+        // Node styling overrides:
+        // 1. type rule: "service"
+        GraphComponentTheme serviceTheme = testTheme.node;
+        serviceTheme.normal.background = genericTypeColor;
+        testTheme.nodeTypeThemes["service"] = serviceTheme;
+
+        // 2. name rule: "authnode"
+        GraphComponentTheme authNameTheme = testTheme.node;
+        authNameTheme.normal.background = nameOnlyColor;
+        testTheme.nodeTypeThemes["authnode"] = authNameTheme;
+
+        // 3. compound name#type rule: "authnode#service"
+        GraphComponentTheme compoundNodeTheme = testTheme.node;
+        compoundNodeTheme.normal.background = compoundColor;
+        testTheme.nodeTypeThemes["authnode#service"] = compoundNodeTheme;
+
+        // Verify Node Resolution Specificity:
+        // Case A: name="AuthNode", type="service" -> matches compound "authnode#service"
+        assert(testTheme.nodeTheme("AuthNode", "service").normal.background == compoundColor);
+        assert(testTheme.nodeStateFor("AuthNode", "service", false, false).background == compoundColor);
+
+        // Case B: name="AuthNode", type="db" -> matches name "authnode"
+        assert(testTheme.nodeTheme("AuthNode", "db").normal.background == nameOnlyColor);
+
+        // Case C: name="PaymentNode", type="service" -> matches type "service"
+        assert(testTheme.nodeTheme("PaymentNode", "service").normal.background == genericTypeColor);
+
+        // Case D: unmatched -> default node background
+        assert(testTheme.nodeTheme("Unknown", "unknown").normal.background == testTheme.node.normal.background);
+
+        // Verify Qt canvas items with compound styling
+        themeManager.mutableTheme() = testTheme;
+
+        EdgeData edgeCompoundData;
+        edgeCompoundData.name = "SyncLink";
+        edgeCompoundData.edgeType = "lan";
+        edgeCompoundData.srcNode = stdId;
+        edgeCompoundData.srcLayer = defaultLayerId;
+        edgeCompoundData.dstNode = manualId;
+        edgeCompoundData.dstLayer = defaultLayerId;
+        EdgeId compEdgeId = 0;
+        assert(model.addEdge(edgeCompoundData, compEdgeId).ok);
+        auto* compEdgeItem = new GraphEdgeItem(&model, compEdgeId, stdItem, manualItem);
+        scene.addItem(compEdgeItem);
+        compEdgeItem->refreshLayout();
+        assert(compEdgeItem->name() == "SyncLink");
+        assert(compEdgeItem->edgeType() == "lan");
+        assert(themeManager.theme().edgeStateFor(compEdgeItem->name(), compEdgeItem->edgeType(), false, false).lineColor == compoundColor);
+
+        std::cout << " -> PASSED: CSS-convention name#type compound, name-only, and type-only styling verified with strict specificity." << std::endl;
+    }
+
+    {
+        std::cout << "[TEST] 22. Verifying Standalone Theme Editor AddStyleDialog & UX Enhancements..." << std::endl;
+
+        // 1. Target initialization
+        AddStyleDialog nodeDlg(0);
+        assert(nodeDlg.targetType() == 0);
+
+        AddStyleDialog contDlg(1);
+        assert(contDlg.targetType() == 1);
+
+        AddStyleDialog edgeDlg(2);
+        assert(edgeDlg.targetType() == 2);
+
+        // 2. Compound mode: name#type
+        edgeDlg.setMatchMode(AddStyleDialog::Compound);
+        edgeDlg.setComponentName("SyncLink");
+        edgeDlg.setComponentType("lan");
+        assert(edgeDlg.styleName() == "synclink#lan");
+        assert(edgeDlg.isValid() == true);
+
+        // 3. Type Only mode
+        edgeDlg.setMatchMode(AddStyleDialog::TypeOnly);
+        edgeDlg.setComponentType("pwr");
+        assert(edgeDlg.styleName() == "pwr");
+        assert(edgeDlg.isValid() == true);
+
+        // 4. Name Only mode
+        nodeDlg.setMatchMode(AddStyleDialog::NameOnly);
+        nodeDlg.setComponentName("Gateway");
+        assert(nodeDlg.styleName() == "gateway");
+        assert(nodeDlg.isValid() == true);
+
+        // 5. Raw mode
+        nodeDlg.setMatchMode(AddStyleDialog::Raw);
+        nodeDlg.setRawSelector("authservice#api");
+        assert(nodeDlg.styleName() == "authservice#api");
+        assert(nodeDlg.isValid() == true);
+
+        // 6. Invalid inputs: spaces
+        nodeDlg.setRawSelector("bad style name");
+        assert(nodeDlg.isValid() == false);
+
+        // 7. Invalid inputs: multiple '#'
+        nodeDlg.setRawSelector("a#b#c");
+        assert(nodeDlg.isValid() == false);
+
+        // 8. Empty input
+        nodeDlg.setRawSelector("");
+        assert(nodeDlg.isValid() == false);
+
+        // 9. Verify ThemeEditorWindow instance and tree selection
+        ThemeEditorWindow editorWin;
+        editorWin.show();
+        editorWin.refreshTree("edge#lan");
+        editorWin.close();
+
+        std::cout << " -> PASSED: AddStyleDialog modes, presets, validation, and ThemeEditorWindow integration verified." << std::endl;
+    }
+
+    // =========================================================================
+    // TEST 23: Verifying Editing Existing Named/Custom Styles & AddStyleDialog Edit Mode
+    // =========================================================================
+    {
+        std::cout << "\n[TEST] 23. Verifying Editing Existing Named Styles & Edit Mode..." << std::endl;
+
+        // 1. Edit mode with compound selector
+        AddStyleDialog editCompoundDlg(0, "authservice#api");
+        assert(editCompoundDlg.matchMode() == AddStyleDialog::Compound);
+        assert(editCompoundDlg.componentName() == "authservice");
+        assert(editCompoundDlg.componentType() == "api");
+        assert(editCompoundDlg.styleName() == "authservice#api");
+        assert(editCompoundDlg.isValid() == true); // Saving unchanged does not trigger duplicate collision
+
+        // Rename component name in edit mode
+        editCompoundDlg.setComponentName("securityservice");
+        assert(editCompoundDlg.styleName() == "securityservice#api");
+        assert(editCompoundDlg.isValid() == true);
+
+        // 2. Edit mode with type-only selector
+        AddStyleDialog editTypeDlg(2, "lan");
+        assert(editTypeDlg.matchMode() == AddStyleDialog::TypeOnly);
+        assert(editTypeDlg.componentType() == "lan");
+        assert(editTypeDlg.styleName() == "lan");
+        assert(editTypeDlg.isValid() == true);
+
+        // 3. Edit mode with name-only selector
+        AddStyleDialog editNameDlg(1, "mycontainer");
+        assert(editNameDlg.matchMode() == AddStyleDialog::NameOnly);
+        assert(editNameDlg.componentName() == "mycontainer");
+        assert(editNameDlg.styleName() == "mycontainer");
+        assert(editNameDlg.isValid() == true);
+
+        // 4. Test programmatic migration of existing style in GraphTheme
+        GraphTheme theme = GraphThemeManager::instance()->theme();
+        GraphComponentTheme customNodeStyle;
+        customNodeStyle.normal.background = QColor(220, 50, 80);
+        customNodeStyle.normal.borderWidth = 4;
+        theme.nodeTypeThemes["auth#service"] = customNodeStyle;
+
+        assert(theme.nodeTypeThemes.contains("auth#service"));
+        assert(theme.nodeTypeThemes["auth#service"].normal.background == QColor(220, 50, 80));
+
+        // Simulate renaming auth#service -> auth#v2
+        QString oldKey = "auth#service";
+        QString newKey = "auth#v2";
+        theme.nodeTypeThemes[newKey] = theme.nodeTypeThemes.take(oldKey);
+
+        assert(!theme.nodeTypeThemes.contains("auth#service"));
+        assert(theme.nodeTypeThemes.contains("auth#v2"));
+        assert(theme.nodeTypeThemes["auth#v2"].normal.background == QColor(220, 50, 80));
+        assert(theme.nodeTypeThemes["auth#v2"].normal.borderWidth == 4);
+
+        // 5. Test ThemeEditorWindow tree selection and refresh
+        ThemeEditorWindow editorWin;
+        editorWin.show();
+        editorWin.refreshTree("node#auth#v2");
+        editorWin.close();
+
+        std::cout << " -> PASSED: Editing existing named styles, AddStyleDialog pre-filling, validation, and theme data migration verified." << std::endl;
+    }
+
     std::cout << "\n==============================================" << std::endl;
-    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (18/18)" << std::endl;
+    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (23/23)" << std::endl;
     std::cout << "==============================================" << std::endl;
 
     return 0;
