@@ -2121,6 +2121,20 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     edgePen.setJoinStyle(Qt::RoundJoin);
     edgePen.setCapStyle(Qt::RoundCap);
 
+    if (isExternalLink_)
+    {
+        // Check for custom external theme override in theme manager
+        const auto& extTheme = theme.edgeTheme(name(), "external");
+        const GraphEdgeState* extState = isSelected() ? &extTheme.selected : (hovered_ ? &extTheme.hover : &extTheme.normal);
+
+        QColor extLineColor = (extState != &theme.edge.normal && extState->lineColor.isValid())
+                            ? extState->lineColor
+                            : QColor("#88c0d0");
+        edgePen.setColor(extLineColor);
+        edgePen.setStyle(Qt::DashLine);
+        edgePen.setWidthF(std::max(1.8, effectiveLineWidth));
+    }
+
     painter->setPen(edgePen);
     painter->setBrush(Qt::NoBrush);
     painter->drawPath(cachedPath_);
@@ -2142,15 +2156,23 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
     QPolygonF arrowHead;
     arrowHead << arrowTip << arrowP1 << arrowP2;
 
-    QPen arrowPen(arrow.lineColor);
+    QColor arrowLineColor = isExternalLink_ ? edgePen.color() : arrow.lineColor;
+    QColor arrowFillColor = isExternalLink_ ? edgePen.color() : arrow.fillColor;
+
+    QPen arrowPen(arrowLineColor);
     arrowPen.setWidth(arrow.lineWidth);
     arrowPen.setJoinStyle(Qt::RoundJoin);
 
     painter->setPen(arrowPen);
-    painter->setBrush(arrow.fillColor);
+    painter->setBrush(arrowFillColor);
     painter->drawPolygon(arrowHead);
 
     QString title = cachedTitle_;
+    if (isExternalLink_)
+    {
+        QString dirArrow = isOutgoing_ ? "↗ " : "↙ ";
+        title = dirArrow + title + " [ext]";
+    }
     bool hasTitle = !title.isEmpty();
 
     qreal t = 0.5;
@@ -2171,7 +2193,11 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
         font.setBold(label.bold);
         painter->setFont(font);
 
-        QRect textRect = cachedTitleRect_;
+        QFontMetrics fm(font);
+        int textW = fm.horizontalAdvance(title);
+        int textH = fm.height();
+        QRect textRect(0, 0, textW, textH);
+
         qreal badgeHalfHeight = (textRect.height() / 2.0) + label.paddingY;
         verticalDistance = (effectiveLineWidth / 2.0) + label.offset + badgeHalfHeight;
 
@@ -2182,14 +2208,18 @@ void GraphEdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
         painter->translate(p1);
         painter->rotate(degrees);
 
-        QPen bgPen(label.borderColor);
+        QPen bgPen(isExternalLink_ ? edgePen.color() : label.borderColor);
         bgPen.setWidth(label.borderWidth);
+        if (isExternalLink_)
+        {
+            bgPen.setStyle(Qt::DashLine);
+        }
 
         painter->setPen(bgPen);
         painter->setBrush(label.backgroundColor);
         painter->drawRoundedRect(bgRect, label.radius, label.radius);
 
-        painter->setPen(label.textColor);
+        painter->setPen(isExternalLink_ ? edgePen.color().lighter(120) : label.textColor);
         painter->drawText(bgRect, Qt::AlignCenter, title);
         painter->restore();
     }

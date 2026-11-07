@@ -98,6 +98,10 @@ public:
 
     bool isHovered() const { return hovered_; }
 
+    bool isExternalLink() const { return isExternalLink_; }
+    bool isOutgoing() const { return isOutgoing_; }
+    void setIsExternalLink(bool ext, bool isOutgoing = true) { isExternalLink_ = ext; isOutgoing_ = isOutgoing; }
+
     static void updateSceneEdges(QGraphicsScene* scene);
 
 public slots:
@@ -193,6 +197,8 @@ private:
     QStringList consolidatedTypes_;
     Status consolidatedStatus_{Status::Approved};
     bool consolidatedHasIssues_{false};
+    bool isExternalLink_{false};
+    bool isOutgoing_{true};
 };
 
 #endif

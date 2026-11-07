@@ -52,6 +52,8 @@
 #include "config/ApplicationConfig.h"
 #include "PreferencesDialog.h"
 #include "ContainerScopeBar.h"
+#include "ContainerBoundaryItem.h"
+#include "EditorDialogs/ContainerSizeDialog.h"
 #include <QFontDialog>
 #include <QTime>
 #include <QCloseEvent>
@@ -150,6 +152,7 @@ void MainWindow::setupUi()
     connect(scopeBar_, &ContainerScopeBar::rootClicked, this, &MainWindow::exitContainerScope);
     connect(scopeBar_, &ContainerScopeBar::crumbClicked, this, &MainWindow::focusIntoContainer);
     connect(scopeBar_, &ContainerScopeBar::exitClicked, this, &MainWindow::exitContainerScope);
+    connect(scopeBar_, &ContainerScopeBar::manageSizeClicked, this, &MainWindow::openActiveContainerSizeDialog);
     connect(scopeBar_, &ContainerScopeBar::addChildNodeClicked, this, [this]() {
         if (activeContainerScope_.has_value()) {
             QPointF targetPos(100, 100);
@@ -1496,6 +1499,19 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
             nodeItem = new GraphNodeItem(model_, n.id);
         }
 
+        bool isProxy = false;
+        bool isOut = true;
+        if (!n.metadata.empty())
+        {
+            auto doc = QJsonDocument::fromJson(QString::fromStdString(n.metadata).toUtf8());
+            if (doc.isObject())
+            {
+                isProxy = doc.object()["_is_external_proxy"].toBool(false);
+                isOut = (doc.object()["_external_direction"].toString("outgoing") == "outgoing");
+            }
+        }
+        nodeItem->setExternalProxy(isProxy, isOut);
+
         nodeItem->setFlag(QGraphicsItem::ItemIsSelectable, selectable);
         nodeItem->setFlag(QGraphicsItem::ItemIsMovable, movable);
         nodeItem->setAcceptHoverEvents(true);
@@ -1638,6 +1654,14 @@ void MainWindow::renderGraph(const GraphSnapshot& snap)
             {
                 auto* edgeItem = new GraphEdgeItem(model_, e.id, srcNode, dstNode);
                 edgeItem->setFlag(QGraphicsItem::ItemIsSelectable, true);
+
+                bool srcProxy = srcNode->isExternalProxy();
+                bool dstProxy = dstNode->isExternalProxy();
+                if (srcProxy || dstProxy)
+                {
+                    edgeItem->setIsExternalLink(true, dstProxy); // outgoing if destination is the external proxy
+                }
+
                 scene_->addItem(edgeItem);
                 edgeItem->updateEndpoints();
             }
@@ -1669,6 +1693,24 @@ void MainWindow::saveLayout()
 
         NodeId id = nodeItem->nodeId();
         QPointF p = nodeItem->pos();
+
+        if (nodeItem->isExternalProxy())
+        {
+            auto nodeOpt = model_->getNodeById(id);
+            if (nodeOpt)
+            {
+                QJsonObject obj;
+                if (!nodeOpt->metadata.empty())
+                {
+                    QJsonDocument existingDoc = QJsonDocument::fromJson(QString::fromStdString(nodeOpt->metadata).toUtf8());
+                    if (existingDoc.isObject()) obj = existingDoc.object();
+                }
+                obj["_scoped_proxy_x"] = p.x();
+                obj["_scoped_proxy_y"] = p.y();
+                model_->setNodeMetadata(id, QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString());
+            }
+            continue;
+        }
 
         QJsonObject obj;
         auto nodeOpt = model_->getNodeById(id);
@@ -3534,9 +3576,11 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
         auto nodeOpt = model_->getNodeById(id);
         auto summary = model_->getContainerGovernanceSummary(id);
         QAction* focusAct = nullptr;
+        QAction* sizeAct = nullptr;
         if (nodeOpt && (nodeOpt->type == "container" || summary.totalChildren > 0))
         {
             focusAct = menu.addAction(QIcon(":/icons/layers.svg"), "Drill Down / Edit Container Separately (Ctrl+Down)");
+            sizeAct  = menu.addAction("📐 Manage Container Size...");
         }
 
         menu.addSeparator();
@@ -3566,6 +3610,11 @@ void MainWindow::onNavigatorContextMenu(const QPoint& pos)
         if (chosen == focusAct)
         {
             focusIntoContainer(id);
+            return;
+        }
+        else if (chosen == sizeAct)
+        {
+            openContainerSizeDialog(id);
             return;
         }
         else if (chosen == showAct)
@@ -4140,6 +4189,23 @@ GraphSnapshot MainWindow::extractScopedSnapshot(NodeId containerId) const
 
     std::unordered_set<NodeId> scopedNodeIds = collectScopedNodeIds(containerId);
 
+    qreal cWidth = 800.0;
+    qreal cHeight = 600.0;
+    auto targetOpt = model_->getNodeById(containerId);
+    if (targetOpt && !targetOpt->metadata.empty())
+    {
+        auto doc = QJsonDocument::fromJson(QString::fromStdString(targetOpt->metadata).toUtf8());
+        if (doc.isObject())
+        {
+            auto obj = doc.object();
+            if (obj.contains("_width")) cWidth = obj["_width"].toDouble(cWidth);
+            if (obj.contains("_height")) cHeight = obj["_height"].toDouble(cHeight);
+        }
+    }
+
+    qreal maxInternalX = 200.0;
+    qreal maxInternalY = 200.0;
+
     // containerId itself is NOT added as a node item: its interior IS the canvas!
     for (const auto& n : model_->nodes())
     {
@@ -4151,17 +4217,125 @@ GraphSnapshot MainWindow::extractScopedSnapshot(NodeId containerId) const
             {
                 scopedNode.parentId = std::nullopt;
             }
+            if (!scopedNode.metadata.empty())
+            {
+                auto doc = QJsonDocument::fromJson(QString::fromStdString(scopedNode.metadata).toUtf8());
+                if (doc.isObject())
+                {
+                    qreal x = doc.object()["x"].toDouble(0);
+                    qreal y = doc.object()["y"].toDouble(0);
+                    maxInternalX = std::max(maxInternalX, x + 160.0);
+                    maxInternalY = std::max(maxInternalY, y + 80.0);
+                }
+            }
             snap.nodes.push_back(scopedNode);
         }
     }
 
-    // Zero outer edges: strictly internal edges where both src and dst belong to the scoped set
+    cWidth = std::max(cWidth, maxInternalX + 40.0);
+    cHeight = std::max(cHeight, maxInternalY + 40.0);
+
+    // Identify Internal and External (Cross-Boundary) Edges
+    std::unordered_set<NodeId> externalProxyNodeIds;
+    std::unordered_map<NodeId, bool> externalNodeIsOutgoing;
+    std::unordered_map<NodeId, QPointF> internalAnchorPositions;
+
     for (const auto& e : model_->edges())
     {
-        if (scopedNodeIds.count(e.srcNode) > 0 && scopedNodeIds.count(e.dstNode) > 0)
+        bool srcIn = scopedNodeIds.count(e.srcNode) > 0;
+        bool dstIn = scopedNodeIds.count(e.dstNode) > 0;
+
+        if (srcIn && dstIn)
         {
             snap.edges.push_back(e);
         }
+        else if (srcIn && !dstIn)
+        {
+            // Outgoing external link: Internal -> Outside
+            snap.edges.push_back(e);
+            externalProxyNodeIds.insert(e.dstNode);
+            externalNodeIsOutgoing[e.dstNode] = true;
+
+            auto sOpt = model_->getNodeById(e.srcNode);
+            if (sOpt && !sOpt->metadata.empty())
+            {
+                auto doc = QJsonDocument::fromJson(QString::fromStdString(sOpt->metadata).toUtf8());
+                if (doc.isObject())
+                {
+                    internalAnchorPositions[e.dstNode] = QPointF(doc.object()["x"].toDouble(100),
+                                                                 doc.object()["y"].toDouble(100));
+                }
+            }
+        }
+        else if (!srcIn && dstIn)
+        {
+            // Incoming external link: Outside -> Internal
+            snap.edges.push_back(e);
+            externalProxyNodeIds.insert(e.srcNode);
+            if (externalNodeIsOutgoing.find(e.srcNode) == externalNodeIsOutgoing.end())
+            {
+                externalNodeIsOutgoing[e.srcNode] = false;
+            }
+
+            auto dOpt = model_->getNodeById(e.dstNode);
+            if (dOpt && !dOpt->metadata.empty())
+            {
+                auto doc = QJsonDocument::fromJson(QString::fromStdString(dOpt->metadata).toUtf8());
+                if (doc.isObject())
+                {
+                    internalAnchorPositions[e.srcNode] = QPointF(doc.object()["x"].toDouble(100),
+                                                                 doc.object()["y"].toDouble(100));
+                }
+            }
+        }
+    }
+
+    // Add External Proxy Nodes to the snapshot on the periphery
+    int outIdx = 0;
+    int inIdx = 0;
+    for (NodeId extId : externalProxyNodeIds)
+    {
+        auto extOpt = model_->getNodeById(extId);
+        if (!extOpt) continue;
+
+        NodeData extProxy = *extOpt;
+        extProxy.parentId = std::nullopt;
+
+        QJsonObject obj;
+        if (!extProxy.metadata.empty())
+        {
+            auto doc = QJsonDocument::fromJson(QString::fromStdString(extProxy.metadata).toUtf8());
+            if (doc.isObject()) obj = doc.object();
+        }
+
+        bool isOut = externalNodeIsOutgoing[extId];
+        obj["_is_external_proxy"] = true;
+        obj["_external_direction"] = isOut ? "outgoing" : "incoming";
+
+        if (obj.contains("_scoped_proxy_x") && obj.contains("_scoped_proxy_y"))
+        {
+            obj["x"] = obj["_scoped_proxy_x"];
+            obj["y"] = obj["_scoped_proxy_y"];
+        }
+        else
+        {
+            QPointF anchor = internalAnchorPositions[extId];
+            if (isOut)
+            {
+                obj["x"] = cWidth + 70.0;
+                obj["y"] = anchor.y() + (outIdx * 100.0);
+                outIdx++;
+            }
+            else
+            {
+                obj["x"] = -220.0;
+                obj["y"] = anchor.y() + (inIdx * 100.0);
+                inIdx++;
+            }
+        }
+
+        extProxy.metadata = QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString();
+        snap.nodes.push_back(extProxy);
     }
 
     snap.layers = model_->layers();
@@ -4178,8 +4352,22 @@ void MainWindow::refreshActiveGraph()
         renderGraph(scopedSnap);
         if (scopeBar_)
         {
-            scopeBar_->setScopeInfo(static_cast<int>(scopedSnap.nodes.size()),
-                                    static_cast<int>(scopedSnap.edges.size()));
+            int internalNodeCount = 0;
+            int internalEdgeCount = 0;
+            int externalEdgeCount = 0;
+            for (QGraphicsItem* it : scene_->items())
+            {
+                if (auto* n = dynamic_cast<GraphNodeItem*>(it))
+                {
+                    if (!n->isExternalProxy()) internalNodeCount++;
+                }
+                else if (auto* e = dynamic_cast<GraphEdgeItem*>(it))
+                {
+                    if (e->isExternalLink()) externalEdgeCount++;
+                    else internalEdgeCount++;
+                }
+            }
+            scopeBar_->setScopeInfo(internalNodeCount, internalEdgeCount, externalEdgeCount);
         }
     }
     else
@@ -4208,6 +4396,16 @@ void MainWindow::applyContainerScope(std::optional<NodeId> containerId)
 
     if (!containerId.has_value())
     {
+        if (boundaryItem_)
+        {
+            if (boundaryItem_->scene() == scene_)
+            {
+                scene_->removeItem(boundaryItem_);
+            }
+            delete boundaryItem_;
+            boundaryItem_ = nullptr;
+        }
+
         if (scopeBar_)
         {
             scopeBar_->clearScope();
@@ -4226,6 +4424,24 @@ void MainWindow::applyContainerScope(std::optional<NodeId> containerId)
 
     NodeId targetId = *containerId;
 
+    // Read container dimensions & name
+    auto targetOpt = model_->getNodeById(targetId);
+    QString targetName = targetOpt ? QString::fromStdString(targetOpt->name) : QString("Container #%1").arg(targetId);
+    qreal cWidth = 800.0;
+    qreal cHeight = 600.0;
+    bool isLocked = false;
+    if (targetOpt && !targetOpt->metadata.empty())
+    {
+        auto doc = QJsonDocument::fromJson(QString::fromStdString(targetOpt->metadata).toUtf8());
+        if (doc.isObject())
+        {
+            auto obj = doc.object();
+            if (obj.contains("_width")) cWidth = obj["_width"].toDouble(cWidth);
+            if (obj.contains("_height")) cHeight = obj["_height"].toDouble(cHeight);
+            if (obj.contains("_dim_lock")) isLocked = obj["_dim_lock"].toBool(false);
+        }
+    }
+
     // Build breadcrumb trail details for the UI bar
     std::vector<std::pair<NodeId, QString>> trailDisplay;
     for (NodeId id : containerBreadcrumbTrail_)
@@ -4243,12 +4459,56 @@ void MainWindow::applyContainerScope(std::optional<NodeId> containerId)
     GraphSnapshot scopedSnap = extractScopedSnapshot(targetId);
     renderGraph(scopedSnap);
 
-    int scopedNodeCount = static_cast<int>(scopedSnap.nodes.size());
-    int internalEdgeCount = static_cast<int>(scopedSnap.edges.size());
+    // Compute internal vs external counts
+    int internalNodeCount = 0;
+    int internalEdgeCount = 0;
+    int externalEdgeCount = 0;
+
+    for (QGraphicsItem* it : scene_->items())
+    {
+        if (auto* n = dynamic_cast<GraphNodeItem*>(it))
+        {
+            if (!n->isExternalProxy()) internalNodeCount++;
+        }
+        else if (auto* e = dynamic_cast<GraphEdgeItem*>(it))
+        {
+            if (e->isExternalLink()) externalEdgeCount++;
+            else internalEdgeCount++;
+        }
+    }
 
     if (scopeBar_)
     {
-        scopeBar_->setScopeInfo(scopedNodeCount, internalEdgeCount);
+        scopeBar_->setScopeInfo(internalNodeCount, internalEdgeCount, externalEdgeCount);
+    }
+
+    // Update or create Container Boundary Guideline Item
+    if (!boundaryItem_)
+    {
+        boundaryItem_ = new ContainerBoundaryItem(targetId, targetName, cWidth, cHeight, isLocked);
+        scene_->addItem(boundaryItem_);
+        connect(boundaryItem_, &ContainerBoundaryItem::dimensionsChanged, this, [this, targetId](qreal newW, qreal newH) {
+            if (!model_) return;
+            auto n = model_->getNodeById(targetId);
+            if (!n) return;
+            QJsonObject obj;
+            if (!n->metadata.empty()) {
+                auto doc = QJsonDocument::fromJson(QString::fromStdString(n->metadata).toUtf8());
+                if (doc.isObject()) obj = doc.object();
+            }
+            obj["_width"] = newW;
+            obj["_height"] = newH;
+            model_->setNodeMetadata(targetId, QJsonDocument(obj).toJson(QJsonDocument::Compact).toStdString());
+            setSaveStatus(DbSaveState::Saved, QString("Updated container bounds to %1 × %2 px").arg(static_cast<int>(newW)).arg(static_cast<int>(newH)));
+        });
+    }
+    else
+    {
+        if (boundaryItem_->scene() != scene_)
+        {
+            scene_->addItem(boundaryItem_);
+        }
+        boundaryItem_->setDimensions(cWidth, cHeight, isLocked);
     }
 
     if (graphView_)
@@ -4260,8 +4520,42 @@ void MainWindow::applyContainerScope(std::optional<NodeId> containerId)
         }
     }
 
-    auto targetOpt = model_->getNodeById(targetId);
-    QString targetName = targetOpt ? QString::fromStdString(targetOpt->name) : QString::number(targetId);
-    statusBar()->showMessage(QString("Scoped into container: %1 (%2 internal nodes, %3 internal edges)")
-        .arg(targetName).arg(scopedNodeCount).arg(internalEdgeCount), 3000);
+    statusBar()->showMessage(QString("Scoped into container: %1 (%2 internal nodes, %3 internal edges, %4 external links)")
+        .arg(targetName).arg(internalNodeCount).arg(internalEdgeCount).arg(externalEdgeCount), 3000);
+}
+
+void MainWindow::openContainerSizeDialog(NodeId containerId)
+{
+    if (!model_) return;
+
+    ContainerSizeDialog dlg(model_, containerId, this);
+    if (dlg.exec() == QDialog::Accepted)
+    {
+        setSaveStatus(DbSaveState::Saved, "Updated container dimensions & sizing mode");
+        refreshActiveGraph();
+        if (activeContainerScope_.has_value() && *activeContainerScope_ == containerId && boundaryItem_)
+        {
+            auto n = model_->getNodeById(containerId);
+            if (n && !n->metadata.empty())
+            {
+                auto doc = QJsonDocument::fromJson(QString::fromStdString(n->metadata).toUtf8());
+                if (doc.isObject())
+                {
+                    auto obj = doc.object();
+                    qreal w = obj.contains("_width") ? obj["_width"].toDouble(800) : 800;
+                    qreal h = obj.contains("_height") ? obj["_height"].toDouble(600) : 600;
+                    bool lock = obj.contains("_dim_lock") ? obj["_dim_lock"].toBool(false) : false;
+                    boundaryItem_->setDimensions(w, h, lock);
+                }
+            }
+        }
+    }
+}
+
+void MainWindow::openActiveContainerSizeDialog()
+{
+    if (activeContainerScope_.has_value())
+    {
+        openContainerSizeDialog(*activeContainerScope_);
+    }
 }

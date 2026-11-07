@@ -286,12 +286,34 @@ GraphNodeItem::CustomDimensions GraphNodeItem::getCustomDimensions() const
         }
     }
 
+    if (obj.contains("_padding"))
+    {
+        QJsonValue val = obj["_padding"];
+        if (val.isDouble())
+        {
+            dims.padding = val.toDouble();
+        }
+        else if (val.isString())
+        {
+            bool ok = false;
+            double d = val.toString().toDouble(&ok);
+            if (ok) dims.padding = d;
+        }
+    }
+
     return dims;
 }
 
 bool GraphNodeItem::isDimLocked() const
 {
     return getCustomDimensions().dimLock;
+}
+
+void GraphNodeItem::setExternalProxy(bool proxy, bool isOutgoing)
+{
+    isExternalProxy_ = proxy;
+    isOutgoingProxy_ = isOutgoing;
+    update();
 }
 
 QRectF GraphNodeItem::foldToggleRect() const
@@ -682,11 +704,10 @@ QRectF GraphNodeItem::calculateContainerRect()
         }
     }
 
-    const qreal padding = 20.0;
+    CustomDimensions dims = getCustomDimensions();
+    const qreal padding = dims.padding.value_or(20.0);
     const qreal minW = containerTheme.minWidth;
     const qreal minH = containerTheme.minHeight;
-
-    CustomDimensions dims = getCustomDimensions();
 
     qreal computedWidth = 0.0;
     qreal computedHeight = 0.0;
@@ -901,8 +922,21 @@ void GraphNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
             containerPen.setDashPattern(state->dashPattern);
         }
 
+        if (isExternalProxy_)
+        {
+            containerPen.setStyle(Qt::DashLine);
+            containerPen.setColor(QColor("#88c0d0"));
+            containerPen.setWidthF(1.8);
+            QColor bg = state->background;
+            bg.setAlpha(160);
+            painter->setBrush(bg);
+        }
+        else
+        {
+            painter->setBrush(state->background);
+        }
+
         painter->setPen(containerPen);
-        painter->setBrush(state->background);
         painter->drawPath(bodyPath);
 
         QPainterPath headerPath;
@@ -1032,9 +1066,34 @@ void GraphNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QW
             nodePen.setDashPattern(state->dashPattern);
         }
 
+        if (isExternalProxy_)
+        {
+            nodePen.setStyle(Qt::DashLine);
+            nodePen.setColor(QColor("#88c0d0"));
+            nodePen.setWidthF(1.8);
+            QColor bg = state->background;
+            bg.setAlpha(160);
+            painter->setBrush(bg);
+        }
+        else
+        {
+            painter->setBrush(state->background);
+        }
+
         painter->setPen(nodePen);
-        painter->setBrush(state->background);
         painter->drawPath(path);
+
+        if (isExternalProxy_)
+        {
+            QString proxyTag = isOutgoingProxy_ ? "↗ External Target" : "↙ External Source";
+            QFont pFont = painter->font();
+            pFont.setPointSize(7);
+            pFont.setBold(true);
+            painter->setFont(pFont);
+            painter->setPen(QColor("#88c0d0"));
+            QRectF tagRect(cachedRect_.left() + 8, cachedRect_.top() + 3, cachedRect_.width() - 16, 12);
+            painter->drawText(tagRect, Qt::AlignLeft | Qt::AlignVCenter, proxyTag);
+        }
 
         painter->setFont(cachedTitleFont_);
         painter->setPen(state->title.color);
@@ -1611,10 +1670,12 @@ void GraphNodeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
 
     QMenu menu;
     QAction* focusAct = nullptr;
+    QAction* sizeAct  = nullptr;
     QAction* foldAct  = nullptr;
-    if (isContainer())
+    if (isContainer() || canAcceptChildren())
     {
         focusAct = menu.addAction(QIcon(":/icons/layers.svg"), "Drill Down / Edit Container Separately (Ctrl+Down)");
+        sizeAct  = menu.addAction("📐 Manage Container Size...");
         foldAct  = menu.addAction(isFolded_ ? "Expand Container" : "Fold Container");
         menu.addSeparator();
     }
@@ -1657,6 +1718,10 @@ void GraphNodeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     if (selected == focusAct)
     {
         if (mainWin) mainWin->focusIntoContainer(nodeId_);
+    }
+    else if (selected == sizeAct)
+    {
+        if (mainWin) mainWin->openContainerSizeDialog(nodeId_);
     }
     else if (selected == foldAct)
     {

@@ -48,6 +48,7 @@ class QMenu;
 class QAction;
 class ThemeEditorDock;
 class ContainerScopeBar;
+class ContainerBoundaryItem;
 
 class MainWindow : public QMainWindow
 {
@@ -106,15 +107,17 @@ public slots:
     void exitContainerScope();
     void applyContainerScope(std::optional<NodeId> containerId);
     void focusSelectedContainer();
+    void openContainerSizeDialog(NodeId containerId);
+    void openActiveContainerSizeDialog();
     std::optional<NodeId> activeContainerScope() const { return activeContainerScope_; }
     ContainerScopeBar* containerScopeBar() const { return scopeBar_; }
     std::unordered_set<NodeId> collectScopedNodeIds(NodeId rootContainerId) const;
     GraphSnapshot extractScopedSnapshot(NodeId containerId) const;
     void refreshActiveGraph();
+    void saveLayout();
     QGraphicsScene* scene() const { return scene_; }
 
 private slots:
-    void saveLayout();
     void scheduleAutoSave();
     void openPreferencesDialog();
     void openFontChooserDialog();
@@ -295,6 +298,7 @@ private:
 
     QWidget* canvasContainer_{nullptr};
     ContainerScopeBar* scopeBar_{nullptr};
+    ContainerBoundaryItem* boundaryItem_{nullptr};
     std::optional<NodeId> activeContainerScope_{std::nullopt};
     std::vector<NodeId> containerBreadcrumbTrail_;
     QAction* actionFocusContainer_{nullptr};

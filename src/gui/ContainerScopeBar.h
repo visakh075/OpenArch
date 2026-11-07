@@ -18,7 +18,7 @@ public:
     explicit ContainerScopeBar(QWidget* parent = nullptr);
 
     void setBreadcrumbTrail(const std::vector<std::pair<NodeId, QString>>& trail);
-    void setScopeInfo(int nodeCount, int internalEdgeCount);
+    void setScopeInfo(int nodeCount, int internalEdgeCount, int externalEdgeCount = 0);
     void clearScope();
     bool isScoped() const { return isScoped_; }
 
@@ -31,6 +31,7 @@ signals:
     void exitClicked();
     void addChildNodeClicked();
     void frameViewClicked();
+    void manageSizeClicked();
 
 private:
     void clearCrumbsLayout();
@@ -40,6 +41,7 @@ private:
     QWidget* crumbsContainer_{nullptr};
     QHBoxLayout* crumbsLayout_{nullptr};
     QLabel* infoLabel_{nullptr};
+    QPushButton* btnManageSize_{nullptr};
     QPushButton* btnAddChild_{nullptr};
     QPushButton* btnFrameView_{nullptr};
     QPushButton* btnExit_{nullptr};

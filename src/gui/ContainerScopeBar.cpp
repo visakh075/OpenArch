@@ -41,6 +41,12 @@ ContainerScopeBar::ContainerScopeBar(QWidget* parent)
     mainLayout_->addWidget(infoLabel_);
 
     // 4. Quick Action Buttons
+    btnManageSize_ = new QPushButton("📐 Size", this);
+    btnManageSize_->setCursor(Qt::PointingHandCursor);
+    btnManageSize_->setToolTip("Manage container dimensions, padding, and layout bounds");
+    connect(btnManageSize_, &QPushButton::clicked, this, &ContainerScopeBar::manageSizeClicked);
+    mainLayout_->addWidget(btnManageSize_);
+
     btnAddChild_ = new QPushButton("+ Add Node Here", this);
     btnAddChild_->setCursor(Qt::PointingHandCursor);
     btnAddChild_->setToolTip("Add a new node directly inside this container");
@@ -149,14 +155,21 @@ void ContainerScopeBar::setBreadcrumbTrail(const std::vector<std::pair<NodeId, Q
     }
 }
 
-void ContainerScopeBar::setScopeInfo(int nodeCount, int internalEdgeCount)
+void ContainerScopeBar::setScopeInfo(int nodeCount, int internalEdgeCount, int externalEdgeCount)
 {
     const auto colors = ApplicationThemeManager::currentThemeColors();
-    infoLabel_->setText(QString("Scope: %1 Node%2, %3 Edge%4")
+    QString text = QString("Scope: %1 Node%2, %3 Internal Edge%4")
         .arg(nodeCount)
         .arg(nodeCount == 1 ? "" : "s")
         .arg(internalEdgeCount)
-        .arg(internalEdgeCount == 1 ? "" : "s"));
+        .arg(internalEdgeCount == 1 ? "" : "s");
+    if (externalEdgeCount > 0)
+    {
+        text += QString(" | ↗ %1 External Link%2")
+            .arg(externalEdgeCount)
+            .arg(externalEdgeCount == 1 ? "" : "s");
+    }
+    infoLabel_->setText(text);
     infoLabel_->setStyleSheet(QString("color: %1; font-size: 11px; padding: 0 8px; font-weight: 500;")
         .arg(colors.text.name()));
 }
@@ -204,6 +217,7 @@ void ContainerScopeBar::updateThemeStyle()
     ).arg(btnBg, textCol, borderCol, accentCol);
 
     btnBack_->setStyleSheet(defaultBtnStyle);
+    if (btnManageSize_) btnManageSize_->setStyleSheet(defaultBtnStyle);
     btnAddChild_->setStyleSheet(defaultBtnStyle);
     btnFrameView_->setStyleSheet(defaultBtnStyle);
 

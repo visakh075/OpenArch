@@ -93,9 +93,14 @@ public:
         std::optional<qreal> width;
         std::optional<qreal> height;
         bool dimLock{false};
+        std::optional<qreal> padding;
     };
     CustomDimensions getCustomDimensions() const;
     bool isDimLocked() const;
+
+    bool isExternalProxy() const { return isExternalProxy_; }
+    bool isOutgoingProxy() const { return isOutgoingProxy_; }
+    void setExternalProxy(bool proxy, bool isOutgoing = true);
 
     static bool showGovernanceBadges();
     static void setShowGovernanceBadges(bool show);
@@ -156,4 +161,7 @@ private:
     QFont  cachedTitleFont_;
     QFont  cachedBodyFont_;
     QFont  cachedTertiaryFont_;
+
+    bool isExternalProxy_{false};
+    bool isOutgoingProxy_{true};
 };

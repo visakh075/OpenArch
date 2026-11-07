@@ -20,6 +20,8 @@
 #include "config/ApplicationConfig.h"
 #include "PreferencesDialog.h"
 #include "ContainerScopeBar.h"
+#include "ContainerBoundaryItem.h"
+#include "EditorDialogs/ContainerSizeDialog.h"
 #include "db/DbManagerSQLite.h"
 #include <QTemporaryFile>
 #include <QFileInfo>
@@ -1060,38 +1062,49 @@ int main(int argc, char** argv)
         assert(scopedSet.count(podId) > 0);
         assert(scopedSet.count(outsideId) == 0);
 
-        // Verify Full-Screen Redraw Snapshot (Zero Outer Edges)
+        // Verify Full-Screen Redraw Snapshot (with Cross-Boundary External Links)
         GraphSnapshot vpcSnap = scopeWindow.extractScopedSnapshot(vpcId);
-        assert(vpcSnap.nodes.size() == 3); // authId, k8sId, podId (vpcId itself is NOT a node item)
-        assert(vpcSnap.edges.size() == 1); // internalEdge only! externalEdge is 100% excluded!
-        assert(vpcSnap.edges.front().srcNode == authId);
-        assert(vpcSnap.edges.front().dstNode == podId);
+        assert(vpcSnap.nodes.size() == 4); // authId, k8sId, podId (internal) + outsideId (external proxy node)
+        assert(vpcSnap.edges.size() == 2); // internalEdge (authId -> podId) + externalEdge (outsideId -> authId)
 
         // Verify direct children of vpcId have parentId == nullopt in scoped snapshot (canvas top-level)
         for (const auto& sn : vpcSnap.nodes) {
-            if (sn.id == authId || sn.id == k8sId) {
-                assert(!sn.parentId.has_value()); // Direct children are top-level on scoped canvas
+            if (sn.id == authId || sn.id == k8sId || sn.id == outsideId) {
+                assert(!sn.parentId.has_value()); // Direct children and proxy nodes are top-level on scoped canvas
             } else if (sn.id == podId) {
                 assert(sn.parentId.has_value() && *sn.parentId == k8sId); // Nested child retains its parent
             }
         }
 
-        // Verify Scene items in scopeWindow: exactly 3 GraphNodeItems, 1 GraphEdgeItem
+        // Verify Scene items in scopeWindow: 4 GraphNodeItems (3 internal + 1 external proxy), 2 GraphEdgeItems (1 internal + 1 external)
         int sceneNodeCount = 0;
         int sceneEdgeCount = 0;
+        int externalProxyCount = 0;
+        int externalEdgeCount = 0;
         for (QGraphicsItem* it : scopeWindow.scene()->items()) {
             if (auto* n = dynamic_cast<GraphNodeItem*>(it)) {
                 sceneNodeCount++;
                 assert(n->nodeId() != vpcId); // Container itself is NOT in scene
-                assert(n->nodeId() != outsideId); // External node is NOT in scene
+                if (n->isExternalProxy()) {
+                    externalProxyCount++;
+                    assert(n->nodeId() == outsideId);
+                }
             } else if (auto* e = dynamic_cast<GraphEdgeItem*>(it)) {
                 sceneEdgeCount++;
-                assert(e->srcNode()->nodeId() == authId);
-                assert(e->dstNode()->nodeId() == podId);
+                if (e->isExternalLink()) {
+                    externalEdgeCount++;
+                    assert(e->srcNode()->nodeId() == outsideId);
+                    assert(e->dstNode()->nodeId() == authId);
+                } else {
+                    assert(e->srcNode()->nodeId() == authId);
+                    assert(e->dstNode()->nodeId() == podId);
+                }
             }
         }
-        assert(sceneNodeCount == 3);
-        assert(sceneEdgeCount == 1); // ZERO outer edges!
+        assert(sceneNodeCount == 4);
+        assert(sceneEdgeCount == 2);
+        assert(externalProxyCount == 1);
+        assert(externalEdgeCount == 1);
 
         // 3. Drill deeper into nested k8s cluster
         scopeWindow.focusIntoContainer(k8sId);
@@ -1103,16 +1116,15 @@ int main(int argc, char** argv)
         assert(k8sScoped.count(authId) == 0);
 
         GraphSnapshot k8sSnap = scopeWindow.extractScopedSnapshot(k8sId);
-        assert(k8sSnap.nodes.size() == 1);
-        assert(k8sSnap.nodes.front().id == podId);
-        assert(!k8sSnap.nodes.front().parentId.has_value()); // pod is now top-level on k8s canvas!
-        assert(k8sSnap.edges.empty()); // No internal edges inside pod alone
+        // k8sSnap contains podId (internal) + authId (external proxy for authId -> podId link)
+        assert(k8sSnap.nodes.size() == 2);
+        assert(k8sSnap.edges.size() == 1); // incoming external link authId -> podId
 
         // 4. Step back up to VPC
         scopeWindow.stepUpContainerScope();
         assert(scopeWindow.activeContainerScope().has_value());
         assert(*scopeWindow.activeContainerScope() == vpcId);
-        assert(scopeWindow.extractScopedSnapshot(vpcId).nodes.size() == 3);
+        assert(scopeWindow.extractScopedSnapshot(vpcId).nodes.size() == 4);
 
         // 5. Exit container scope back to root
         scopeWindow.exitContainerScope();
@@ -1129,11 +1141,240 @@ int main(int argc, char** argv)
         assert(rootNodeCount == 5);
         assert(rootEdgeCount == 2);
 
-        std::cout << " -> PASSED: Full-screen container sub-diagram redraw, zero outer edges, and hierarchical navigation verified." << std::endl;
+        std::cout << " -> PASSED: Full-screen container sub-diagram redraw, external proxy nodes, cross-boundary links, and hierarchical navigation verified." << std::endl;
+    }
+
+    // =========================================================================
+    // TEST 25: Verifying Container Size Management & External Links Styling
+    // =========================================================================
+    {
+        std::cout << "\n[TEST] 25. Verifying Container Size Management & External Links Styling..." << std::endl;
+
+        QTemporaryFile tempDb25;
+        assert(tempDb25.open());
+        QString dbPath25 = tempDb25.fileName();
+        tempDb25.close();
+
+        MainWindow sizeWindow;
+        sizeWindow.setDb(dbPath25.toStdString());
+        auto* mdl = sizeWindow.model();
+        assert(mdl != nullptr);
+
+        NodeData appBox;
+        appBox.name = "AppBox";
+        appBox.type = "container";
+        QJsonObject appInit;
+        appInit["x"] = 100.0;
+        appInit["y"] = 100.0;
+        appBox.metadata = QJsonDocument(appInit).toJson(QJsonDocument::Compact).toStdString();
+        NodeId appBoxId = 0;
+        assert(mdl->addNode(appBox, appBoxId).ok);
+
+        NodeData innerA;
+        innerA.name = "ServiceA";
+        innerA.type = "service";
+        innerA.parentId = appBoxId;
+        QJsonObject aInit;
+        aInit["x"] = 150.0;
+        aInit["y"] = 150.0;
+        innerA.metadata = QJsonDocument(aInit).toJson(QJsonDocument::Compact).toStdString();
+        NodeId innerAId = 0;
+        assert(mdl->addNode(innerA, innerAId).ok);
+
+        NodeData innerB;
+        innerB.name = "ServiceB";
+        innerB.type = "service";
+        innerB.parentId = appBoxId;
+        QJsonObject bInit;
+        bInit["x"] = 350.0;
+        bInit["y"] = 150.0;
+        innerB.metadata = QJsonDocument(bInit).toJson(QJsonDocument::Compact).toStdString();
+        NodeId innerBId = 0;
+        assert(mdl->addNode(innerB, innerBId).ok);
+
+        NodeData extTarget;
+        extTarget.name = "ExtDatabase";
+        extTarget.type = "database";
+        QJsonObject extTInit;
+        extTInit["x"] = 800.0;
+        extTInit["y"] = 400.0;
+        extTarget.metadata = QJsonDocument(extTInit).toJson(QJsonDocument::Compact).toStdString();
+        NodeId extTargetId = 0;
+        assert(mdl->addNode(extTarget, extTargetId).ok);
+
+        NodeData extSource;
+        extSource.name = "ExtClient";
+        extSource.type = "service";
+        QJsonObject extSInit;
+        extSInit["x"] = 50.0;
+        extSInit["y"] = 400.0;
+        extSource.metadata = QJsonDocument(extSInit).toJson(QJsonDocument::Compact).toStdString();
+        NodeId extSourceId = 0;
+        assert(mdl->addNode(extSource, extSourceId).ok);
+
+        EdgeData edgeInt;
+        edgeInt.srcNode = innerAId;
+        edgeInt.dstNode = innerBId;
+        edgeInt.name = "InternalMsg";
+        edgeInt.edgeType = "queue";
+        EdgeId edgeIntId = 0;
+        assert(mdl->addEdge(edgeInt, edgeIntId).ok);
+
+        EdgeData edgeOut;
+        edgeOut.srcNode = innerBId;
+        edgeOut.dstNode = extTargetId;
+        edgeOut.name = "DbQuery";
+        edgeOut.edgeType = "tcp";
+        EdgeId edgeOutId = 0;
+        assert(mdl->addEdge(edgeOut, edgeOutId).ok);
+
+        EdgeData edgeIn;
+        edgeIn.srcNode = extSourceId;
+        edgeIn.dstNode = innerAId;
+        edgeIn.name = "Ingress";
+        edgeIn.edgeType = "https";
+        EdgeId edgeInId = 0;
+        assert(mdl->addEdge(edgeIn, edgeInId).ok);
+
+        sizeWindow.showNodeInGraph(appBoxId);
+
+        // 1. Verify ContainerSizeDialog on AppBox
+        {
+            ContainerSizeDialog sizeDlg(mdl, appBoxId, &sizeWindow);
+            assert(!sizeDlg.isDimLocked()); // Default is Auto-Fit
+            assert(sizeDlg.padding() == 20.0); // Default padding
+        }
+
+        // Configure manual dimension lock directly via node metadata
+        auto appOpt = mdl->getNodeById(appBoxId);
+        assert(appOpt.has_value());
+        QJsonObject appObj;
+        appObj["_dim_lock"] = true;
+        appObj["_width"] = 920.0;
+        appObj["_height"] = 620.0;
+        appObj["_padding"] = 35.0;
+        appOpt->metadata = QJsonDocument(appObj).toJson(QJsonDocument::Compact).toStdString();
+        assert(mdl->updateNode(*appOpt).ok);
+
+        // Verify ContainerSizeDialog reads updated values
+        {
+            ContainerSizeDialog sizeDlg(mdl, appBoxId, &sizeWindow);
+            assert(sizeDlg.isDimLocked() == true);
+            assert(sizeDlg.customWidth().has_value() && *sizeDlg.customWidth() == 920.0);
+            assert(sizeDlg.customHeight().has_value() && *sizeDlg.customHeight() == 620.0);
+            assert(sizeDlg.padding() == 35.0);
+        }
+
+        // 2. Focus into AppBox container
+        sizeWindow.focusIntoContainer(appBoxId);
+        assert(sizeWindow.activeContainerScope().has_value());
+        assert(*sizeWindow.activeContainerScope() == appBoxId);
+
+        // Verify ContainerBoundaryItem exists in scene
+        ContainerBoundaryItem* boundary = nullptr;
+        for (QGraphicsItem* it : sizeWindow.scene()->items()) {
+            if (auto* b = dynamic_cast<ContainerBoundaryItem*>(it)) {
+                boundary = b;
+                break;
+            }
+        }
+        assert(boundary != nullptr);
+        assert(boundary->isLocked() == true);
+        assert(boundary->boundaryRect().width() == 920.0);
+        assert(boundary->boundaryRect().height() == 620.0);
+
+        // Test boundary resizing
+        boundary->setDimensions(1050.0, 750.0, true);
+        assert(boundary->boundaryRect().width() == 1050.0);
+        assert(boundary->boundaryRect().height() == 750.0);
+
+        // 3. Verify Scoped Items Styling:
+        // Internal Nodes: innerA, innerB (isExternalProxy == false)
+        // External Proxy Nodes: extTarget (outgoing), extSource (incoming)
+        // Internal Edge: innerA -> innerB (isExternalLink == false)
+        // Outgoing Edge: innerB -> extTarget (isExternalLink == true, isOutgoing == true)
+        // Incoming Edge: extSource -> innerA (isExternalLink == true, isOutgoing == false)
+        GraphNodeItem* proxyTargetItem = nullptr;
+        GraphNodeItem* proxySourceItem = nullptr;
+        GraphNodeItem* innerAItem = nullptr;
+        GraphEdgeItem* internalEdgeItem = nullptr;
+        GraphEdgeItem* outgoingEdgeItem = nullptr;
+        GraphEdgeItem* incomingEdgeItem = nullptr;
+
+        for (QGraphicsItem* it : sizeWindow.scene()->items()) {
+            if (auto* n = dynamic_cast<GraphNodeItem*>(it)) {
+                if (n->nodeId() == innerAId) {
+                    innerAItem = n;
+                    assert(!n->isExternalProxy());
+                } else if (n->nodeId() == extTargetId) {
+                    proxyTargetItem = n;
+                    assert(n->isExternalProxy());
+                    assert(n->isOutgoingProxy());
+                } else if (n->nodeId() == extSourceId) {
+                    proxySourceItem = n;
+                    assert(n->isExternalProxy());
+                    assert(!n->isOutgoingProxy());
+                }
+            } else if (auto* e = dynamic_cast<GraphEdgeItem*>(it)) {
+                if (e->edgeId() == edgeIntId) {
+                    internalEdgeItem = e;
+                    assert(!e->isExternalLink());
+                } else if (e->edgeId() == edgeOutId) {
+                    outgoingEdgeItem = e;
+                    assert(e->isExternalLink());
+                    assert(e->isOutgoing());
+                } else if (e->edgeId() == edgeInId) {
+                    incomingEdgeItem = e;
+                    assert(e->isExternalLink());
+                    assert(!e->isOutgoing());
+                }
+            }
+        }
+
+        assert(innerAItem != nullptr);
+        assert(proxyTargetItem != nullptr);
+        assert(proxySourceItem != nullptr);
+        assert(internalEdgeItem != nullptr);
+        assert(outgoingEdgeItem != nullptr);
+        assert(incomingEdgeItem != nullptr);
+
+        // 4. Test Coordinate Safety: Moving External Proxy Node on Scoped Canvas
+        // Should update scoped proxy position, but NOT root coordinate!
+        qreal origExtTargetRootX = 800.0;
+        qreal origExtTargetRootY = 400.0;
+        proxyTargetItem->setPos(proxyTargetItem->pos() + QPointF(50.0, 50.0));
+        sizeWindow.saveLayout();
+
+        auto extTargetOpt = mdl->getNodeById(extTargetId);
+        assert(extTargetOpt.has_value());
+        QJsonObject extObj = QJsonDocument::fromJson(QString::fromStdString(extTargetOpt->metadata).toUtf8()).object();
+        // Root x/y preserved!
+        assert(extObj["x"].toDouble() == origExtTargetRootX);
+        assert(extObj["y"].toDouble() == origExtTargetRootY);
+        // Scoped proxy coordinates recorded
+        assert(extObj.contains("_scoped_proxy_x"));
+        assert(extObj.contains("_scoped_proxy_y"));
+
+        // 5. Exit Container Scope
+        sizeWindow.exitContainerScope();
+        assert(!sizeWindow.activeContainerScope().has_value());
+
+        // In root diagram: extTarget is a normal component, not a proxy
+        for (QGraphicsItem* it : sizeWindow.scene()->items()) {
+            if (auto* n = dynamic_cast<GraphNodeItem*>(it)) {
+                if (n->nodeId() == extTargetId) {
+                    assert(!n->isExternalProxy());
+                    assert(n->pos().x() == origExtTargetRootX);
+                    assert(n->pos().y() == origExtTargetRootY);
+                }
+            }
+        }
+
+        std::cout << " -> PASSED: Container size dialog, boundary item resizing, external link styling, and proxy coordinate isolation verified." << std::endl;
     }
 
     std::cout << "\n==============================================" << std::endl;
-    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (24/24)" << std::endl;
+    std::cout << " ALL TESTS PASSED SUCCESSFULLY! (25/25)" << std::endl;
     std::cout << "==============================================" << std::endl;
 
     return 0;
